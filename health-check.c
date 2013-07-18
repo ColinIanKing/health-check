@@ -38,16 +38,6 @@
 
 #define APP_NAME		"health-check"
 #define TIMER_STATS		"/proc/timer_stats"
-#define TABLE_SIZE		(32771)		/* Should be a prime */
-
-#define OPT_QUIET		(0x00000001)
-#define OPT_CUMULATIVE		(0x00000002)
-#define OPT_CMD_SHORT		(0x00000004)
-#define OPT_CMD_LONG		(0x00000008)
-#define OPT_DIRNAME_STRIP	(0x00000010)
-#define OPT_SAMPLE_COUNT	(0x00000020)
-#define OPT_RESULT_STATS	(0x00000040)
-#define OPT_CMD			(OPT_CMD_SHORT | OPT_CMD_LONG)
 
 typedef struct link {
 	void *data;			/* Data in list */
@@ -86,52 +76,13 @@ typedef struct {
 	unsigned 	count;		/* Count of accesses */
 } fnotify_fileinfo_t;
 
-static unsigned int opt_flags;		/* option flags */
-static bool sane_procs;			/* false if we are in a container */
 static pid_t opt_pid;			/* PID of process to check */
 static bool keep_running = true;
 
 /*
- *  sane_proc_pid_info()
- *	detect if proc info mapping from /proc/timer_stats
- *	maps to proc pids OK. If we are in a container or
- *	we can't tell, return false.
+ *  timeval_to_double()
+ *	convert timeval to seconds as a double
  */
-static bool sane_proc_pid_info(void)
-{
-	FILE *fp;
-	static const char pattern[] = "container=";
-	const char *ptr = pattern;
-	bool ret = true;
-
-	fp = fopen("/proc/1/environ", "r");
-	if (!fp)
-		return false;
-
-	while (!feof(fp)) {
-		int ch = getc(fp);
-
-		if (*ptr == ch) {
-			ptr++;
-			/* Match? So we're inside a container */
-			if (*ptr == '\0') {
-				ret = false;
-				break;
-			}
-		} else {
-			/* No match, skip to end of var and restart scan */
-			do {
-				ch = getc(fp);
-			} while ((ch != EOF) && (ch != '\0'));
-			ptr = pattern;
-		}
-	}
-
-	fclose(fp);
-
-	return ret;
-}
-
 static double timeval_to_double(const struct timeval *tv)
 {
 	return (double)tv->tv_sec + ((double)tv->tv_usec / 1000000.0);
@@ -318,30 +269,12 @@ static char *get_pid_cmdline(const pid_t id)
 
 	buffer[sizeof(buffer)-1] = '\0';
 
-	/*
-	 *  OPT_CMD_LONG option we get the full cmdline args
-	 */
-	if (opt_flags & OPT_CMD_LONG) {
-		for (ptr = buffer; ptr < buffer + ret - 1; ptr++) {
-			if (*ptr == '\0')
-				*ptr = ' ';
-		}
-		*ptr = '\0';
-	}
-	/*
-	 *  OPT_CMD_SHORT option we discard anything after a space
-	 */
-	if (opt_flags & OPT_CMD_SHORT) {
-		for (ptr = buffer; *ptr && (ptr < buffer + ret); ptr++) {
-			if (*ptr == ' ')
-				*ptr = '\0';
-		}
+	for (ptr = buffer; *ptr && (ptr < buffer + ret); ptr++) {
+		if (*ptr == ' ')
+			*ptr = '\0';
 	}
 
-	if (opt_flags & OPT_DIRNAME_STRIP)
-		return strdup(basename(buffer));
-
-	return strdup(buffer);
+	return strdup(basename(buffer));
 }
 
 /*
@@ -730,10 +663,6 @@ int main(int argc, char **argv)
 		fprintf(stderr, "Cannot allocate 4K aligned buffer\n");
 		health_check_exit(EXIT_FAILURE);
 	}
-
-	sane_procs = sane_proc_pid_info();
-	if (!sane_procs)
-		opt_flags &= ~(OPT_CMD_SHORT | OPT_CMD_LONG);
 
 	signal(SIGINT, &handle_sigint);
 
