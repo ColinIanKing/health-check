@@ -80,6 +80,19 @@ static pid_t opt_pid;			/* PID of process to check */
 static bool keep_running = true;
 
 /*
+ *  pid_exists()
+ *	true if given process with given pid exists
+ */
+bool pid_exists(pid_t pid)
+{
+	char path[PATH_MAX];
+	struct stat statbuf;
+
+	snprintf(path, sizeof(path), "/proc/%i", pid);
+	return stat(path, &statbuf) == 0;
+}
+
+/*
  *  timeval_to_double()
  *	convert timeval to seconds as a double
  */
@@ -336,6 +349,11 @@ static void dump_events_diff(double duration, list_t *events_old, list_t *events
 	event_info_t *evo, *evn;
 
 	printf("Wakeups:\n");
+	if (events_new->head == NULL) {
+		printf("  No wakeups detected\n\n");
+		return;
+	}
+
 	printf("  Rate   Function                       Callback\n");
 	for (ln = events_new->head; ln; ln = ln->next) {
 		evn = (event_info_t*)ln->data;
@@ -348,7 +366,7 @@ static void dump_events_diff(double duration, list_t *events_old, list_t *events
 				break;
 			}
 		}
-		printf("  %6.2f %22s %22s\n", (double)delta / duration, evn->func, evn->callback);
+		printf("  %6.2f %-30.30s %-30.30s\n", (double)delta / duration, evn->func, evn->callback);
 	}
 	printf("\n");
 }
@@ -440,6 +458,10 @@ static void dump_fnotify_events(double duration, list_t *fnotify_files)
 	unsigned long write_total = 0;
 
 	printf("File I/O operations:\n");
+	if (fnotify_files->head == NULL) {
+		printf("  No file I/O operations detected\n\n");
+		return;
+	}
 	printf("   Count  Op  Filename\n");
 
 	for (l = fnotify_files->head; l; l = l->next) {
@@ -642,11 +664,15 @@ int main(int argc, char **argv)
 		}
 	}
 
+	if (!pid_exists(opt_pid)) {
+		fprintf(stderr, "Cannot check process %i, no such process pid\n", opt_pid);
+		health_check_exit(EXIT_FAILURE);
+	}
+
 	if (opt_duration_secs < 0.5) {
 		fprintf(stderr, "Duration must 0.5 or more.\n");
 		health_check_exit(EXIT_FAILURE);
 	}
-
 
 	if (geteuid() != 0) {
 		fprintf(stderr, "%s requires root privileges to write to %s\n",
