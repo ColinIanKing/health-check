@@ -1,6 +1,5 @@
 /*
- * Copyright (C) 2011-2013 Canonical
- * Hugely modified parts from powertop-1.13, Copyright 2007, Intel Corporation
+ * Copyright (C) 2013 Canonical
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
