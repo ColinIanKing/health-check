@@ -402,6 +402,7 @@ static void free_pid_info(void *data)
 	free(p);
 }
 
+#if DUMP_PROC_CACHE
 static void dump_proc_cache(void)
 {
 	link_t *l;
@@ -412,6 +413,7 @@ static void dump_proc_cache(void)
 			p->pid, p->ppid, p->thread, p->comm, p->cmdline);
 	}
 }
+#endif
 
 static int find_proc_info_by_procname(list_t *pids, const char *procname) {
 
@@ -1146,7 +1148,9 @@ int main(int argc, char **argv)
 
 	get_proc_cache();
 	get_proc_cache_pthreads();
+#if DUMP_PROC_CACHE
 	dump_proc_cache();
+#endif
 
 	for (;;) {
 		int c = getopt(argc, argv, "cd:hp:");
