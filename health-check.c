@@ -34,9 +34,13 @@
 #include <math.h>
 #include <mntent.h>
 #include <sys/fanotify.h>
+#include <ctype.h>
+#include <dirent.h>
 
 #define APP_NAME		"health-check"
 #define TIMER_STATS		"/proc/timer_stats"
+
+#define	OPT_GET_CHILDREN	0x00000001
 
 typedef struct link {
 	void *data;			/* Data in list */
@@ -52,9 +56,15 @@ typedef struct {
 typedef void (*list_link_free_t)(void *);
 
 typedef struct {
+	long		padding;
 	pid_t		pid;
-	char 		*task;		/* Name of process/kernel task */
-	char		*cmdline;	/* From /proc/$pid/cmdline */
+	pid_t		ppid;
+	char		*comm;
+	char		*cmdline;
+} proc_info_t;
+
+typedef struct {
+	proc_info_t	*proc;		/* Proc specific info */
 	char		*func;		/* Kernel waiting func */
 	char		*callback;	/* Kernel timer callback func */
 	char		*ident;		/* Unique identity */
@@ -62,19 +72,141 @@ typedef struct {
 } event_info_t;
 
 typedef struct {
-	pid_t		pid;		/* Process ID */
+	proc_info_t	*proc;		/* Proc specific info */
 	unsigned long	utime;		/* User time quantum */
 	unsigned long	stime;		/* System time quantum */
 } cpustat_info_t;
 
 typedef struct {
-	pid_t		pid;		/* Process ID */
+	proc_info_t	*proc;		/* Proc specific info */
 	char		*filename;	/* Name of device or filename being accessed */
 	int		mask;		/* fnotify access mask */
 	unsigned 	count;		/* Count of accesses */
 } fnotify_fileinfo_t;
 
 static bool keep_running = true;
+static int  opt_flags;
+
+static list_t	proc_cache;
+
+/*
+ *  Stop gcc complaining about no return func
+ */
+static void health_check_exit(const int status) __attribute__ ((noreturn));
+
+
+/*
+ *  list_init()
+ *	initialize list
+ */
+static inline void list_init(list_t *list)
+{
+	list->head = NULL;
+	list->tail = NULL;
+	list->length = 0;
+}
+
+/*
+ *  list_append()
+ *	add a new item to end of the list
+ */
+static link_t *list_append(list_t *list, void *data)
+{
+	link_t *link;
+
+	if ((link = calloc(1, sizeof(link_t))) == NULL) {
+		fprintf(stderr, "Cannot allocate list link\n");
+		health_check_exit(EXIT_FAILURE);
+	}
+	link->data = data;
+
+	if (list->head == NULL) {
+		list->head = link;
+	} else {
+		list->tail->next = link;
+	}
+	list->tail = link;
+	list->length++;
+
+	return link;
+}
+
+/*
+ *  list_free()
+ *	free the list
+ */
+static void list_free(list_t *list, const list_link_free_t freefunc)
+{
+	link_t	*link, *next;
+
+	if (list == NULL)
+		return;
+
+	for (link = list->head; link; link = next) {
+		next = link->next;
+		if (link->data && freefunc)
+			freefunc(link->data);
+		free(link);
+	}
+}
+
+
+/*
+ *  get_pid_comm
+ *
+ */
+static char *get_pid_comm(const pid_t pid)
+{
+	char buffer[4096];
+	int fd;
+	ssize_t ret;
+
+	snprintf(buffer, sizeof(buffer), "/proc/%i/comm", pid);
+
+	if ((fd = open(buffer, O_RDONLY)) < 0)
+		return NULL;
+
+	if ((ret = read(fd, buffer, sizeof(buffer))) <= 0) {
+		close(fd);
+		return NULL;
+	}
+	close(fd);
+	buffer[ret-1] = '\0';
+
+	return strdup(buffer);
+}
+
+/*
+ *  get_pid_cmdline
+ * 	get process's /proc/pid/cmdline
+ */
+static char *get_pid_cmdline(const pid_t pid)
+{
+	char buffer[4096];
+	char *ptr;
+	int fd;
+	ssize_t ret;
+
+	snprintf(buffer, sizeof(buffer), "/proc/%i/cmdline", pid);
+
+	if ((fd = open(buffer, O_RDONLY)) < 0)
+		return NULL;
+
+	if ((ret = read(fd, buffer, sizeof(buffer))) <= 0) {
+		close(fd);
+		return NULL;
+	}
+	close(fd);
+
+	buffer[ret] = '\0';
+
+	for (ptr = buffer; *ptr && (ptr < buffer + ret); ptr++) {
+		if (*ptr == ' ')
+			*ptr = '\0';
+	}
+
+	return strdup(basename(buffer));
+}
 
 /*
  *  pid_exists()
@@ -87,6 +219,215 @@ bool pid_exists(pid_t pid)
 
 	snprintf(path, sizeof(path), "/proc/%i", pid);
 	return stat(path, &statbuf) == 0;
+}
+
+proc_info_t *add_proc_cache(pid_t pid, pid_t ppid)
+{
+	proc_info_t *p;
+
+	if (!pid_exists(pid))
+		return NULL;
+
+	if ((p = calloc(1, sizeof(*p))) == NULL) {
+		fprintf(stderr, "Out of memory\n");
+		health_check_exit(EXIT_FAILURE);
+	}
+
+	p->pid  = pid;
+	p->ppid = ppid;
+	p->cmdline = get_pid_cmdline(pid);
+	p->comm = get_pid_comm(pid);
+	list_append(&proc_cache, p);
+
+	return p;
+}
+
+proc_info_t *find_proc_info_by_pid(pid_t pid)
+{
+	link_t *l;
+
+	for (l = proc_cache.head; l; l = l->next) {
+		proc_info_t *p = (proc_info_t *)l->data;
+
+		if (p->pid == pid)
+			return p;
+	}
+
+	return add_proc_cache(pid, 0);	/* Need to find parent really */
+}
+
+int get_proc_cache(void)
+{
+	DIR *procdir;
+	struct dirent *procentry;
+
+	if ((procdir = opendir("/proc")) == NULL) {
+		fprintf(stderr, "Cannot open directory /proc\n");
+		return -1;
+	}
+
+	/*
+	 *   Gather pid -> ppid mapping
+	 */
+	while ((procentry = readdir(procdir)) != NULL) {
+		FILE *fp;
+		char path[PATH_MAX];
+
+		if (!isdigit(procentry->d_name[0]))
+			continue;
+
+		snprintf(path, sizeof(path), "/proc/%s/stat", procentry->d_name);
+		if ((fp = fopen(path, "r")) != NULL) {
+			pid_t pid, ppid;
+			char comm[64];
+			/* 3173 (a.out) R 3093 3173 3093 34818 3173 4202496 165 0 0 0 3194 0 */
+			if (fscanf(fp, "%d (%[^)]) %*c %i", &pid, comm, &ppid) == 3) {
+				add_proc_cache(pid, ppid);
+			}
+			fclose(fp);
+		}
+	}
+	closedir(procdir);
+
+	return 0;
+}
+
+#if 0
+int get_proc_cache_pthreads(void)
+{
+	DIR *procdir;
+	struct dirent *procentry;
+
+	if ((procdir = opendir("/proc")) == NULL) {
+		fprintf(stderr, "Cannot open directory /proc\n");
+		return -1;
+	}
+
+	/*
+	 *   Gather pid -> ppid mapping
+	 */
+	while ((procentry = readdir(procdir)) != NULL) {
+		DIR *taskdir;
+		struct dirent *taskentry;
+		char path[PATH_MAX];
+		pid_t ppid;
+
+		if (!isdigit(procentry->d_name[0]))
+			continue;
+
+		ppid = atoi(procentry->d_name);
+
+		snprintf(path, sizeof(path), "/proc/%i/task", ppid);
+
+		if ((taskdir = opendir(path)) == NULL)
+			continue;
+
+		add_proc_cache(ppid, 0);
+
+		while ((taskentry = readdir(taskdir)) != NULL) {
+			pid_t pid;
+			if (!isdigit(taskentry->d_name[0]))
+				continue;
+			pid = atoi(taskentry->d_name);
+			if (pid == ppid)
+				continue;
+
+			add_proc_cache(pid, ppid);
+		}
+		closedir(taskdir);
+	}
+	closedir(procdir);
+
+	return 0;
+}
+#endif
+
+void free_pid_info(void *data)
+{
+	proc_info_t *p = (proc_info_t*)data;
+
+	free(p->cmdline);
+	free(p->comm);
+	free(p);
+}
+
+#if 0
+void dump_proc_cache(list_t *cache)
+{
+	link_t *l;
+
+	for (l = cache->head; l; l = l->next) {
+		proc_info_t *p = (proc_info_t*)l->data;
+		printf("%i %i (%s) (%s)\n",
+			p->pid, p->ppid, p->comm, p->cmdline);
+	}
+}
+#endif
+
+int find_proc_info_by_procname(list_t *pids, const char *procname) {
+
+	bool found = false;
+	link_t *l;
+
+	for (l = proc_cache.head; l; l = l->next) {
+		proc_info_t *p = (proc_info_t *)l->data;
+
+		if (p->cmdline && strcmp(p->cmdline, procname) == 0) {
+			list_append(pids, p);
+			found = true;
+		}
+	}
+
+	if (!found) {
+		fprintf(stderr, "Cannot find process %s\n", procname);
+		return -1;
+	}
+
+	return 0;
+}
+
+
+int pid_get_children(pid_t pid, list_t *children)
+{
+	link_t *l;
+
+	for (l = proc_cache.head; l; l = l->next) {
+		proc_info_t *p = (proc_info_t*)l->data;
+		if (p->ppid == pid) {
+			list_append(children, p);
+			pid_get_children(p->pid, children);
+		}
+	}
+
+	return 0;
+}
+
+int pids_get_children(list_t *pids)
+{
+	link_t *l;
+	list_t children;
+	proc_info_t *p;
+
+	list_init(&children);
+
+	for (l = pids->head; l; l = l->next) {
+		p = (proc_info_t *)l->data;
+		pid_get_children(p->pid, &children);
+	}
+
+	/*  Append the children onto the pid list */
+	for (l = children.head; l; l = l->next) {
+		p = (proc_info_t *)l->data;
+		list_append(pids, p);
+	}
+
+	/*  Free the children list, not the data */
+	list_free(&children, NULL);
+
+	for (l = pids->head; l; l = l->next)
+		p = (proc_info_t *)l->data;
+
+	return 0;
 }
 
 /*
@@ -177,11 +518,6 @@ static void set_timer_stat(const char *str, const bool carp)
 }
 
 /*
- *  Stop gcc complaining about no return func
- */
-static void health_check_exit(const int status) __attribute__ ((noreturn));
-
-/*
  *  health_check_exit()
  *	exit and set timer stat to 0
  */
@@ -192,61 +528,6 @@ static void health_check_exit(const int status)
 	exit(status);
 }
 
-/*
- *  list_init()
- *	initialize list
- */
-static inline void list_init(list_t *list)
-{
-	list->head = NULL;
-	list->tail = NULL;
-	list->length = 0;
-}
-
-/*
- *  list_append()
- *	add a new item to end of the list
- */
-static link_t *list_append(list_t *list, void *data)
-{
-	link_t *link;
-
-	if ((link = calloc(1, sizeof(link_t))) == NULL) {
-		fprintf(stderr, "Cannot allocate list link\n");
-		health_check_exit(EXIT_FAILURE);
-	}
-	link->data = data;
-
-	if (list->head == NULL) {
-		list->head = link;
-	} else {
-		list->tail->next = link;
-	}
-	list->tail = link;
-	list->length++;
-
-	return link;
-}
-
-/*
- *  list_free()
- *	free the list
- */
-static void list_free(list_t *list, const list_link_free_t freefunc)
-{
-	link_t	*link, *next;
-
-	if (list == NULL)
-		return;
-
-	for (link = list->head; link; link = next) {
-		next = link->next;
-		if (link->data && freefunc)
-			freefunc(link->data);
-		free(link);
-	}
-}
-
 static void handle_sigint(int dummy)
 {
 	(void)dummy;	/* Stop unused parameter warning with -Wextra */
@@ -254,37 +535,14 @@ static void handle_sigint(int dummy)
 	keep_running = false;
 }
 
-/*
- *  get_pid_cmdline
- * 	get process's /proc/pid/cmdline
- */
-static char *get_pid_cmdline(const pid_t id)
+static void event_free(void *data)
 {
-	char buffer[4096];
-	char *ptr;
-	int fd;
-	ssize_t ret;
+	event_info_t *ev = (event_info_t *)data;
 
-	snprintf(buffer, sizeof(buffer), "/proc/%d/cmdline", id);
-
-	if ((fd = open(buffer, O_RDONLY)) < 0)
-		return NULL;
-
-	if ((ret = read(fd, buffer, sizeof(buffer))) <= 0) {
-		close(fd);
-		return NULL;
-	}
-
-	close(fd);
-
-	buffer[sizeof(buffer)-1] = '\0';
-
-	for (ptr = buffer; *ptr && (ptr < buffer + ret); ptr++) {
-		if (*ptr == ' ')
-			*ptr = '\0';
-	}
-
-	return strdup(basename(buffer));
+	free(ev->func);
+	free(ev->callback);
+	free(ev->ident);
+	free(ev);
 }
 
 /*
@@ -296,15 +554,19 @@ static void event_add(
 	list_t *events,			/* event list */
 	const unsigned long count,	/* event count */
 	const pid_t pid,		/* PID of task */
-	char *task,			/* Name of task */
 	char *func,			/* Kernel function */
 	char *callback)			/* Kernel timer callback */
 {
 	char ident[4096];
 	event_info_t	*ev;
 	link_t *l;
+	proc_info_t	*p;
 
-	snprintf(ident, sizeof(ident), "%d:%s:%s:%s", pid, task, func, callback);
+	/* Does it exist? */
+	if ((p = find_proc_info_by_pid(pid)) == NULL)
+		return;
+
+	snprintf(ident, sizeof(ident), "%d:%s:%s:%s", pid, p->comm, func, callback);
 
 	for (l = events->head; l; l = l->next) {
 		ev = (event_info_t *)l->data;
@@ -321,15 +583,13 @@ static void event_add(
 		health_check_exit(EXIT_FAILURE);
 	}
 
-	ev->pid = pid;
-	ev->task = strdup(task);
-	ev->cmdline = get_pid_cmdline(pid);
+	ev->proc = p;
 	ev->func = strdup(func);
 	ev->callback = strdup(callback);
 	ev->ident = strdup(ident);
 	ev->count = count;
 
-	if (ev->task == NULL ||
+	if (ev->proc == NULL ||
 	    ev->func == NULL ||
 	    ev->callback == NULL ||
 	    ev->ident == NULL) {
@@ -351,7 +611,7 @@ static void dump_events_diff(double duration, list_t *events_old, list_t *events
 		return;
 	}
 
-	printf("   PID     Rate   Function                       Callback\n");
+	printf("   PID  Process               Wake/Sec Kernel Functions\n");
 	for (ln = events_new->head; ln; ln = ln->next) {
 		evn = (event_info_t*)ln->data;
 		unsigned long delta = evn->count;
@@ -363,7 +623,10 @@ static void dump_events_diff(double duration, list_t *events_old, list_t *events
 				break;
 			}
 		}
-		printf("  %5d %9.2f %-30.30s %-30.30s\n", evn->pid, (double)delta / duration, evn->func, evn->callback);
+		printf("  %5d %-20.20s %9.2f (%s, %s)\n",
+			evn->proc->pid, evn->proc->cmdline,
+			(double)delta / duration, 
+			evn->func, evn->callback);
 	}
 	printf("\n");
 }
@@ -371,28 +634,29 @@ static void dump_events_diff(double duration, list_t *events_old, list_t *events
 static void dump_cpustat_diff(double duration, list_t *cpustat_old, list_t *cpustat_new)
 {
 	double nr_ticks =
-		(double)sysconf(_SC_NPROCESSORS_CONF) *
+		/* (double)sysconf(_SC_NPROCESSORS_CONF) * */
 		(double)sysconf(_SC_CLK_TCK) *
 		duration;
 
 	link_t *lo, *ln;
 	cpustat_info_t *cio, *cin;
 
-	printf("CPU usage (in terms of %lu CPUs):\n", sysconf(_SC_NPROCESSORS_CONF));
+	printf("CPU usage:\n");
 
-	printf("   PID    USR%%   SYS%%\n");
+	printf("   PID  Process                USR%%   SYS%%\n");
 	for (ln = cpustat_new->head; ln; ln = ln->next) {
 		cin = (cpustat_info_t*)ln->data;
 
 		for (lo = cpustat_old->head; lo; lo = lo->next) {
 			cio = (cpustat_info_t*)lo->data;
 
-			if (cin->pid == cio->pid) {
+			if (cin->proc->pid == cio->proc->pid) {
 				unsigned long utime = cin->utime - cio->utime;
 				unsigned long stime = cin->stime - cio->stime;
 
-				printf("  %5d %6.2f %6.2f\n",
-					cio->pid,
+				printf("  %5d %-20.20s %6.2f %6.2f\n",
+					cio->proc->pid,
+					cio->proc->cmdline,
 					100.0 * (double)utime / (double)nr_ticks,
 					100.0 * (double)stime / (double)nr_ticks);
 			}
@@ -400,6 +664,14 @@ static void dump_cpustat_diff(double duration, list_t *cpustat_old, list_t *cpus
 	}
 
 	printf("\n");
+}
+
+static void fnotify_event_free(void *data)
+{
+	fnotify_fileinfo_t *fileinfo = (fnotify_fileinfo_t *)data;
+
+	free(fileinfo->filename);
+	free(fileinfo);
 }
 
 static void fnotify_event_add(
@@ -413,9 +685,9 @@ static void fnotify_event_add(
 		return;
 
 	for (l = pids->head; l; l = l->next) {
-		pid_t *pid = (pid_t *)l->data;
+		 proc_info_t *p = (proc_info_t*)l->data;
 
-		if (metadata->pid == *pid) {
+		if (metadata->pid == p->pid) {
 			char buf[256];
 			char path[PATH_MAX];
 			ssize_t len;
@@ -441,7 +713,7 @@ static void fnotify_event_add(
 					fileinfo->filename = strdup(path);
 				}
 				fileinfo->mask = metadata->mask;
-				fileinfo->pid = metadata->pid;
+				fileinfo->proc = p;
 				fileinfo->count = 1;
 
 				for (l = fnotify_files->head; l; l = l->next) {
@@ -456,8 +728,7 @@ static void fnotify_event_add(
 				}
 
 				if (found) {
-					free(fileinfo->filename);
-					free(fileinfo);
+					fnotify_event_free(fileinfo);
 				} else {
 					list_append(fnotify_files, fileinfo);
 				}
@@ -478,7 +749,7 @@ static void dump_fnotify_events(double duration, list_t *pids, list_t *fnotify_f
 		return;
 	}
 
-	printf("   PID   Count  Op  Filename\n");
+	printf("   PID  Process               Count  Op  Filename\n");
 	for (l = fnotify_files->head; l; l = l->next) {
 		fnotify_fileinfo_t *info = (fnotify_fileinfo_t *)l->data;
 		char modes[5];
@@ -493,23 +764,25 @@ static void dump_fnotify_events(double duration, list_t *pids, list_t *fnotify_f
 		if (info->mask & (FAN_MODIFY | FAN_CLOSE_WRITE))
 			modes[i++] = 'W';
 		modes[i] = '\0';
-		printf("  %5d %6d %4s %s\n", info->pid, info->count, modes, info->filename);
+		printf("  %5d %-20.20s %6d %4s %s\n",
+			info->proc->pid, info->proc->comm,
+			info->count, modes, info->filename);
 	}
 	printf("\n");
 
-	printf("File I/O Operations rate/sec:\n");
-	printf("   PID     Open   Close    Read   Write\n");
+	printf("File I/O Operations per second:\n");
+	printf("   PID  Process                 Open   Close    Read   Write\n");
 	for (lp = pids->head; lp; lp = lp->next) {
 		unsigned long open_total = 0;
 		unsigned long close_total = 0;
 		unsigned long read_total = 0;
 		unsigned long write_total = 0;
-		pid_t *pid = (pid_t*)lp->data;
+		proc_info_t *p = (proc_info_t*)lp->data;
 
 		for (l = fnotify_files->head; l; l = l->next) {
 			fnotify_fileinfo_t *info = (fnotify_fileinfo_t *)l->data;
 
-			if (info->pid != *pid)
+			if (info->proc->pid != p->pid)
 				continue;
 
 			if (info->mask & FAN_OPEN)
@@ -521,8 +794,8 @@ static void dump_fnotify_events(double duration, list_t *pids, list_t *fnotify_f
 			if (info->mask & (FAN_MODIFY | FAN_CLOSE_WRITE))
 				write_total += info->count;
 		}
-		printf("  %5d %7.2f %7.2f %7.2f %7.2f\n",
-			*pid,
+		printf("  %5d %-20.20s %7.2f %7.2f %7.2f %7.2f\n",
+			p->pid, p->cmdline,
 			(double)open_total / duration,
 			(double)close_total / duration,
 			(double)read_total / duration,
@@ -532,7 +805,7 @@ static void dump_fnotify_events(double duration, list_t *pids, list_t *fnotify_f
 }
 
 /*
- *  get_cpustats()
+ *  get_cpustat()
  *
  */
 static int get_cpustat(list_t *pids, list_t *cpustat)
@@ -542,14 +815,15 @@ static int get_cpustat(list_t *pids, list_t *cpustat)
 	link_t *l;
 
 	for (l = pids->head; l; l = l->next) {
-		cpustat_info_t*info = (cpustat_info_t*)l->data;
-		snprintf(filename, sizeof(filename), "/proc/%d/stat", info->pid);
-		/* 3173 (a.out) R 3093 3173 3093 34818 3173 4202496 165 0 0 0 3194 0 */
+		proc_info_t *p = (proc_info_t *)l->data;
+
+		snprintf(filename, sizeof(filename), "/proc/%d/stat", p->pid);
 		if ((fp = fopen(filename, "r")) != NULL) {
 			char comm[20];
 			unsigned long utime, stime;
 			pid_t pid;
 
+			/* 3173 (a.out) R 3093 3173 3093 34818 3173 4202496 165 0 0 0 3194 0 */
 			if (fscanf(fp, "%d (%[^)]) %*c %*d %*d %*d %*d %*d %*u %*u %*u %*u %*u %lu %lu",
 				&pid, comm, &utime, &stime) == 4) {
 				cpustat_info_t *info;
@@ -559,10 +833,9 @@ static int get_cpustat(list_t *pids, list_t *cpustat)
 					fprintf(stderr, "Out of memory\n");
 					return -1;
 				}
-				info->pid = pid;
+				info->proc  = p;
 				info->utime = utime;
 				info->stime = stime;
-
 				list_append(cpustat, info);
 
 			}
@@ -593,7 +866,7 @@ static void get_events(list_t *pids, list_t *events)
 		char *ptr = buf;
 		unsigned long count = -1;
 		pid_t event_pid = -1;
-		char task[64];
+		char comm[64];
 		char func[128];
 		char timer[128];
 		link_t *l;
@@ -607,7 +880,7 @@ static void get_events(list_t *pids, list_t *events)
 		if (strstr(buf, ",") == NULL)
 			continue;
 
-		/* format: count[D], pid, task, func (timer) */
+		/* format: count[D], pid, comm, func (timer) */
 
 		while (*ptr && *ptr != ',')
 			ptr++;
@@ -620,12 +893,12 @@ static void get_events(list_t *pids, list_t *events)
 
 		ptr++;
 		sscanf(buf, "%lu", &count);
-		sscanf(ptr, "%d %s %s (%[^)])", &event_pid, task, func, timer);
+		sscanf(ptr, "%d %s %s (%[^)])", &event_pid, comm, func, timer);
 
 		for (l = pids->head; l; l = l->next) {
-			pid_t *pid = (pid_t *)l->data;
-			if (event_pid == *pid) {
-				event_add(events, count, event_pid, task, func, timer);
+			proc_info_t *p = (proc_info_t *)l->data;
+			if (event_pid == p->pid) {
+				event_add(events, count, event_pid, func, timer);
 				break;
 			}
 		}
@@ -690,18 +963,26 @@ static void show_usage(void)
 	printf("  -p pid\tspecify process id of process to check\n");
 }
 
-static int parse_pids(char *arg, list_t *pids)
+static int parse_pid_list(char *arg, list_t *pids)
 {
 	char *str, *token, *saveptr = NULL;
 
 	for (str = arg; (token = strtok_r(str, ",", &saveptr)) != NULL; str = NULL) {
-		pid_t *pid;
+		if (isdigit(token[0])) {
+			proc_info_t *p;
+			pid_t pid;
 
-		if ((pid = calloc(1, sizeof(*pid))) == NULL)
-			return -1;
-
-		*pid = atoi(token);
-		list_append(pids, pid);
+			pid = atoi(token);
+			if ((p = find_proc_info_by_pid(pid)) == NULL) {
+				fprintf(stderr, "Cannot find process with PID %i\n", pid);
+				return -1;
+			}
+			list_append(pids, p);
+		} else {
+			if (find_proc_info_by_procname(pids, token) < 0) {
+				return -1;
+			}
+		}
 	}
 
 	return 0;
@@ -726,17 +1007,24 @@ int main(int argc, char **argv)
 	list_init(&cpustat_info_new);
 	list_init(&fnotify_files);
 	list_init(&pids);
+	list_init(&proc_cache);
+
+	get_proc_cache();
 
 	for (;;) {
-		int c = getopt(argc, argv, "d:hp:");
+		int c = getopt(argc, argv, "cd:hp:");
 		if (c == -1)
 			break;
 		switch (c) {
+		case 'c':
+			opt_flags |= OPT_GET_CHILDREN;
+			break;
 		case 'h':
 			show_usage();
 			break;
 		case 'p':
-			parse_pids(optarg, &pids);
+			if (parse_pid_list(optarg, &pids) < 0)
+				health_check_exit(EXIT_FAILURE);
 			break;
 		case 'd':
 			opt_duration_secs = atof(optarg);
@@ -744,26 +1032,28 @@ int main(int argc, char **argv)
 		}
 	}
 
-	if (pids.head == NULL) {
-		fprintf(stderr, "Must provide one or more process IDs\n");
-		health_check_exit(EXIT_FAILURE);
-	}
-	for (l = pids.head; l; l = l->next) {
-		pid_t *pid = (pid_t *)l->data;
-		if (!pid_exists(*pid)) {
-			fprintf(stderr, "Cannot check process %i, no such process pid\n", *pid);
-			health_check_exit(EXIT_FAILURE);
-		}
-	}
-
-	if (opt_duration_secs < 0.5) {
-		fprintf(stderr, "Duration must 0.5 or more.\n");
-		health_check_exit(EXIT_FAILURE);
-	}
-
 	if (geteuid() != 0) {
 		fprintf(stderr, "%s requires root privileges to write to %s\n",
 			APP_NAME, TIMER_STATS);
+		health_check_exit(EXIT_FAILURE);
+	}
+
+	if (pids.head == NULL) {
+		fprintf(stderr, "Must provide one or more valid process IDs or name\n");
+		health_check_exit(EXIT_FAILURE);
+	}
+	for (l = pids.head; l; l = l->next) {
+		proc_info_t *p = (proc_info_t *)l->data;
+		if (!pid_exists(p->pid)) {
+			fprintf(stderr, "Cannot check process %i, no such process pid\n", p->pid);
+			health_check_exit(EXIT_FAILURE);
+		}
+	}
+	if (opt_flags & OPT_GET_CHILDREN)
+		pids_get_children(&pids);
+
+	if (opt_duration_secs < 0.5) {
+		fprintf(stderr, "Duration must 0.5 or more.\n");
 		health_check_exit(EXIT_FAILURE);
 	}
 
@@ -831,17 +1121,18 @@ int main(int argc, char **argv)
 	get_events(&pids, &event_info_new);
 	get_cpustat(&pids, &cpustat_info_new);
 
-	dump_events_diff(actual_duration, &event_info_old, &event_info_new);
 	dump_cpustat_diff(actual_duration, &cpustat_info_old, &cpustat_info_new);
+	dump_events_diff(actual_duration, &event_info_old, &event_info_new);
 	dump_fnotify_events(actual_duration, &pids, &fnotify_files);
 
 out:
-	list_free(&event_info_old, free);
-	list_free(&event_info_new, free);
+	list_free(&event_info_old, event_free);
+	list_free(&event_info_new, event_free);
 	list_free(&cpustat_info_old, free);
 	list_free(&cpustat_info_new, free);
-	list_free(&fnotify_files, free);
+	list_free(&fnotify_files, fnotify_event_free);
 	list_free(&pids, free);
+	list_free(&proc_cache, free_pid_info);
 
 	health_check_exit(EXIT_SUCCESS);
 }
