@@ -54,6 +54,8 @@ typedef struct {
 } list_t;
 
 typedef void (*list_link_free_t)(void *);
+typedef int  (*list_comp_t)(void *, void *);
+
 
 typedef struct {
 	long		padding;
@@ -75,6 +77,7 @@ typedef struct {
 	proc_info_t	*proc;		/* Proc specific info */
 	unsigned long	utime;		/* User time quantum */
 	unsigned long	stime;		/* System time quantum */
+	unsigned long	ttime;		/* Total time */
 } cpustat_info_t;
 
 typedef struct {
@@ -83,6 +86,15 @@ typedef struct {
 	int		mask;		/* fnotify access mask */
 	unsigned 	count;		/* Count of accesses */
 } fnotify_fileinfo_t;
+
+typedef struct {
+	unsigned long 	open_total;
+	unsigned long 	close_total;
+	unsigned long 	read_total;
+	unsigned long 	write_total;
+	unsigned long 	total;
+	proc_info_t   	*proc;
+} io_ops_t;
 
 static bool keep_running = true;
 static int  opt_flags;
@@ -131,6 +143,36 @@ static link_t *list_append(list_t *list, void *data)
 	return link;
 }
 
+
+/*
+ *  list_add_ordered()
+ *	add new data into list, based on order from callback func compare().
+ */
+link_t *list_add_ordered(list_t *list, void *new_data, list_comp_t compare)
+{
+	link_t *link, **l;
+
+	if ((link = calloc(1, sizeof(link_t))) == NULL)
+		return NULL;
+
+	link->data = new_data;
+
+	for (l = &list->head; *l; l = &(*l)->next) {
+		void *data = (void *)(*l)->data;
+		if (compare(data, new_data) >= 0) {
+			link->next = (*l);
+			break;
+		}
+	}
+	if (!link->next)
+		list->tail = link;
+
+	*l = link;
+	list->length++;
+
+	return link;
+}
+
 /*
  *  list_free()
  *	free the list
@@ -149,7 +191,6 @@ static void list_free(list_t *list, const list_link_free_t freefunc)
 		free(link);
 	}
 }
-
 
 /*
  *  get_pid_comm
@@ -545,10 +586,17 @@ static void event_free(void *data)
 	free(ev);
 }
 
+static int events_cmp(void *data1, void *data2)
+{
+	event_info_t *ev1 = (event_info_t *)data1;
+	event_info_t *ev2 = (event_info_t *)data2;
+
+	return ev2->count - ev1->count;
+}
+
 /*
  *  event_add()
- *	add timer stats to a hash table if it is new, otherwise just
- *	accumulate the event count.
+ *	add event stats 
  */
 static void event_add(
 	list_t *events,			/* event list */
@@ -597,7 +645,7 @@ static void event_add(
 		health_check_exit(EXIT_FAILURE);
 	}
 
-	list_append(events, ev);
+	list_add_ordered(events, ev, events_cmp);
 }
 
 static void dump_events_diff(double duration, list_t *events_old, list_t *events_new)
@@ -631,6 +679,14 @@ static void dump_events_diff(double duration, list_t *events_old, list_t *events
 	printf("\n");
 }
 
+static int cpustat_cmp(void *data1, void *data2)
+{
+	cpustat_info_t	*cpustat1 = (cpustat_info_t *)data1;
+	cpustat_info_t	*cpustat2 = (cpustat_info_t *)data2;
+
+	return cpustat2->ttime - cpustat1->ttime;
+}
+
 static void dump_cpustat_diff(double duration, list_t *cpustat_old, list_t *cpustat_new)
 {
 	double nr_ticks =
@@ -639,11 +695,11 @@ static void dump_cpustat_diff(double duration, list_t *cpustat_old, list_t *cpus
 		duration;
 
 	link_t *lo, *ln;
+	list_t	sorted;
 	cpustat_info_t *cio, *cin;
 
-	printf("CPU usage:\n");
+	list_init(&sorted);
 
-	printf("   PID  Process                USR%%   SYS%%\n");
 	for (ln = cpustat_new->head; ln; ln = ln->next) {
 		cin = (cpustat_info_t*)ln->data;
 
@@ -651,17 +707,33 @@ static void dump_cpustat_diff(double duration, list_t *cpustat_old, list_t *cpus
 			cio = (cpustat_info_t*)lo->data;
 
 			if (cin->proc->pid == cio->proc->pid) {
-				unsigned long utime = cin->utime - cio->utime;
-				unsigned long stime = cin->stime - cio->stime;
+				cpustat_info_t *cpustat;
 
-				printf("  %5d %-20.20s %6.2f %6.2f\n",
-					cio->proc->pid,
-					cio->proc->cmdline,
-					100.0 * (double)utime / (double)nr_ticks,
-					100.0 * (double)stime / (double)nr_ticks);
+				if ((cpustat = calloc(1, sizeof(*cpustat))) == NULL) {
+					fprintf(stderr, "Out of memory\n");
+					health_check_exit(EXIT_FAILURE);
+				}
+				cpustat->proc  = cio->proc;
+				cpustat->utime = cin->utime - cio->utime;
+				cpustat->stime = cin->stime - cio->stime;
+				cpustat->ttime = cin->ttime - cio->ttime;
+				list_add_ordered(&sorted, cpustat, cpustat_cmp);
 			}
 		}
 	}
+
+	printf("CPU usage:\n");
+	printf("   PID  Process                USR%%   SYS%%\n");
+	for (ln = sorted.head; ln; ln = ln->next) {
+		cin = (cpustat_info_t*)ln->data;
+		printf("  %5d %-20.20s %6.2f %6.2f\n",
+			cin->proc->pid,
+			cin->proc->cmdline,
+			100.0 * (double)cin->utime / (double)nr_ticks,
+			100.0 * (double)cin->stime / (double)nr_ticks);
+	}
+
+	list_free(&sorted, free);
 
 	printf("\n");
 }
@@ -738,10 +810,27 @@ static void fnotify_event_add(
 	close(metadata->fd);
 }
 
+static int fnotify_events_cmp_count(void *data1, void *data2)
+{
+	fnotify_fileinfo_t *info1 = (fnotify_fileinfo_t *)data1;
+	fnotify_fileinfo_t *info2 = (fnotify_fileinfo_t *)data2;
+
+	return info2->count - info1->count;
+}
+
+static int fnotify_events_cmp_io_ops(void *data1, void *data2)
+{
+	io_ops_t *io_ops1 = (io_ops_t *)data1;
+	io_ops_t *io_ops2 = (io_ops_t *)data2;
+
+	return io_ops2->total - io_ops1->total;
+}
+
 static void dump_fnotify_events(double duration, list_t *pids, list_t *fnotify_files)
 {
 	link_t 	*l;
 	link_t  *lp;
+	list_t	sorted;
 
 	printf("File I/O Operations:\n");
 	if (fnotify_files->head == NULL) {
@@ -749,8 +838,15 @@ static void dump_fnotify_events(double duration, list_t *pids, list_t *fnotify_f
 		return;
 	}
 
-	printf("   PID  Process               Count  Op  Filename\n");
+	list_init(&sorted);
 	for (l = fnotify_files->head; l; l = l->next) {
+		fnotify_fileinfo_t *info = (fnotify_fileinfo_t *)l->data;
+		list_add_ordered(&sorted, info, fnotify_events_cmp_count);
+		
+	}
+
+	printf("   PID  Process               Count  Op  Filename\n");
+	for (l = sorted.head; l; l = l->next) {
 		fnotify_fileinfo_t *info = (fnotify_fileinfo_t *)l->data;
 		char modes[5];
 		int i = 0;
@@ -764,20 +860,24 @@ static void dump_fnotify_events(double duration, list_t *pids, list_t *fnotify_f
 		if (info->mask & (FAN_MODIFY | FAN_CLOSE_WRITE))
 			modes[i++] = 'W';
 		modes[i] = '\0';
+
 		printf("  %5d %-20.20s %6d %4s %s\n",
 			info->proc->pid, info->proc->comm,
 			info->count, modes, info->filename);
 	}
 	printf("\n");
+	list_free(&sorted, NULL);
 
-	printf("File I/O Operations per second:\n");
-	printf("   PID  Process                 Open   Close    Read   Write\n");
+	list_init(&sorted);
 	for (lp = pids->head; lp; lp = lp->next) {
-		unsigned long open_total = 0;
-		unsigned long close_total = 0;
-		unsigned long read_total = 0;
-		unsigned long write_total = 0;
 		proc_info_t *p = (proc_info_t*)lp->data;
+		io_ops_t *io_ops;
+
+		if ((io_ops = calloc(1, sizeof(*io_ops))) == NULL) {
+			fprintf(stderr, "Out of memory\n");
+			health_check_exit(EXIT_FAILURE);
+		}
+		io_ops->proc = p;
 
 		for (l = fnotify_files->head; l; l = l->next) {
 			fnotify_fileinfo_t *info = (fnotify_fileinfo_t *)l->data;
@@ -786,22 +886,34 @@ static void dump_fnotify_events(double duration, list_t *pids, list_t *fnotify_f
 				continue;
 
 			if (info->mask & FAN_OPEN)
-				open_total += info->count;
+				io_ops->open_total += info->count;
 			if (info->mask & (FAN_CLOSE_WRITE | FAN_CLOSE_NOWRITE))
-				close_total += info->count;
+				io_ops->close_total += info->count;
 			if (info->mask & FAN_ACCESS)
-				read_total += info->count;
+				io_ops->read_total += info->count;
 			if (info->mask & (FAN_MODIFY | FAN_CLOSE_WRITE))
-				write_total += info->count;
+				io_ops->write_total += info->count;
 		}
+		io_ops->total = io_ops->open_total + io_ops->close_total + 
+				io_ops->read_total + io_ops->write_total;
+
+		list_add_ordered(&sorted, io_ops, fnotify_events_cmp_io_ops);
+	}
+
+	printf("File I/O Operations per second:\n");
+	printf("   PID  Process                 Open   Close    Read   Write\n");
+	for (l = sorted.head; l; l = l->next) {
+		io_ops_t *io_ops = (io_ops_t *)l->data;
+
 		printf("  %5d %-20.20s %7.2f %7.2f %7.2f %7.2f\n",
-			p->pid, p->cmdline,
-			(double)open_total / duration,
-			(double)close_total / duration,
-			(double)read_total / duration,
-			(double)write_total / duration);
+			io_ops->proc->pid, io_ops->proc->cmdline,
+			(double)io_ops->open_total / duration,
+			(double)io_ops->close_total / duration,
+			(double)io_ops->read_total / duration,
+			(double)io_ops->write_total / duration);
 	}
 	printf("\n");
+	list_free(&sorted, free);
 }
 
 /*
@@ -831,11 +943,12 @@ static int get_cpustat(list_t *pids, list_t *cpustat)
 				info = calloc(1, sizeof(*info));
 				if (info == NULL) {
 					fprintf(stderr, "Out of memory\n");
-					return -1;
+					health_check_exit(EXIT_FAILURE);
 				}
 				info->proc  = p;
 				info->utime = utime;
 				info->stime = stime;
+				info->ttime = utime + stime;
 				list_append(cpustat, info);
 
 			}
@@ -998,7 +1111,7 @@ int main(int argc, char **argv)
 	list_t		fnotify_files, pids;
 	list_t		cpustat_info_old, cpustat_info_new;
 	link_t		*l;
-	int fan_fd;
+	int fan_fd = 0;
 	void *buffer;
 
 	list_init(&event_info_old);
@@ -1051,6 +1164,7 @@ int main(int argc, char **argv)
 	}
 	if (opt_flags & OPT_GET_CHILDREN)
 		pids_get_children(&pids);
+
 
 	if (opt_duration_secs < 0.5) {
 		fprintf(stderr, "Duration must 0.5 or more.\n");
@@ -1126,12 +1240,13 @@ int main(int argc, char **argv)
 	dump_fnotify_events(actual_duration, &pids, &fnotify_files);
 
 out:
+	free(buffer);
+	list_free(&pids, NULL);
 	list_free(&event_info_old, event_free);
 	list_free(&event_info_new, event_free);
 	list_free(&cpustat_info_old, free);
 	list_free(&cpustat_info_new, free);
 	list_free(&fnotify_files, fnotify_event_free);
-	list_free(&pids, free);
 	list_free(&proc_cache, free_pid_info);
 
 	health_check_exit(EXIT_SUCCESS);
