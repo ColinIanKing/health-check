@@ -1094,10 +1094,13 @@ static int fnotify_init(void)
 static void show_usage(void)
 {
 	printf("%s, version %s\n\n", APP_NAME, VERSION);
-	printf("Usage: %s [options] [duration] [count]\n", APP_NAME);
+	printf("Usage: %s [options]\n", APP_NAME);
 	printf("Options are:\n");
-	printf("  -h\tshow this help\n");
-	printf("  -p pid\tspecify process id of process to check\n");
+	printf("  -c            find all child and threads\n");
+	printf("  -d            specify the analysis duration in seconds\n");
+	printf("  -h            show this help\n");
+	printf("  -p pid[,pid]  specify process id(s) or process name(s) \n");
+	health_check_exit(EXIT_SUCCESS);
 }
 
 static int parse_pid_list(char *arg, list_t *pids)
@@ -1127,7 +1130,7 @@ static int parse_pid_list(char *arg, list_t *pids)
 
 int main(int argc, char **argv)
 {
-	double opt_duration_secs = 1.0;
+	double opt_duration_secs = 10.0;
 	struct timeval tv_start, tv_end, tv_now, duration;
 	double actual_duration;
 	int ret;
