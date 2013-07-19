@@ -63,6 +63,7 @@ typedef struct {
 	pid_t		ppid;
 	char		*comm;
 	char		*cmdline;
+	bool		thread;
 } proc_info_t;
 
 typedef struct {
@@ -148,7 +149,7 @@ static link_t *list_append(list_t *list, void *data)
  *  list_add_ordered()
  *	add new data into list, based on order from callback func compare().
  */
-link_t *list_add_ordered(list_t *list, void *new_data, list_comp_t compare)
+static link_t *list_add_ordered(list_t *list, void *new_data, list_comp_t compare)
 {
 	link_t *link, **l;
 
@@ -253,7 +254,7 @@ static char *get_pid_cmdline(const pid_t pid)
  *  pid_exists()
  *	true if given process with given pid exists
  */
-bool pid_exists(pid_t pid)
+static bool pid_exists(pid_t pid)
 {
 	char path[PATH_MAX];
 	struct stat statbuf;
@@ -262,12 +263,22 @@ bool pid_exists(pid_t pid)
 	return stat(path, &statbuf) == 0;
 }
 
-proc_info_t *add_proc_cache(pid_t pid, pid_t ppid)
+static proc_info_t *find_proc_info_by_pid(pid_t pid);
+
+static proc_info_t *add_proc_cache(pid_t pid, pid_t ppid, bool thread)
 {
 	proc_info_t *p;
+	link_t *l;
 
 	if (!pid_exists(pid))
 		return NULL;
+
+
+	for (l = proc_cache.head; l; l = l->next) {
+		proc_info_t *p = (proc_info_t *)l->data;
+		if (p->pid == pid)
+			return p;
+	}
 
 	if ((p = calloc(1, sizeof(*p))) == NULL) {
 		fprintf(stderr, "Out of memory\n");
@@ -278,12 +289,13 @@ proc_info_t *add_proc_cache(pid_t pid, pid_t ppid)
 	p->ppid = ppid;
 	p->cmdline = get_pid_cmdline(pid);
 	p->comm = get_pid_comm(pid);
+	p->thread = thread;
 	list_append(&proc_cache, p);
 
 	return p;
 }
 
-proc_info_t *find_proc_info_by_pid(pid_t pid)
+static proc_info_t *find_proc_info_by_pid(pid_t pid)
 {
 	link_t *l;
 
@@ -294,10 +306,10 @@ proc_info_t *find_proc_info_by_pid(pid_t pid)
 			return p;
 	}
 
-	return add_proc_cache(pid, 0);	/* Need to find parent really */
+	return add_proc_cache(pid, 0, false);	/* Need to find parent really */
 }
 
-int get_proc_cache(void)
+static int get_proc_cache(void)
 {
 	DIR *procdir;
 	struct dirent *procentry;
@@ -323,7 +335,7 @@ int get_proc_cache(void)
 			char comm[64];
 			/* 3173 (a.out) R 3093 3173 3093 34818 3173 4202496 165 0 0 0 3194 0 */
 			if (fscanf(fp, "%d (%[^)]) %*c %i", &pid, comm, &ppid) == 3) {
-				add_proc_cache(pid, ppid);
+				add_proc_cache(pid, ppid, false);
 			}
 			fclose(fp);
 		}
@@ -333,8 +345,7 @@ int get_proc_cache(void)
 	return 0;
 }
 
-#if 0
-int get_proc_cache_pthreads(void)
+static int get_proc_cache_pthreads(void)
 {
 	DIR *procdir;
 	struct dirent *procentry;
@@ -363,7 +374,7 @@ int get_proc_cache_pthreads(void)
 		if ((taskdir = opendir(path)) == NULL)
 			continue;
 
-		add_proc_cache(ppid, 0);
+		add_proc_cache(ppid, 0, false);
 
 		while ((taskentry = readdir(taskdir)) != NULL) {
 			pid_t pid;
@@ -373,7 +384,7 @@ int get_proc_cache_pthreads(void)
 			if (pid == ppid)
 				continue;
 
-			add_proc_cache(pid, ppid);
+			add_proc_cache(pid, ppid, true);
 		}
 		closedir(taskdir);
 	}
@@ -381,9 +392,8 @@ int get_proc_cache_pthreads(void)
 
 	return 0;
 }
-#endif
 
-void free_pid_info(void *data)
+static void free_pid_info(void *data)
 {
 	proc_info_t *p = (proc_info_t*)data;
 
@@ -392,20 +402,18 @@ void free_pid_info(void *data)
 	free(p);
 }
 
-#if 0
-void dump_proc_cache(list_t *cache)
+static void dump_proc_cache(void)
 {
 	link_t *l;
 
-	for (l = cache->head; l; l = l->next) {
+	for (l = proc_cache.head; l; l = l->next) {
 		proc_info_t *p = (proc_info_t*)l->data;
-		printf("%i %i (%s) (%s)\n",
-			p->pid, p->ppid, p->comm, p->cmdline);
+		printf("%i %i %d (%s) (%s)\n",
+			p->pid, p->ppid, p->thread, p->comm, p->cmdline);
 	}
 }
-#endif
 
-int find_proc_info_by_procname(list_t *pids, const char *procname) {
+static int find_proc_info_by_procname(list_t *pids, const char *procname) {
 
 	bool found = false;
 	link_t *l;
@@ -427,8 +435,19 @@ int find_proc_info_by_procname(list_t *pids, const char *procname) {
 	return 0;
 }
 
+static int pid_find(pid_t pid, list_t *list)
+{
+	link_t *l;
 
-int pid_get_children(pid_t pid, list_t *children)
+	for (l = list->head; l; l = l->next) {
+		proc_info_t *p = (proc_info_t*)l->data;
+		if (p->pid == pid)
+			return true;
+	}
+	return false;
+}
+
+static int pid_get_children(pid_t pid, list_t *children)
 {
 	link_t *l;
 
@@ -443,7 +462,7 @@ int pid_get_children(pid_t pid, list_t *children)
 	return 0;
 }
 
-int pids_get_children(list_t *pids)
+static int pids_get_children(list_t *pids)
 {
 	link_t *l;
 	list_t children;
@@ -459,7 +478,8 @@ int pids_get_children(list_t *pids)
 	/*  Append the children onto the pid list */
 	for (l = children.head; l; l = l->next) {
 		p = (proc_info_t *)l->data;
-		list_append(pids, p);
+		if (!pid_find(p->pid, pids))
+			list_append(pids, p);
 	}
 
 	/*  Free the children list, not the data */
@@ -897,7 +917,8 @@ static void dump_fnotify_events(double duration, list_t *pids, list_t *fnotify_f
 		io_ops->total = io_ops->open_total + io_ops->close_total + 
 				io_ops->read_total + io_ops->write_total;
 
-		list_add_ordered(&sorted, io_ops, fnotify_events_cmp_io_ops);
+		if (io_ops->total)
+			list_add_ordered(&sorted, io_ops, fnotify_events_cmp_io_ops);
 	}
 
 	printf("File I/O Operations per second:\n");
@@ -929,6 +950,9 @@ static int get_cpustat(list_t *pids, list_t *cpustat)
 	for (l = pids->head; l; l = l->next) {
 		proc_info_t *p = (proc_info_t *)l->data;
 
+		if (p->thread)
+			continue;
+
 		snprintf(filename, sizeof(filename), "/proc/%d/stat", p->pid);
 		if ((fp = fopen(filename, "r")) != NULL) {
 			char comm[20];
@@ -950,7 +974,6 @@ static int get_cpustat(list_t *pids, list_t *cpustat)
 				info->stime = stime;
 				info->ttime = utime + stime;
 				list_append(cpustat, info);
-
 			}
 			fclose(fp);
 		}
@@ -1037,7 +1060,6 @@ static int fnotify_init(void)
 		AT_FDCWD, "/");
 	if (ret < 0) {
 		fprintf(stderr, "Cannot add fanotify watch on /: %s\n", strerror(errno));
-		return -1;
 	}
 
 	if ((mounts = setmntent("/proc/self/mounts", "r")) == NULL) {
@@ -1123,6 +1145,8 @@ int main(int argc, char **argv)
 	list_init(&proc_cache);
 
 	get_proc_cache();
+	get_proc_cache_pthreads();
+	dump_proc_cache();
 
 	for (;;) {
 		int c = getopt(argc, argv, "cd:hp:");
