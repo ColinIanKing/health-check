@@ -16,6 +16,7 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
  *
  */
+#define _GNU_SOURCE
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -24,9 +25,15 @@
 #include <signal.h>
 #include <unistd.h>
 #include <time.h>
+#include <pthread.h>
 #include <sys/time.h>
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <sys/ptrace.h>
+#include <sys/wait.h>
+#include <sys/reg.h>
+#include <sys/user.h>
+#include <sys/syscall.h>
 #include <limits.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -36,11 +43,6 @@
 #include <sys/fanotify.h>
 #include <ctype.h>
 #include <dirent.h>
-
-#define APP_NAME		"health-check"
-#define TIMER_STATS		"/proc/timer_stats"
-
-#define	OPT_GET_CHILDREN	0x00000001
 
 typedef struct link {
 	void *data;			/* Data in list */
@@ -56,6 +58,28 @@ typedef struct {
 typedef void (*list_link_free_t)(void *);
 typedef int  (*list_comp_t)(void *, void *);
 
+typedef struct syscall_info {
+	pid_t		pid;
+	int 		syscall;
+	unsigned long	count;
+	bool		poll_accounting;
+	double 		poll_min;
+	double		poll_max;
+	double		poll_total;
+	unsigned long	poll_count;
+	unsigned long	poll_too_low;
+	unsigned long	poll_infinite;
+	struct syscall_info *next;
+} syscall_info_t;
+
+typedef struct {
+	char 		*name;
+	int  		syscall;
+	bool		do_check;
+	int		arg;
+	double		*threshold;
+	void (*check_func)(int arg, syscall_info_t *s, pid_t pid, double threshold);
+} syscall_t;
 
 typedef struct {
 	long		padding;
@@ -64,6 +88,7 @@ typedef struct {
 	char		*comm;
 	char		*cmdline;
 	bool		thread;
+	pthread_t	pthread;
 } proc_info_t;
 
 typedef struct {
@@ -97,16 +122,1202 @@ typedef struct {
 	proc_info_t   	*proc;
 } io_ops_t;
 
+#define SYSCALL(n) \
+	[SYS_ ## n] = { #n, SYS_ ## n, false, 0, NULL, NULL }
+
+#define SYSCALL_TIMEOUT(n, arg, func) \
+	[SYS_ ## n] = { #n, SYS_ ## n, true, arg, &timeout[SYS_ ## n], .check_func = func }
+
+typedef void (*list_link_free_t)(void *);
+typedef int  (*list_comp_t)(void *, void *);
+
+#define HASH_TABLE_SIZE	(1997)
+
+#define ARRAY_SIZE(a)	(sizeof(a) / sizeof(a[0]))
+
+int  syscall_getargs(pid_t pid, int n_args, unsigned long args[]);
+void syscall_check_timeout_ms(int arg, syscall_info_t *s, pid_t pid, double threshold);
+void syscall_check_timeout_sec(int arg, syscall_info_t *s, pid_t pid, double threshold);
+void syscall_check_timespec(int arg, syscall_info_t *s, pid_t pid, double threshold);
+void syscall_check_timeval(int arg, syscall_info_t *s, pid_t pid, double threshold);
+void syscall_check_poll(syscall_info_t *s, pid_t pid);
+void syscall_check_select(syscall_info_t *s, pid_t pid);
+
 static bool keep_running = true;
 static int  opt_flags;
-
 static list_t	proc_cache;
+static pthread_mutex_t ptrace_mutex = PTHREAD_MUTEX_INITIALIZER;
 
-/*
- *  Stop gcc complaining about no return func
- */
-static void health_check_exit(const int status) __attribute__ ((noreturn));
+#define TIMEOUT(n, timeout) \
+	[SYS_ ## n] = timeout
 
+static double timeout[] = {
+	TIMEOUT(alarm, 1.0),
+	TIMEOUT(clock_nanosleep, 0.5),
+	TIMEOUT(epoll_pwait, 0.5),
+	TIMEOUT(epoll_wait, 0.5),
+	TIMEOUT(mq_timedreceive, 0.5),
+	TIMEOUT(mq_timedsend, 0.5),
+	TIMEOUT(nanosleep , 0.5),
+	TIMEOUT(poll , 1.0),
+	TIMEOUT(ppoll , 0.5),
+	TIMEOUT(pselect6 , 0.5),
+	TIMEOUT(recvmmsg , 0.5),
+	TIMEOUT(rt_sigtimedwait , 0.5),
+	TIMEOUT(select , 0.5),
+	TIMEOUT(semtimedop, 0.5),
+};
+
+static syscall_t syscalls[] = {
+#ifdef SYS_setup
+	SYSCALL(setup),
+#endif
+#ifdef SYS_accept
+	SYSCALL(accept),
+#endif
+#ifdef SYS_accept4
+	SYSCALL(accept4),
+#endif
+#ifdef SYS_access
+	SYSCALL(access),
+#endif
+#ifdef SYS_acct
+	SYSCALL(acct),
+#endif
+#ifdef SYS_add_key
+	SYSCALL(add_key),
+#endif
+#ifdef SYS_adjtimex
+	SYSCALL(adjtimex),
+#endif
+#ifdef SYS_afs_syscall
+	SYSCALL(afs_syscall),
+#endif
+#ifdef SYS_alarm
+	SYSCALL_TIMEOUT(alarm, 0, syscall_check_timeout_sec),
+#endif
+#ifdef SYS_arch_prctl
+	SYSCALL(arch_prctl),
+#endif
+#ifdef SYS_bdflush
+	SYSCALL(bdflush),
+#endif
+#ifdef SYS_bind
+	SYSCALL(bind),
+#endif
+#ifdef SYS_break
+	SYSCALL(break),
+#endif
+#ifdef SYS_brk
+	SYSCALL(brk),
+#endif
+#ifdef SYS_capget
+	SYSCALL(capget),
+#endif
+#ifdef SYS_capset
+	SYSCALL(capset),
+#endif
+#ifdef SYS_chdir
+	SYSCALL(chdir),
+#endif
+#ifdef SYS_chmod
+	SYSCALL(chmod),
+#endif
+#ifdef SYS_chown
+	SYSCALL(chown),
+#endif
+#ifdef SYS_chown32
+	SYSCALL(chown32),
+#endif
+#ifdef SYS_chroot
+	SYSCALL(chroot),
+#endif
+#ifdef SYS_clock_adjtime
+	SYSCALL(clock_adjtime),
+#endif
+#ifdef SYS_clock_getres
+	SYSCALL(clock_getres),
+#endif
+#ifdef SYS_clock_gettime
+	SYSCALL(clock_gettime),
+#endif
+#ifdef SYS_clock_nanosleep
+	SYSCALL_TIMEOUT(clock_nanosleep, 2, syscall_check_timespec),
+#endif
+#ifdef SYS_clock_settime
+	SYSCALL(clock_settime),
+#endif
+#ifdef SYS_clone
+	SYSCALL(clone),
+#endif
+#ifdef SYS_close
+	SYSCALL(close),
+#endif
+#ifdef SYS_connect
+	SYSCALL(connect),
+#endif
+#ifdef SYS_creat
+	SYSCALL(creat),
+#endif
+#ifdef SYS_create_module
+	SYSCALL(create_module),
+#endif
+#ifdef SYS_delete_module
+	SYSCALL(delete_module),
+#endif
+#ifdef SYS_dup
+	SYSCALL(dup),
+#endif
+#ifdef SYS_dup2
+	SYSCALL(dup2),
+#endif
+#ifdef SYS_dup3
+	SYSCALL(dup3),
+#endif
+#ifdef SYS_epoll_create
+	SYSCALL(epoll_create),
+#endif
+#ifdef SYS_epoll_create1
+	SYSCALL(epoll_create1),
+#endif
+#ifdef SYS_epoll_ctl
+	SYSCALL(epoll_ctl),
+#endif
+#ifdef SYS_epoll_ctl_old
+	SYSCALL(epoll_ctl_old),
+#endif
+#ifdef SYS_epoll_pwait
+	SYSCALL_TIMEOUT(epoll_pwait, 3, syscall_check_timeout_ms),
+#endif
+#ifdef SYS_epoll_wait
+	SYSCALL_TIMEOUT(epoll_wait, 3, syscall_check_timeout_ms),
+#endif
+#ifdef SYS_epoll_wait_old
+	SYSCALL(epoll_wait_old),
+#endif
+#ifdef SYS_eventfd
+	SYSCALL(eventfd),
+#endif
+#ifdef SYS_eventfd2
+	SYSCALL(eventfd2),
+#endif
+#ifdef SYS_execve
+	SYSCALL(execve),
+#endif
+#ifdef SYS_exit
+	SYSCALL(exit),
+#endif
+#ifdef SYS_exit_group
+	SYSCALL(exit_group),
+#endif
+#ifdef SYS_faccessat
+	SYSCALL(faccessat),
+#endif
+#ifdef SYS_fadvise64
+	SYSCALL(fadvise64),
+#endif
+#ifdef SYS_fadvise64_64
+	SYSCALL(fadvise64_64),
+#endif
+#ifdef SYS_fallocate
+	SYSCALL(fallocate),
+#endif
+#ifdef SYS_fanotify_init
+	SYSCALL(fanotify_init),
+#endif
+#ifdef SYS_fanotify_mark
+	SYSCALL(fanotify_mark),
+#endif
+#ifdef SYS_fchdir
+	SYSCALL(fchdir),
+#endif
+#ifdef SYS_fchmod
+	SYSCALL(fchmod),
+#endif
+#ifdef SYS_fchmodat
+	SYSCALL(fchmodat),
+#endif
+#ifdef SYS_fchown
+	SYSCALL(fchown),
+#endif
+#ifdef SYS_fchown32
+	SYSCALL(fchown32),
+#endif
+#ifdef SYS_fchownat
+	SYSCALL(fchownat),
+#endif
+#ifdef SYS_fcntl
+	SYSCALL(fcntl),
+#endif
+#ifdef SYS_fcntl64
+	SYSCALL(fcntl64),
+#endif
+#ifdef SYS_fdatasync
+	SYSCALL(fdatasync),
+#endif
+#ifdef SYS_fgetxattr
+	SYSCALL(fgetxattr),
+#endif
+#ifdef SYS_finit_module
+	SYSCALL(finit_module),
+#endif
+#ifdef SYS_flistxattr
+	SYSCALL(flistxattr),
+#endif
+#ifdef SYS_flock
+	SYSCALL(flock),
+#endif
+#ifdef SYS_fork
+	SYSCALL(fork),
+#endif
+#ifdef SYS_fremovexattr
+	SYSCALL(fremovexattr),
+#endif
+#ifdef SYS_fsetxattr
+	SYSCALL(fsetxattr),
+#endif
+#ifdef SYS_fstat
+	SYSCALL(fstat),
+#endif
+#ifdef SYS_fstat64
+	SYSCALL(fstat64),
+#endif
+#ifdef SYS_fstatat64
+	SYSCALL(fstatat64),
+#endif
+#ifdef SYS_fstatfs
+	SYSCALL(fstatfs),
+#endif
+#ifdef SYS_fstatfs64
+	SYSCALL(fstatfs64),
+#endif
+#ifdef SYS_fsync
+	SYSCALL(fsync),
+#endif
+#ifdef SYS_ftime
+	SYSCALL(ftime),
+#endif
+#ifdef SYS_ftruncate
+	SYSCALL(ftruncate),
+#endif
+#ifdef SYS_ftruncate64
+	SYSCALL(ftruncate64),
+#endif
+#ifdef SYS_futex
+	SYSCALL(futex),
+#endif
+#ifdef SYS_futimesat
+	SYSCALL(futimesat),
+#endif
+#ifdef SYS_getcpu
+	SYSCALL(getcpu),
+#endif
+#ifdef SYS_getcwd
+	SYSCALL(getcwd),
+#endif
+#ifdef SYS_getdents
+	SYSCALL(getdents),
+#endif
+#ifdef SYS_getdents64
+	SYSCALL(getdents64),
+#endif
+#ifdef SYS_getegid
+	SYSCALL(getegid),
+#endif
+#ifdef SYS_getegid32
+	SYSCALL(getegid32),
+#endif
+#ifdef SYS_geteuid
+	SYSCALL(geteuid),
+#endif
+#ifdef SYS_geteuid32
+	SYSCALL(geteuid32),
+#endif
+#ifdef SYS_getgid
+	SYSCALL(getgid),
+#endif
+#ifdef SYS_getgid32
+	SYSCALL(getgid32),
+#endif
+#ifdef SYS_getgroups
+	SYSCALL(getgroups),
+#endif
+#ifdef SYS_getgroups32
+	SYSCALL(getgroups32),
+#endif
+#ifdef SYS_getitimer
+	SYSCALL(getitimer),
+#endif
+#ifdef SYS_get_kernel_syms
+	SYSCALL(get_kernel_syms),
+#endif
+#ifdef SYS_get_mempolicy
+	SYSCALL(get_mempolicy),
+#endif
+#ifdef SYS_getpeername
+	SYSCALL(getpeername),
+#endif
+#ifdef SYS_getpgid
+	SYSCALL(getpgid),
+#endif
+#ifdef SYS_getpgrp
+	SYSCALL(getpgrp),
+#endif
+#ifdef SYS_getpid
+	SYSCALL(getpid),
+#endif
+#ifdef SYS_getpmsg
+	SYSCALL(getpmsg),
+#endif
+#ifdef SYS_getppid
+	SYSCALL(getppid),
+#endif
+#ifdef SYS_getpriority
+	SYSCALL(getpriority),
+#endif
+#ifdef SYS_getresgid
+	SYSCALL(getresgid),
+#endif
+#ifdef SYS_getresgid32
+	SYSCALL(getresgid32),
+#endif
+#ifdef SYS_getresuid
+	SYSCALL(getresuid),
+#endif
+#ifdef SYS_getresuid32
+	SYSCALL(getresuid32),
+#endif
+#ifdef SYS_getrlimit
+	SYSCALL(getrlimit),
+#endif
+#ifdef SYS_get_robust_list
+	SYSCALL(get_robust_list),
+#endif
+#ifdef SYS_getrusage
+	SYSCALL(getrusage),
+#endif
+#ifdef SYS_getsid
+	SYSCALL(getsid),
+#endif
+#ifdef SYS_getsockname
+	SYSCALL(getsockname),
+#endif
+#ifdef SYS_getsockopt
+	SYSCALL(getsockopt),
+#endif
+#ifdef SYS_get_thread_area
+	SYSCALL(get_thread_area),
+#endif
+#ifdef SYS_gettid
+	SYSCALL(gettid),
+#endif
+#ifdef SYS_gettimeofday
+	SYSCALL(gettimeofday),
+#endif
+#ifdef SYS_getuid
+	SYSCALL(getuid),
+#endif
+#ifdef SYS_getuid32
+	SYSCALL(getuid32),
+#endif
+#ifdef SYS_getxattr
+	SYSCALL(getxattr),
+#endif
+#ifdef SYS_gtty
+	SYSCALL(gtty),
+#endif
+#ifdef SYS_idle
+	SYSCALL(idle),
+#endif
+#ifdef SYS_init_module
+	SYSCALL(init_module),
+#endif
+#ifdef SYS_inotify_add_watch
+	SYSCALL(inotify_add_watch),
+#endif
+#ifdef SYS_inotify_init
+	SYSCALL(inotify_init),
+#endif
+#ifdef SYS_inotify_init1
+	SYSCALL(inotify_init1),
+#endif
+#ifdef SYS_inotify_rm_watch
+	SYSCALL(inotify_rm_watch),
+#endif
+#ifdef SYS_io_cancel
+	SYSCALL(io_cancel),
+#endif
+#ifdef SYS_ioctl
+	SYSCALL(ioctl),
+#endif
+#ifdef SYS_io_destroy
+	SYSCALL(io_destroy),
+#endif
+#ifdef SYS_io_getevents
+	SYSCALL(io_getevents),
+#endif
+#ifdef SYS_ioperm
+	SYSCALL(ioperm),
+#endif
+#ifdef SYS_iopl
+	SYSCALL(iopl),
+#endif
+#ifdef SYS_ioprio_get
+	SYSCALL(ioprio_get),
+#endif
+#ifdef SYS_ioprio_set
+	SYSCALL(ioprio_set),
+#endif
+#ifdef SYS_io_setup
+	SYSCALL(io_setup),
+#endif
+#ifdef SYS_io_submit
+	SYSCALL(io_submit),
+#endif
+#ifdef SYS_ipc
+	SYSCALL(ipc),
+#endif
+#ifdef SYS_kcmp
+	SYSCALL(kcmp),
+#endif
+#ifdef SYS_kexec_load
+	SYSCALL(kexec_load),
+#endif
+#ifdef SYS_keyctl
+	SYSCALL(keyctl),
+#endif
+#ifdef SYS_kill
+	SYSCALL(kill),
+#endif
+#ifdef SYS_lchown
+	SYSCALL(lchown),
+#endif
+#ifdef SYS_lchown32
+	SYSCALL(lchown32),
+#endif
+#ifdef SYS_lgetxattr
+	SYSCALL(lgetxattr),
+#endif
+#ifdef SYS_link
+	SYSCALL(link),
+#endif
+#ifdef SYS_linkat
+	SYSCALL(linkat),
+#endif
+#ifdef SYS_listen
+	SYSCALL(listen),
+#endif
+#ifdef SYS_listxattr
+	SYSCALL(listxattr),
+#endif
+#ifdef SYS_llistxattr
+	SYSCALL(llistxattr),
+#endif
+#ifdef SYS__llseek
+	SYSCALL(_llseek),
+#endif
+#ifdef SYS_lock
+	SYSCALL(lock),
+#endif
+#ifdef SYS_lookup_dcookie
+	SYSCALL(lookup_dcookie),
+#endif
+#ifdef SYS_lremovexattr
+	SYSCALL(lremovexattr),
+#endif
+#ifdef SYS_lseek
+	SYSCALL(lseek),
+#endif
+#ifdef SYS_lsetxattr
+	SYSCALL(lsetxattr),
+#endif
+#ifdef SYS_lstat
+	SYSCALL(lstat),
+#endif
+#ifdef SYS_lstat64
+	SYSCALL(lstat64),
+#endif
+#ifdef SYS_madvise
+	SYSCALL(madvise),
+#endif
+#ifdef SYS_mbind
+	SYSCALL(mbind),
+#endif
+#ifdef SYS_migrate_pages
+	SYSCALL(migrate_pages),
+#endif
+#ifdef SYS_mincore
+	SYSCALL(mincore),
+#endif
+#ifdef SYS_mkdir
+	SYSCALL(mkdir),
+#endif
+#ifdef SYS_mkdirat
+	SYSCALL(mkdirat),
+#endif
+#ifdef SYS_mknod
+	SYSCALL(mknod),
+#endif
+#ifdef SYS_mknodat
+	SYSCALL(mknodat),
+#endif
+#ifdef SYS_mlock
+	SYSCALL(mlock),
+#endif
+#ifdef SYS_mlockall
+	SYSCALL(mlockall),
+#endif
+#ifdef SYS_mmap
+	SYSCALL(mmap),
+#endif
+#ifdef SYS_mmap2
+	SYSCALL(mmap2),
+#endif
+#ifdef SYS_modify_ldt
+	SYSCALL(modify_ldt),
+#endif
+#ifdef SYS_mount
+	SYSCALL(mount),
+#endif
+#ifdef SYS_move_pages
+	SYSCALL(move_pages),
+#endif
+#ifdef SYS_mprotect
+	SYSCALL(mprotect),
+#endif
+#ifdef SYS_mpx
+	SYSCALL(mpx),
+#endif
+#ifdef SYS_mq_getsetattr
+	SYSCALL(mq_getsetattr),
+#endif
+#ifdef SYS_mq_notify
+	SYSCALL(mq_notify),
+#endif
+#ifdef SYS_mq_open
+	SYSCALL(mq_open),
+#endif
+#ifdef SYS_mq_timedreceive
+	SYSCALL_TIMEOUT(mq_timedreceive, 4, syscall_check_timespec),
+#endif
+#ifdef SYS_mq_timedsend
+	SYSCALL_TIMEOUT(mq_timedsend, 4, syscall_check_timespec),
+#endif
+#ifdef SYS_mq_unlink
+	SYSCALL(mq_unlink),
+#endif
+#ifdef SYS_mremap
+	SYSCALL(mremap),
+#endif
+#ifdef SYS_msgctl
+	SYSCALL(msgctl),
+#endif
+#ifdef SYS_msgget
+	SYSCALL(msgget),
+#endif
+#ifdef SYS_msgrcv
+	SYSCALL(msgrcv),
+#endif
+#ifdef SYS_msgsnd
+	SYSCALL(msgsnd),
+#endif
+#ifdef SYS_msync
+	SYSCALL(msync),
+#endif
+#ifdef SYS_munlock
+	SYSCALL(munlock),
+#endif
+#ifdef SYS_munlockall
+	SYSCALL(munlockall),
+#endif
+#ifdef SYS_munmap
+	SYSCALL(munmap),
+#endif
+#ifdef SYS_name_to_handle_at
+	SYSCALL(name_to_handle_at),
+#endif
+#ifdef SYS_nanosleep
+	SYSCALL_TIMEOUT(nanosleep, 0, syscall_check_timespec),
+#endif
+#ifdef SYS_newfstatat
+	SYSCALL(newfstatat),
+#endif
+#ifdef SYS__newselect
+	SYSCALL(_newselect),
+#endif
+#ifdef SYS_nfsservctl
+	SYSCALL(nfsservctl),
+#endif
+#ifdef SYS_nice
+	SYSCALL(nice),
+#endif
+#ifdef SYS_oldfstat
+	SYSCALL(oldfstat),
+#endif
+#ifdef SYS_oldlstat
+	SYSCALL(oldlstat),
+#endif
+#ifdef SYS_oldolduname
+	SYSCALL(oldolduname),
+#endif
+#ifdef SYS_oldstat
+	SYSCALL(oldstat),
+#endif
+#ifdef SYS_olduname
+	SYSCALL(olduname),
+#endif
+#ifdef SYS_open
+	SYSCALL(open),
+#endif
+#ifdef SYS_openat
+	SYSCALL(openat),
+#endif
+#ifdef SYS_open_by_handle_at
+	SYSCALL(open_by_handle_at),
+#endif
+#ifdef SYS_pause
+	SYSCALL(pause),
+#endif
+#ifdef SYS_perf_event_open
+	SYSCALL(perf_event_open),
+#endif
+#ifdef SYS_personality
+	SYSCALL(personality),
+#endif
+#ifdef SYS_pipe
+	SYSCALL(pipe),
+#endif
+#ifdef SYS_pipe2
+	SYSCALL(pipe2),
+#endif
+#ifdef SYS_pivot_root
+	SYSCALL(pivot_root),
+#endif
+#ifdef SYS_poll
+	SYSCALL_TIMEOUT(poll, 2, syscall_check_timeout_ms),
+#endif
+#ifdef SYS_ppoll
+	SYSCALL_TIMEOUT(ppoll, 2, syscall_check_timespec),
+#endif
+#ifdef SYS_prctl
+	SYSCALL(prctl),
+#endif
+#ifdef SYS_pread64
+	SYSCALL(pread64),
+#endif
+#ifdef SYS_preadv
+	SYSCALL(preadv),
+#endif
+#ifdef SYS_prlimit64
+	SYSCALL(prlimit64),
+#endif
+#ifdef SYS_process_vm_readv
+	SYSCALL(process_vm_readv),
+#endif
+#ifdef SYS_process_vm_writev
+	SYSCALL(process_vm_writev),
+#endif
+#ifdef SYS_prof
+	SYSCALL(prof),
+#endif
+#ifdef SYS_profil
+	SYSCALL(profil),
+#endif
+#ifdef SYS_pselect6
+	SYSCALL_TIMEOUT(pselect6, 4, syscall_check_timespec),
+#endif
+#ifdef SYS_ptrace
+	SYSCALL(ptrace),
+#endif
+#ifdef SYS_putpmsg
+	SYSCALL(putpmsg),
+#endif
+#ifdef SYS_pwrite64
+	SYSCALL(pwrite64),
+#endif
+#ifdef SYS_pwritev
+	SYSCALL(pwritev),
+#endif
+#ifdef SYS_query_module
+	SYSCALL(query_module),
+#endif
+#ifdef SYS_quotactl
+	SYSCALL(quotactl),
+#endif
+#ifdef SYS_read
+	SYSCALL(read),
+#endif
+#ifdef SYS_readahead
+	SYSCALL(readahead),
+#endif
+#ifdef SYS_readdir
+	SYSCALL(readdir),
+#endif
+#ifdef SYS_readlink
+	SYSCALL(readlink),
+#endif
+#ifdef SYS_readlinkat
+	SYSCALL(readlinkat),
+#endif
+#ifdef SYS_readv
+	SYSCALL(readv),
+#endif
+#ifdef SYS_reboot
+	SYSCALL(reboot),
+#endif
+#ifdef SYS_recvfrom
+	SYSCALL(recvfrom),
+#endif
+#ifdef SYS_recvmmsg
+	SYSCALL_TIMEOUT(recvmmsg, 4, syscall_check_timespec),
+#endif
+#ifdef SYS_recvmsg
+	SYSCALL(recvmsg),
+#endif
+#ifdef SYS_remap_file_pages
+	SYSCALL(remap_file_pages),
+#endif
+#ifdef SYS_removexattr
+	SYSCALL(removexattr),
+#endif
+#ifdef SYS_rename
+	SYSCALL(rename),
+#endif
+#ifdef SYS_renameat
+	SYSCALL(renameat),
+#endif
+#ifdef SYS_request_key
+	SYSCALL(request_key),
+#endif
+#ifdef SYS_restart_syscall
+	SYSCALL(restart_syscall),
+#endif
+#ifdef SYS_rmdir
+	SYSCALL(rmdir),
+#endif
+#ifdef SYS_rt_sigaction
+	SYSCALL(rt_sigaction),
+#endif
+#ifdef SYS_rt_sigpending
+	SYSCALL(rt_sigpending),
+#endif
+#ifdef SYS_rt_sigprocmask
+	SYSCALL(rt_sigprocmask),
+#endif
+#ifdef SYS_rt_sigqueueinfo
+	SYSCALL(rt_sigqueueinfo),
+#endif
+#ifdef SYS_rt_sigreturn
+	SYSCALL(rt_sigreturn),
+#endif
+#ifdef SYS_rt_sigsuspend
+	SYSCALL(rt_sigsuspend),
+#endif
+#ifdef SYS_rt_sigtimedwait
+	SYSCALL_TIMEOUT(rt_sigtimedwait, 2, syscall_check_timespec),
+#endif
+#ifdef SYS_rt_tgsigqueueinfo
+	SYSCALL(rt_tgsigqueueinfo),
+#endif
+#ifdef SYS_sched_getaffinity
+	SYSCALL(sched_getaffinity),
+#endif
+#ifdef SYS_sched_getparam
+	SYSCALL(sched_getparam),
+#endif
+#ifdef SYS_sched_get_priority_max
+	SYSCALL(sched_get_priority_max),
+#endif
+#ifdef SYS_sched_get_priority_min
+	SYSCALL(sched_get_priority_min),
+#endif
+#ifdef SYS_sched_getscheduler
+	SYSCALL(sched_getscheduler),
+#endif
+#ifdef SYS_sched_rr_get_interval
+	SYSCALL(sched_rr_get_interval),
+#endif
+#ifdef SYS_sched_setaffinity
+	SYSCALL(sched_setaffinity),
+#endif
+#ifdef SYS_sched_setparam
+	SYSCALL(sched_setparam),
+#endif
+#ifdef SYS_sched_setscheduler
+	SYSCALL(sched_setscheduler),
+#endif
+#ifdef SYS_sched_yield
+	SYSCALL(sched_yield),
+#endif
+#ifdef SYS_security
+	SYSCALL(security),
+#endif
+#ifdef SYS_select
+	SYSCALL_TIMEOUT(select, 4, syscall_check_timespec),
+#endif
+#ifdef SYS_semctl
+	SYSCALL(semctl),
+#endif
+#ifdef SYS_semget
+	SYSCALL(semget),
+#endif
+#ifdef SYS_semop
+	SYSCALL(semop),
+#endif
+#ifdef SYS_semtimedop
+	SYSCALL_TIMEOUT(semtimedop, 3, syscall_check_timespec),
+#endif
+#ifdef SYS_sendfile
+	SYSCALL(sendfile),
+#endif
+#ifdef SYS_sendfile64
+	SYSCALL(sendfile64),
+#endif
+#ifdef SYS_sendmmsg
+	SYSCALL(sendmmsg),
+#endif
+#ifdef SYS_sendmsg
+	SYSCALL(sendmsg),
+#endif
+#ifdef SYS_sendto
+	SYSCALL(sendto),
+#endif
+#ifdef SYS_setdomainname
+	SYSCALL(setdomainname),
+#endif
+#ifdef SYS_setfsgid
+	SYSCALL(setfsgid),
+#endif
+#ifdef SYS_setfsgid32
+	SYSCALL(setfsgid32),
+#endif
+#ifdef SYS_setfsuid
+	SYSCALL(setfsuid),
+#endif
+#ifdef SYS_setfsuid32
+	SYSCALL(setfsuid32),
+#endif
+#ifdef SYS_setgid
+	SYSCALL(setgid),
+#endif
+#ifdef SYS_setgid32
+	SYSCALL(setgid32),
+#endif
+#ifdef SYS_setgroups
+	SYSCALL(setgroups),
+#endif
+#ifdef SYS_setgroups32
+	SYSCALL(setgroups32),
+#endif
+#ifdef SYS_sethostname
+	SYSCALL(sethostname),
+#endif
+#ifdef SYS_setitimer
+	SYSCALL(setitimer),
+#endif
+#ifdef SYS_set_mempolicy
+	SYSCALL(set_mempolicy),
+#endif
+#ifdef SYS_setns
+	SYSCALL(setns),
+#endif
+#ifdef SYS_setpgid
+	SYSCALL(setpgid),
+#endif
+#ifdef SYS_setpriority
+	SYSCALL(setpriority),
+#endif
+#ifdef SYS_setregid
+	SYSCALL(setregid),
+#endif
+#ifdef SYS_setregid32
+	SYSCALL(setregid32),
+#endif
+#ifdef SYS_setresgid
+	SYSCALL(setresgid),
+#endif
+#ifdef SYS_setresgid32
+	SYSCALL(setresgid32),
+#endif
+#ifdef SYS_setresuid
+	SYSCALL(setresuid),
+#endif
+#ifdef SYS_setresuid32
+	SYSCALL(setresuid32),
+#endif
+#ifdef SYS_setreuid
+	SYSCALL(setreuid),
+#endif
+#ifdef SYS_setreuid32
+	SYSCALL(setreuid32),
+#endif
+#ifdef SYS_setrlimit
+	SYSCALL(setrlimit),
+#endif
+#ifdef SYS_set_robust_list
+	SYSCALL(set_robust_list),
+#endif
+#ifdef SYS_setsid
+	SYSCALL(setsid),
+#endif
+#ifdef SYS_setsockopt
+	SYSCALL(setsockopt),
+#endif
+#ifdef SYS_set_thread_area
+	SYSCALL(set_thread_area),
+#endif
+#ifdef SYS_set_tid_address
+	SYSCALL(set_tid_address),
+#endif
+#ifdef SYS_settimeofday
+	SYSCALL(settimeofday),
+#endif
+#ifdef SYS_setuid
+	SYSCALL(setuid),
+#endif
+#ifdef SYS_setuid32
+	SYSCALL(setuid32),
+#endif
+#ifdef SYS_setxattr
+	SYSCALL(setxattr),
+#endif
+#ifdef SYS_sgetmask
+	SYSCALL(sgetmask),
+#endif
+#ifdef SYS_shmat
+	SYSCALL(shmat),
+#endif
+#ifdef SYS_shmctl
+	SYSCALL(shmctl),
+#endif
+#ifdef SYS_shmdt
+	SYSCALL(shmdt),
+#endif
+#ifdef SYS_shmget
+	SYSCALL(shmget),
+#endif
+#ifdef SYS_shutdown
+	SYSCALL(shutdown),
+#endif
+#ifdef SYS_sigaction
+	SYSCALL(sigaction),
+#endif
+#ifdef SYS_sigaltstack
+	SYSCALL(sigaltstack),
+#endif
+#ifdef SYS_signal
+	SYSCALL(signal),
+#endif
+#ifdef SYS_signalfd
+	SYSCALL(signalfd),
+#endif
+#ifdef SYS_signalfd4
+	SYSCALL(signalfd4),
+#endif
+#ifdef SYS_sigpending
+	SYSCALL(sigpending),
+#endif
+#ifdef SYS_sigprocmask
+	SYSCALL(sigprocmask),
+#endif
+#ifdef SYS_sigreturn
+	SYSCALL(sigreturn),
+#endif
+#ifdef SYS_sigsuspend
+	SYSCALL(sigsuspend),
+#endif
+#ifdef SYS_socket
+	SYSCALL(socket),
+#endif
+#ifdef SYS_socketcall
+	SYSCALL(socketcall),
+#endif
+#ifdef SYS_socketpair
+	SYSCALL(socketpair),
+#endif
+#ifdef SYS_splice
+	SYSCALL(splice),
+#endif
+#ifdef SYS_ssetmask
+	SYSCALL(ssetmask),
+#endif
+#ifdef SYS_stat
+	SYSCALL(stat),
+#endif
+#ifdef SYS_stat64
+	SYSCALL(stat64),
+#endif
+#ifdef SYS_statfs
+	SYSCALL(statfs),
+#endif
+#ifdef SYS_statfs64
+	SYSCALL(statfs64),
+#endif
+#ifdef SYS_stime
+	SYSCALL(stime),
+#endif
+#ifdef SYS_stty
+	SYSCALL(stty),
+#endif
+#ifdef SYS_swapoff
+	SYSCALL(swapoff),
+#endif
+#ifdef SYS_swapon
+	SYSCALL(swapon),
+#endif
+#ifdef SYS_symlink
+	SYSCALL(symlink),
+#endif
+#ifdef SYS_symlinkat
+	SYSCALL(symlinkat),
+#endif
+#ifdef SYS_sync
+	SYSCALL(sync),
+#endif
+#ifdef SYS_sync_file_range
+	SYSCALL(sync_file_range),
+#endif
+#ifdef SYS_syncfs
+	SYSCALL(syncfs),
+#endif
+#ifdef SYS__sysctl
+	SYSCALL(_sysctl),
+#endif
+#ifdef SYS_sysfs
+	SYSCALL(sysfs),
+#endif
+#ifdef SYS_sysinfo
+	SYSCALL(sysinfo),
+#endif
+#ifdef SYS_syslog
+	SYSCALL(syslog),
+#endif
+#ifdef SYS_tee
+	SYSCALL(tee),
+#endif
+#ifdef SYS_tgkill
+	SYSCALL(tgkill),
+#endif
+#ifdef SYS_time
+	SYSCALL(time),
+#endif
+#ifdef SYS_timer_create
+	SYSCALL(timer_create),
+#endif
+#ifdef SYS_timer_delete
+	SYSCALL(timer_delete),
+#endif
+#ifdef SYS_timerfd_create
+	SYSCALL(timerfd_create),
+#endif
+#ifdef SYS_timerfd_gettime
+	SYSCALL(timerfd_gettime),
+#endif
+#ifdef SYS_timerfd_settime
+	SYSCALL(timerfd_settime),
+#endif
+#ifdef SYS_timer_getoverrun
+	SYSCALL(timer_getoverrun),
+#endif
+#ifdef SYS_timer_gettime
+	SYSCALL(timer_gettime),
+#endif
+#ifdef SYS_timer_settime
+	SYSCALL(timer_settime),
+#endif
+#ifdef SYS_times
+	SYSCALL(times),
+#endif
+#ifdef SYS_tkill
+	SYSCALL(tkill),
+#endif
+#ifdef SYS_truncate
+	SYSCALL(truncate),
+#endif
+#ifdef SYS_truncate64
+	SYSCALL(truncate64),
+#endif
+#ifdef SYS_tuxcall
+	SYSCALL(tuxcall),
+#endif
+#ifdef SYS_ugetrlimit
+	SYSCALL(ugetrlimit),
+#endif
+#ifdef SYS_ulimit
+	SYSCALL(ulimit),
+#endif
+#ifdef SYS_umask
+	SYSCALL(umask),
+#endif
+#ifdef SYS_umount
+	SYSCALL(umount),
+#endif
+#ifdef SYS_umount2
+	SYSCALL(umount2),
+#endif
+#ifdef SYS_uname
+	SYSCALL(uname),
+#endif
+#ifdef SYS_unlink
+	SYSCALL(unlink),
+#endif
+#ifdef SYS_unlinkat
+	SYSCALL(unlinkat),
+#endif
+#ifdef SYS_unshare
+	SYSCALL(unshare),
+#endif
+#ifdef SYS_uselib
+	SYSCALL(uselib),
+#endif
+#ifdef SYS_ustat
+	SYSCALL(ustat),
+#endif
+#ifdef SYS_utime
+	SYSCALL(utime),
+#endif
+#ifdef SYS_utimensat
+	SYSCALL(utimensat),
+#endif
+#ifdef SYS_utimes
+	SYSCALL(utimes),
+#endif
+#ifdef SYS_vfork
+	SYSCALL(vfork),
+#endif
+#ifdef SYS_vhangup
+	SYSCALL(vhangup),
+#endif
+#ifdef SYS_vm86
+	SYSCALL(vm86),
+#endif
+#ifdef SYS_vm86old
+	SYSCALL(vm86old),
+#endif
+#ifdef SYS_vmsplice
+	SYSCALL(vmsplice),
+#endif
+#ifdef SYS_vserver
+	SYSCALL(vserver),
+#endif
+#ifdef SYS_wait4
+	SYSCALL(wait4),
+#endif
+#ifdef SYS_waitid
+	SYSCALL(waitid),
+#endif
+#ifdef SYS_waitpid
+	SYSCALL(waitpid),
+#endif
+#ifdef SYS_write
+	SYSCALL(write),
+#endif
+#ifdef SYS_writev
+	SYSCALL(writev),
+#endif
+};
+
+syscall_info_t *syscall_info[HASH_TABLE_SIZE];
 
 /*
  *  list_init()
@@ -118,32 +1329,6 @@ static inline void list_init(list_t *list)
 	list->tail = NULL;
 	list->length = 0;
 }
-
-/*
- *  list_append()
- *	add a new item to end of the list
- */
-static link_t *list_append(list_t *list, void *data)
-{
-	link_t *link;
-
-	if ((link = calloc(1, sizeof(link_t))) == NULL) {
-		fprintf(stderr, "Cannot allocate list link\n");
-		health_check_exit(EXIT_FAILURE);
-	}
-	link->data = data;
-
-	if (list->head == NULL) {
-		list->head = link;
-	} else {
-		list->tail->next = link;
-	}
-	list->tail = link;
-	list->length++;
-
-	return link;
-}
-
 
 /*
  *  list_add_ordered()
@@ -192,6 +1377,442 @@ static void list_free(list_t *list, const list_link_free_t freefunc)
 		free(link);
 	}
 }
+
+static inline bool syscall_valid(int syscall)
+{
+	return (syscall > 0) && (syscall <= ARRAY_SIZE(syscalls));
+}
+
+int syscall_get_call(pid_t pid)
+{
+#if defined(__x86_64__)
+	return ptrace(PTRACE_PEEKUSER, pid, 8 * ORIG_RAX, NULL);
+#elif defined(__i386__)
+	return ptrace(PTRACE_PEEKUSER, pid, 4 * ORIG_EAX, NULL);
+#elif defined(__arm__)
+	struct pt_regs regs;
+
+	if (ptrace(PTRACE_GETREGS, tcp->pid, NULL, (void *)&regs) < 0)
+		return -1;
+
+	/* NEEDS IMPLEMENTING! */
+
+	return -1;
+#else
+#error Only currently implemented for x86 and ARM
+#endif
+}
+
+int syscall_getargs(pid_t pid, int n_args, unsigned long args[])
+{
+	if (n_args > 6)
+		n_args = 6;
+#if defined (I386)
+	return 0;
+#elif defined (__x86_64__)
+	int i;
+	long cs;
+	int *regs;
+	static int regs32[] = { RBX, RCX, RDX, RSI, RDI, RBP};
+	static int regs64[] = { RDI, RSI, RDX, R10, R8, R9};
+
+	cs = ptrace(PTRACE_PEEKUSER, pid, 8*CS, NULL);
+	switch (cs) {
+	case 0x23:	/* 32 bit mode */
+		regs = regs32;
+		break;
+	case 0x33:	/* 64 bit mode */
+		regs = regs64;
+		break;
+	default:
+		fprintf(stderr, "Unknown personality, CS=0x%x\n", (int)cs);
+		return -1;
+	}
+
+	for (i = 0; i <= n_args; i++)
+		args[i] = ptrace(PTRACE_PEEKUSER, pid, regs[i] * 8, NULL);
+	return 0;
+#else
+	fprintf(stderr, "Unknown arch\n");
+	return -1;
+#endif
+}
+
+void syscall_name(int syscall, char *name, size_t len)
+{
+	if (syscall_valid(syscall) && (syscalls[syscall].name)) {
+		strncpy(name, syscalls[syscall].name, len);
+	} else {
+		snprintf(name, len, "SYS_%d", syscall);
+	}
+}
+
+unsigned long hash_syscall(pid_t pid, int syscall)
+{
+	unsigned long h;
+
+	h = pid ^ (syscall << 2);
+	h %= HASH_TABLE_SIZE;
+
+	return h;
+}
+
+int syscall_count_cmp(void *data1, void *data2)
+{
+	syscall_info_t *s1 = (syscall_info_t *)data1;
+	syscall_info_t *s2 = (syscall_info_t *)data2;
+
+	return s2->count - s1->count;
+}
+
+void hash_syscall_dump(double duration)
+{
+	list_t sorted;
+	link_t *l;
+	int i;
+
+	list_init(&sorted);
+
+	for (i = 0; i < HASH_TABLE_SIZE; i++) {
+		syscall_info_t *s;
+
+		for (s = syscall_info[i]; s; s = s->next)
+			list_add_ordered(&sorted, s, syscall_count_cmp);
+	}
+
+	printf("System Calls Traced:\n");
+	printf("Count   PID  Syscall             Rate/Sec\n");
+	for (l = sorted.head; l; l = l->next) {
+		char name[64];
+		syscall_info_t *s = (syscall_info_t *)l->data;
+		syscall_name(s->syscall, name, sizeof(name));
+
+		printf("%6lu %5i %-17.17s %12.4f\n",
+			s->count, s->pid, name, (double)s->count / duration);
+	}
+
+	list_free(&sorted, NULL);
+}
+
+void syscall_check_timeout(syscall_info_t *s, double timeout, double threshold)
+{
+	pthread_mutex_lock(&ptrace_mutex);
+
+	s->poll_accounting = true;
+
+	/*  Indefinite waits we ignore in the stats */
+	if (timeout < 0.0) {
+		s->poll_infinite++;
+		pthread_mutex_unlock(&ptrace_mutex);
+		return;
+	}
+
+	s->poll_count++;
+	if (s->poll_min > timeout)
+		s->poll_min = timeout;
+	if (s->poll_max < timeout)
+		s->poll_max = timeout;
+	s->poll_total += timeout;
+	if (timeout <= threshold)
+		s->poll_too_low++;
+
+	pthread_mutex_unlock(&ptrace_mutex);
+}
+
+void syscall_get_arg_data(unsigned long addr, pid_t pid, void *data, ssize_t len)
+{
+	size_t n = (len + sizeof(unsigned long) - 1) / sizeof(unsigned long);
+	unsigned long tmpdata[n];
+	int i;
+
+	for (i = 0; i < n; i++)
+		tmpdata[i] = ptrace(PTRACE_PEEKDATA, pid, addr + (sizeof(unsigned long) * i), NULL);
+
+	memcpy(data, tmpdata, len);
+}
+
+void syscall_check_timeval(int arg, syscall_info_t *s, pid_t pid, double threshold)
+{
+	unsigned long args[arg + 1];
+	struct timeval timeout;
+	double t;
+
+	syscall_getargs(pid, arg, args);
+	if (args[arg] == 0)
+		return;
+
+	syscall_get_arg_data(args[arg], pid, &timeout, sizeof(timeout));
+	t = timeout.tv_sec + (timeout.tv_usec / 1000000.0);
+
+	syscall_check_timeout(s, t, threshold);
+}
+
+void syscall_check_timespec(int arg, syscall_info_t *s, pid_t pid, double threshold)
+{
+	unsigned long args[arg + 1];
+	struct timespec timeout;
+	double t;
+
+	syscall_getargs(pid, arg, args);
+	if (args[arg] == 0)
+		return;
+
+	syscall_get_arg_data(args[arg], pid, &timeout, sizeof(timeout));
+	t = timeout.tv_sec + (timeout.tv_nsec / 1000000000.0);
+
+	syscall_check_timeout(s, t, threshold);
+}
+
+
+void syscall_check_timeout_ms(int arg, syscall_info_t *s, pid_t pid, double threshold)
+{
+	unsigned long args[arg + 1];
+
+	syscall_getargs(pid, arg, args);
+	syscall_check_timeout(s, (double)(int)args[arg] / 1000.0, threshold);
+}
+
+void syscall_check_timeout_sec(int arg, syscall_info_t *s, pid_t pid, double threshold)
+{
+	unsigned long args[arg + 1];
+
+	syscall_getargs(pid, arg, args);
+	syscall_check_timeout(s, (double)args[arg], threshold);
+}
+
+void syscall_check_poll(syscall_info_t *s, pid_t pid)
+{
+	syscall_check_timeout_ms(3, s, pid, 0.5);
+}
+
+void syscall_check_select(syscall_info_t *s, pid_t pid)
+{
+	syscall_check_timeval(4, s, pid, 0.5);
+}
+
+void syscall_pollers(double duration)
+{
+	int i;
+	list_t sorted;
+	link_t *l;
+
+	list_init(&sorted);
+
+	for (i = 0; i < HASH_TABLE_SIZE; i++) {
+		syscall_info_t *s;
+
+		for (s = syscall_info[i]; s; s = s->next) {
+			if (syscalls[s->syscall].do_check) {
+				list_add_ordered(&sorted, s, syscall_count_cmp);
+				break;
+			}
+		}
+	}
+
+	if (sorted.head) {
+		printf("\nTop Polling System Calls:\n");
+		printf("Count   PID  Syscall             Rate/Sec   Infinite     Minimum        Maximum        Average    %% BAD\n");
+		printf("                                            Timeouts  Timeout (Sec)  Timeout (Sec)  Timeout (Sec) Polling\n");
+		for (l = sorted.head; l; l = l->next) {
+			char name[64];
+			syscall_info_t *s = (syscall_info_t *)l->data;
+			syscall_name(s->syscall, name, sizeof(name));
+
+			printf("%6lu %5i %-17.17s %12.4f",
+				s->count, s->pid, name,
+				(double)s->count / duration);
+
+			if (s->poll_accounting)  {
+				printf(" %8lu", s->poll_infinite);
+				if (s->poll_total)
+					printf(" %14.8f %14.8f %14.8f %6.2f",
+						s->poll_min, s->poll_max,
+						(double)s->poll_total / (double)s->count,
+						100.0 * (double)s->poll_too_low / (double)s->poll_count);
+				else
+					printf("       n/a            n/a            n/a        n/a");
+			}
+			printf("\n");
+		}
+	}
+
+	list_free(&sorted, NULL);
+}
+
+void syscall_count(pid_t pid, int syscall)
+{
+	unsigned long h = hash_syscall(pid, syscall);
+	syscall_info_t *s;
+	bool valid = syscall_valid(syscall);
+	syscall_t *sc;
+
+	pthread_mutex_lock(&ptrace_mutex);
+
+	for (s = syscall_info[h]; s; s = s->next) {
+		if ((s->syscall == syscall) &&
+		    (s->pid == pid)) {
+			s->count++;
+			pthread_mutex_unlock(&ptrace_mutex);
+
+			if (valid) {
+				sc = &syscalls[syscall];
+				if (sc->check_func) {
+					sc->check_func(sc->arg, s, pid, *(sc->threshold));
+				}
+			}
+			return;
+		}
+	}
+	pthread_mutex_unlock(&ptrace_mutex);
+
+	if ((s = calloc(1, sizeof(*s))) == NULL) {
+		fprintf(stderr, "Cannot allocate syscall hash item\n");
+		exit(EXIT_FAILURE);
+	}
+
+	s->syscall = syscall;
+	s->pid = pid;
+	s->count = 1;
+	s->poll_accounting = false;
+	s->poll_infinite = 0;
+	s->poll_count = 0;
+	s->poll_min = ULONG_MAX;
+	s->poll_max = 0;
+	s->poll_total = 0;
+	s->poll_too_low = 0;
+
+	pthread_mutex_lock(&ptrace_mutex);
+	s->next = syscall_info[h];
+	syscall_info[h] = s;
+	pthread_mutex_unlock(&ptrace_mutex);
+
+	if (valid) {
+		sc = &syscalls[syscall];
+		if (sc->check_func)
+			sc->check_func(sc->arg, s, pid, *(sc->threshold));
+	}
+}
+
+int syscall_wait(const pid_t pid)
+{
+	for (;;) {
+		int status;
+		ptrace(PTRACE_SYSCALL, pid, 0, 0);
+		waitpid(pid, &status, 0);
+		if (WIFSTOPPED(status) &&
+		    WSTOPSIG(status) & 0x80)
+			return 0;
+		if (WIFEXITED(status))
+			return 1;
+	}
+}
+
+void *syscall_trace(void *arg)
+{
+	int status, syscall;
+	pid_t pid = *((pid_t*)arg);
+
+	waitpid(pid, &status, 0);
+	ptrace(PTRACE_ATTACH, pid, 0, 0);
+	waitpid(pid, &status, 0);
+	ptrace(PTRACE_SETOPTIONS, pid, 0, PTRACE_O_TRACESYSGOOD);
+
+	while (keep_running) {
+		if (syscall_wait(pid))
+			break;
+
+		syscall = syscall_get_call(pid);
+		syscall_count(pid, syscall);
+
+		if (syscall_wait(pid))
+			break;
+	}
+
+	pthread_exit(0);
+}
+
+static void handle_sigint(int dummy)
+{
+	(void)dummy;    /* Stop unused parameter warning with -Wextra */
+
+	keep_running = false;
+}
+
+/*
+ *  timeval_double
+ *	timeval to a double
+ */
+static inline double timeval_double(const struct timeval *tv)
+{
+	return (double)tv->tv_sec + ((double)tv->tv_usec / 1000000.0);
+}
+
+#if 0
+int main(int argc, char *argv[])
+{
+	pid_t pid = atoi(argv[1]);
+	struct timeval tv_start, tv_end;
+	double duration;
+
+	signal(SIGINT, &handle_sigint);
+
+	gettimeofday(&tv_start, NULL);
+	syscall_trace(pid);
+	gettimeofday(&tv_end, NULL);
+	duration = timeval_double(&tv_end) - timeval_double(&tv_start);
+	printf("\n\n");
+	hash_syscall_dump(duration);
+	syscall_pollers(duration);
+
+	exit(EXIT_SUCCESS);
+}
+#endif
+
+
+
+
+#define APP_NAME		"health-check"
+#define TIMER_STATS		"/proc/timer_stats"
+
+#define	OPT_GET_CHILDREN	0x00000001
+
+
+
+
+/*
+ *  Stop gcc complaining about no return func
+ */
+static void health_check_exit(const int status) __attribute__ ((noreturn));
+
+
+
+/*
+ *  list_append()
+ *	add a new item to end of the list
+ */
+static link_t *list_append(list_t *list, void *data)
+{
+	link_t *link;
+
+	if ((link = calloc(1, sizeof(link_t))) == NULL) {
+		fprintf(stderr, "Cannot allocate list link\n");
+		health_check_exit(EXIT_FAILURE);
+	}
+	link->data = data;
+
+	if (list->head == NULL) {
+		list->head = link;
+	} else {
+		list->tail->next = link;
+	}
+	list->tail = link;
+	list->length++;
+
+	return link;
+}
+
+
+
 
 /*
  *  get_pid_comm
@@ -273,6 +1894,10 @@ static proc_info_t *add_proc_cache(pid_t pid, pid_t ppid, bool thread)
 	if (!pid_exists(pid))
 		return NULL;
 
+	if (pid == getpid()) {
+		/* We never should monitor oneself, it gets messy */
+		return NULL;
+	}
 
 	for (l = proc_cache.head; l; l = l->next) {
 		proc_info_t *p = (proc_info_t *)l->data;
@@ -552,15 +2177,6 @@ static struct timeval timeval_sub(const struct timeval *a, const struct timeval 
 
 
 /*
- *  timeval_double
- *	timeval to a double
- */
-static inline double timeval_double(const struct timeval *tv)
-{
-	return (double)tv->tv_sec + ((double)tv->tv_usec / 1000000.0);
-}
-
-/*
  *  set_timer_stat()
  *	enable/disable timer stat
  */
@@ -591,13 +2207,6 @@ static void health_check_exit(const int status)
 	exit(status);
 }
 
-static void handle_sigint(int dummy)
-{
-	(void)dummy;	/* Stop unused parameter warning with -Wextra */
-
-	keep_running = false;
-}
-
 static void event_free(void *data)
 {
 	event_info_t *ev = (event_info_t *)data;
@@ -618,7 +2227,7 @@ static int events_cmp(void *data1, void *data2)
 
 /*
  *  event_add()
- *	add event stats 
+ *	add event stats
  */
 static void event_add(
 	list_t *events,			/* event list */
@@ -695,7 +2304,7 @@ static void dump_events_diff(double duration, list_t *events_old, list_t *events
 		}
 		printf("  %5d %-20.20s %9.2f (%s, %s)\n",
 			evn->proc->pid, evn->proc->cmdline,
-			(double)delta / duration, 
+			(double)delta / duration,
 			evn->func, evn->callback);
 	}
 	printf("\n");
@@ -864,7 +2473,6 @@ static void dump_fnotify_events(double duration, list_t *pids, list_t *fnotify_f
 	for (l = fnotify_files->head; l; l = l->next) {
 		fnotify_fileinfo_t *info = (fnotify_fileinfo_t *)l->data;
 		list_add_ordered(&sorted, info, fnotify_events_cmp_count);
-		
 	}
 
 	printf("   PID  Process               Count  Op  Filename\n");
@@ -916,7 +2524,7 @@ static void dump_fnotify_events(double duration, list_t *pids, list_t *fnotify_f
 			if (info->mask & (FAN_MODIFY | FAN_CLOSE_WRITE))
 				io_ops->write_total += info->count;
 		}
-		io_ops->total = io_ops->open_total + io_ops->close_total + 
+		io_ops->total = io_ops->open_total + io_ops->close_total +
 				io_ops->read_total + io_ops->write_total;
 
 		if (io_ops->total)
@@ -1196,7 +2804,6 @@ int main(int argc, char **argv)
 	if (opt_flags & OPT_GET_CHILDREN)
 		pids_get_children(&pids);
 
-
 	if (opt_duration_secs < 0.5) {
 		fprintf(stderr, "Duration must 0.5 or more.\n");
 		health_check_exit(EXIT_FAILURE);
@@ -1213,6 +2820,11 @@ int main(int argc, char **argv)
 	}
 
 	signal(SIGINT, &handle_sigint);
+	for (l = pids.head; l; l = l->next) {
+		proc_info_t *p = (proc_info_t *)l->data;
+		if (!p->thread)
+			pthread_create(&p->pthread, NULL, syscall_trace, &p->pid);
+	}
 
 	/* Should really catch signals and set back to zero before we die */
 	set_timer_stat("1", true);
@@ -1270,6 +2882,9 @@ int main(int argc, char **argv)
 	dump_events_diff(actual_duration, &event_info_old, &event_info_new);
 	dump_fnotify_events(actual_duration, &pids, &fnotify_files);
 
+	hash_syscall_dump(actual_duration);
+	syscall_pollers(actual_duration);
+
 out:
 	free(buffer);
 	list_free(&pids, NULL);
@@ -1279,6 +2894,8 @@ out:
 	list_free(&cpustat_info_new, free);
 	list_free(&fnotify_files, fnotify_event_free);
 	list_free(&proc_cache, free_pid_info);
+
+	pthread_mutex_destroy(&ptrace_mutex);
 
 	health_check_exit(EXIT_SUCCESS);
 }
