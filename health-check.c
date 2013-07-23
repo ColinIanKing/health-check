@@ -46,7 +46,7 @@
 
 #define APP_NAME			"health-check"
 
-#define HASH_TABLE_SIZE			(1997)
+#define HASH_TABLE_SIZE			(1997)		/* Must be prime */
 #define ARRAY_SIZE(a)			(sizeof(a) / sizeof(a[0]))
 #define TIMER_STATS			"/proc/timer_stats"
 
@@ -54,6 +54,15 @@
 
 #define MAX_BUCKET			(11)
 #define BUCKET_START			(0.0000001)
+
+#define SYSCALL(n) \
+	[SYS_ ## n] = { #n, SYS_ ## n, 0, NULL, NULL }
+
+#define SYSCALL_TIMEOUT(n, arg, func) \
+	[SYS_ ## n] = { #n, SYS_ ## n, arg, &timeout[SYS_ ## n], func }
+
+#define TIMEOUT(n, timeout) \
+	[SYS_ ## n] = timeout
 
 typedef struct link {
 	void *data;			/* Data in list */
@@ -70,38 +79,37 @@ typedef void (*list_link_free_t)(void *);
 typedef int  (*list_comp_t)(void *, void *);
 
 typedef struct syscall_info {
-	pid_t		pid;
-	int 		syscall;
-	unsigned long	count;
-	bool		poll_accounting;
-	double 		poll_min;
-	double		poll_max;
-	double		poll_total;
-	unsigned long	poll_count;
-	unsigned long	poll_too_low;
-	unsigned long	poll_infinite;
-	unsigned long	poll_zero;
-	unsigned long 	bucket[MAX_BUCKET];
+	pid_t		pid;		/* caller's pid */
+	int 		syscall;	/* system call number */
+	unsigned long	count;		/* number times call has been made */
+	double 		poll_min;	/* minumum poll time */
+	double		poll_max;	/* maximum poll time */
+	double		poll_total;	/* sum of non zero or negative poll times */
+	unsigned long	poll_count;	/* number of polls */
+	unsigned long	poll_too_low;	/* number of poll times below a threshold */
+	unsigned long	poll_infinite;	/* number of -ve (infinite) poll times */
+	unsigned long	poll_zero;	/* number of zero poll times */
+	unsigned long 	bucket[MAX_BUCKET]; /* bucket count of poll times */
 	struct syscall_info *next;
 } syscall_info_t;
 
+typedef void (*check_func_t)(int arg, syscall_info_t *s, pid_t pid, double threshold);
+
 typedef struct {
-	char 		*name;
-	int  		syscall;
-	bool		do_check;
-	int		arg;
-	double		*threshold;
-	void (*check_func)(int arg, syscall_info_t *s, pid_t pid, double threshold);
+	char 		*name;		/* name of the syscall */
+	int  		syscall;	/* system call number */
+	int		arg;		/* nth arg to check for timeout value (1st arg is zero) */
+	double		*threshold;	/* threshold - points to timeout array items indexed by syscall */
+	check_func_t	check_func;	/* timeout checking function, NULL means don't check */
 } syscall_t;
 
 typedef struct {
-	long		padding;
-	pid_t		pid;
-	pid_t		ppid;
-	char		*comm;
-	char		*cmdline;
-	bool		thread;
-	pthread_t	pthread;
+	pid_t		pid;		/* PID */
+	pid_t		ppid;		/* Parent PID */
+	char		*comm;		/* Kernel process comm name */
+	char		*cmdline;	/* Process name from cmdline */
+	bool		is_thread;	/* true if process is a thread */
+	pthread_t	pthread;	/* thread to do ptrace monitoring of process */
 } proc_info_t;
 
 typedef struct {
@@ -127,37 +135,25 @@ typedef struct {
 } fnotify_fileinfo_t;
 
 typedef struct {
-	unsigned long 	open_total;
-	unsigned long 	close_total;
-	unsigned long 	read_total;
-	unsigned long 	write_total;
-	unsigned long 	total;
-	proc_info_t   	*proc;
+	unsigned long 	open_total;	/* open() count */
+	unsigned long 	close_total;	/* close() count */
+	unsigned long 	read_total;	/* read() count */
+	unsigned long 	write_total;	/* write() count */
+	unsigned long 	total;		/* total count */
+	proc_info_t   	*proc;		/* process information */
 } io_ops_t;
 
-#define SYSCALL(n) \
-	[SYS_ ## n] = { #n, SYS_ ## n, false, 0, NULL, NULL }
-
-#define SYSCALL_TIMEOUT(n, arg, func) \
-	[SYS_ ## n] = { #n, SYS_ ## n, true, arg, &timeout[SYS_ ## n], .check_func = func }
-
-typedef void (*list_link_free_t)(void *);
-typedef int  (*list_comp_t)(void *, void *);
-
-
 int  syscall_getargs(pid_t pid, int n_args, unsigned long args[]);
-void syscall_check_timeout_ms(int arg, syscall_info_t *s, pid_t pid, double threshold);
-void syscall_check_timeout_sec(int arg, syscall_info_t *s, pid_t pid, double threshold);
-void syscall_check_timespec(int arg, syscall_info_t *s, pid_t pid, double threshold);
-void syscall_check_timeval(int arg, syscall_info_t *s, pid_t pid, double threshold);
+void syscall_timeout_millisec(int arg, syscall_info_t *s, pid_t pid, double threshold);
+void syscall_timeout_sec(int arg, syscall_info_t *s, pid_t pid, double threshold);
+void syscall_timespec_timeout(int arg, syscall_info_t *s, pid_t pid, double threshold);
+void syscall_timeval_timeout(int arg, syscall_info_t *s, pid_t pid, double threshold);
+static void health_check_exit(const int status) __attribute__ ((noreturn));
 
 static bool keep_running = true;
 static int  opt_flags;
 static list_t	proc_cache;
 static pthread_mutex_t ptrace_mutex = PTHREAD_MUTEX_INITIALIZER;
-
-#define TIMEOUT(n, timeout) \
-	[SYS_ ## n] = timeout
 
 static double timeout[] = {
 	TIMEOUT(alarm, 1.0),
@@ -202,7 +198,7 @@ static syscall_t syscalls[] = {
 	SYSCALL(afs_syscall),
 #endif
 #ifdef SYS_alarm
-	SYSCALL_TIMEOUT(alarm, 0, syscall_check_timeout_sec),
+	SYSCALL_TIMEOUT(alarm, 0, syscall_timeout_sec),
 #endif
 #ifdef SYS_arch_prctl
 	SYSCALL(arch_prctl),
@@ -250,7 +246,7 @@ static syscall_t syscalls[] = {
 	SYSCALL(clock_gettime),
 #endif
 #ifdef SYS_clock_nanosleep
-	SYSCALL_TIMEOUT(clock_nanosleep, 2, syscall_check_timespec),
+	SYSCALL_TIMEOUT(clock_nanosleep, 2, syscall_timespec_timeout),
 #endif
 #ifdef SYS_clock_settime
 	SYSCALL(clock_settime),
@@ -295,10 +291,10 @@ static syscall_t syscalls[] = {
 	SYSCALL(epoll_ctl_old),
 #endif
 #ifdef SYS_epoll_pwait
-	SYSCALL_TIMEOUT(epoll_pwait, 3, syscall_check_timeout_ms),
+	SYSCALL_TIMEOUT(epoll_pwait, 3, syscall_timeout_millisec),
 #endif
 #ifdef SYS_epoll_wait
-	SYSCALL_TIMEOUT(epoll_wait, 3, syscall_check_timeout_ms),
+	SYSCALL_TIMEOUT(epoll_wait, 3, syscall_timeout_millisec),
 #endif
 #ifdef SYS_epoll_wait_old
 	SYSCALL(epoll_wait_old),
@@ -706,10 +702,10 @@ static syscall_t syscalls[] = {
 	SYSCALL(mq_open),
 #endif
 #ifdef SYS_mq_timedreceive
-	SYSCALL_TIMEOUT(mq_timedreceive, 4, syscall_check_timespec),
+	SYSCALL_TIMEOUT(mq_timedreceive, 4, syscall_timespec_timeout),
 #endif
 #ifdef SYS_mq_timedsend
-	SYSCALL_TIMEOUT(mq_timedsend, 4, syscall_check_timespec),
+	SYSCALL_TIMEOUT(mq_timedsend, 4, syscall_timespec_timeout),
 #endif
 #ifdef SYS_mq_unlink
 	SYSCALL(mq_unlink),
@@ -745,7 +741,7 @@ static syscall_t syscalls[] = {
 	SYSCALL(name_to_handle_at),
 #endif
 #ifdef SYS_nanosleep
-	SYSCALL_TIMEOUT(nanosleep, 0, syscall_check_timespec),
+	SYSCALL_TIMEOUT(nanosleep, 0, syscall_timespec_timeout),
 #endif
 #ifdef SYS_newfstatat
 	SYSCALL(newfstatat),
@@ -802,10 +798,10 @@ static syscall_t syscalls[] = {
 	SYSCALL(pivot_root),
 #endif
 #ifdef SYS_poll
-	SYSCALL_TIMEOUT(poll, 2, syscall_check_timeout_ms),
+	SYSCALL_TIMEOUT(poll, 2, syscall_timeout_millisec),
 #endif
 #ifdef SYS_ppoll
-	SYSCALL_TIMEOUT(ppoll, 2, syscall_check_timespec),
+	SYSCALL_TIMEOUT(ppoll, 2, syscall_timespec_timeout),
 #endif
 #ifdef SYS_prctl
 	SYSCALL(prctl),
@@ -832,7 +828,7 @@ static syscall_t syscalls[] = {
 	SYSCALL(profil),
 #endif
 #ifdef SYS_pselect6
-	SYSCALL_TIMEOUT(pselect6, 4, syscall_check_timespec),
+	SYSCALL_TIMEOUT(pselect6, 4, syscall_timespec_timeout),
 #endif
 #ifdef SYS_ptrace
 	SYSCALL(ptrace),
@@ -877,7 +873,7 @@ static syscall_t syscalls[] = {
 	SYSCALL(recvfrom),
 #endif
 #ifdef SYS_recvmmsg
-	SYSCALL_TIMEOUT(recvmmsg, 4, syscall_check_timespec),
+	SYSCALL_TIMEOUT(recvmmsg, 4, syscall_timespec_timeout),
 #endif
 #ifdef SYS_recvmsg
 	SYSCALL(recvmsg),
@@ -922,7 +918,7 @@ static syscall_t syscalls[] = {
 	SYSCALL(rt_sigsuspend),
 #endif
 #ifdef SYS_rt_sigtimedwait
-	SYSCALL_TIMEOUT(rt_sigtimedwait, 2, syscall_check_timespec),
+	SYSCALL_TIMEOUT(rt_sigtimedwait, 2, syscall_timespec_timeout),
 #endif
 #ifdef SYS_rt_tgsigqueueinfo
 	SYSCALL(rt_tgsigqueueinfo),
@@ -961,7 +957,7 @@ static syscall_t syscalls[] = {
 	SYSCALL(security),
 #endif
 #ifdef SYS_select
-	SYSCALL_TIMEOUT(select, 4, syscall_check_timespec),
+	SYSCALL_TIMEOUT(select, 4, syscall_timespec_timeout),
 #endif
 #ifdef SYS_semctl
 	SYSCALL(semctl),
@@ -973,7 +969,7 @@ static syscall_t syscalls[] = {
 	SYSCALL(semop),
 #endif
 #ifdef SYS_semtimedop
-	SYSCALL_TIMEOUT(semtimedop, 3, syscall_check_timespec),
+	SYSCALL_TIMEOUT(semtimedop, 3, syscall_timespec_timeout),
 #endif
 #ifdef SYS_sendfile
 	SYSCALL(sendfile),
@@ -1339,10 +1335,36 @@ static inline void list_init(list_t *list)
 }
 
 /*
+ *  list_append()
+ *	add a new item to end of the list
+ */
+static link_t *list_append(list_t *list, void *data)
+{
+	link_t *link;
+
+	if ((link = calloc(1, sizeof(link_t))) == NULL) {
+		fprintf(stderr, "Cannot allocate list link\n");
+		health_check_exit(EXIT_FAILURE);
+	}
+	link->data = data;
+
+	if (list->head == NULL) {
+		list->head = link;
+	} else {
+		list->tail->next = link;
+	}
+	list->tail = link;
+	list->length++;
+
+	return link;
+}
+
+
+/*
  *  list_add_ordered()
  *	add new data into list, based on order from callback func compare().
  */
-static link_t *list_add_ordered(list_t *list, void *new_data, list_comp_t compare)
+static link_t *list_add_ordered(list_t *list, void *new_data, const list_comp_t compare)
 {
 	link_t *link, **l;
 
@@ -1386,12 +1408,20 @@ static void list_free(list_t *list, const list_link_free_t freefunc)
 	}
 }
 
-static inline bool syscall_valid(int syscall)
+/*
+ *  syscall_valid()
+ *	is syscall in the syscall table bounds?
+ */
+static inline bool syscall_valid(const int syscall)
 {
-	return (syscall > 0) && (syscall <= ARRAY_SIZE(syscalls));
+	return (syscall > 0) && (syscall <= (int)ARRAY_SIZE(syscalls));
 }
 
-int syscall_get_call(pid_t pid)
+/*
+ *  syscall_get_call()
+ *	get syscall number
+ */
+int syscall_get_call(const pid_t pid)
 {
 #if defined(__x86_64__)
 	return ptrace(PTRACE_PEEKUSER, pid, 8 * ORIG_RAX, NULL);
@@ -1411,10 +1441,13 @@ int syscall_get_call(pid_t pid)
 #endif
 }
 
-int syscall_getargs(pid_t pid, int n_args, unsigned long args[])
+/*
+ *  syscall_getargs()
+ *	fetch n args from system call
+ */
+int syscall_getargs(const pid_t pid, const int arg, unsigned long args[])
 {
-	if (n_args > 6)
-		n_args = 6;
+	int n_args = arg > 6 ? 6 : arg;
 #if defined (I386)
 	return 0;
 #elif defined (__x86_64__)
@@ -1446,16 +1479,25 @@ int syscall_getargs(pid_t pid, int n_args, unsigned long args[])
 #endif
 }
 
-void syscall_name(int syscall, char *name, size_t len)
+/*
+ *  syscall_name
+ *	get system call name
+ */
+void syscall_name(const int syscall, char *name, const size_t len)
 {
 	if (syscall_valid(syscall) && (syscalls[syscall].name)) {
 		strncpy(name, syscalls[syscall].name, len);
 	} else {
+		/*  Don't know it */
 		snprintf(name, len, "SYS_%d", syscall);
 	}
 }
 
-unsigned long hash_syscall(pid_t pid, int syscall)
+/*
+ *  hash_syscall()
+ *	hash syscall and pid
+ */
+unsigned long hash_syscall(const pid_t pid, const int syscall)
 {
 	unsigned long h;
 
@@ -1465,6 +1507,10 @@ unsigned long hash_syscall(pid_t pid, int syscall)
 	return h;
 }
 
+/*
+ *  syscall_count_cmp()
+ *	syscall usage count sort comparitor
+ */
 int syscall_count_cmp(void *data1, void *data2)
 {
 	syscall_info_t *s1 = (syscall_info_t *)data1;
@@ -1473,7 +1519,11 @@ int syscall_count_cmp(void *data1, void *data2)
 	return s2->count - s1->count;
 }
 
-void hash_syscall_dump(double duration)
+/*
+ *  syscall_dump_hashtable
+ *	dump syscall hashtable stats
+ */
+void syscall_dump_hashtable(const double duration)
 {
 	list_t sorted;
 	link_t *l;
@@ -1502,7 +1552,11 @@ void hash_syscall_dump(double duration)
 	list_free(&sorted, NULL);
 }
 
-void syscall_check_timeout(syscall_info_t *s, double timeout, double threshold)
+/*
+ *  syscall_count_timeout
+ *	gather stats on timeout
+ */
+void syscall_count_timeout(syscall_info_t *s, const double timeout, const double threshold)
 {
 	double t = BUCKET_START;
 	int bucket = 0;
@@ -1513,7 +1567,6 @@ void syscall_check_timeout(syscall_info_t *s, double timeout, double threshold)
 	}
 
 	pthread_mutex_lock(&ptrace_mutex);
-	s->poll_accounting = true;
 	s->poll_count++;
 
 	/*  Indefinite waits we ignore in the stats */
@@ -1547,11 +1600,14 @@ void syscall_check_timeout(syscall_info_t *s, double timeout, double threshold)
 	pthread_mutex_unlock(&ptrace_mutex);
 }
 
-void syscall_get_arg_data(unsigned long addr, pid_t pid, void *data, ssize_t len)
+/*
+ *  syscall_get_arg_data()
+ *	gather dereferenced arg data
+ */
+void syscall_get_arg_data(const unsigned long addr, const pid_t pid, void *data, const size_t len)
 {
-	size_t n = (len + sizeof(unsigned long) - 1) / sizeof(unsigned long);
+	size_t i, n = (len + sizeof(unsigned long) - 1) / sizeof(unsigned long);
 	unsigned long tmpdata[n];
-	int i;
 
 	for (i = 0; i < n; i++)
 		tmpdata[i] = ptrace(PTRACE_PEEKDATA, pid, addr + (sizeof(unsigned long) * i), NULL);
@@ -1559,7 +1615,11 @@ void syscall_get_arg_data(unsigned long addr, pid_t pid, void *data, ssize_t len
 	memcpy(data, tmpdata, len);
 }
 
-void syscall_check_timeval(int arg, syscall_info_t *s, pid_t pid, double threshold)
+/*
+ *  syscall_timeval_timeout()
+ *	keep tally of timeval timeouts
+ */
+void syscall_timeval_timeout(const int arg, syscall_info_t *s, const pid_t pid, const double threshold)
 {
 	unsigned long args[arg + 1];
 	struct timeval timeout;
@@ -1572,10 +1632,14 @@ void syscall_check_timeval(int arg, syscall_info_t *s, pid_t pid, double thresho
 	syscall_get_arg_data(args[arg], pid, &timeout, sizeof(timeout));
 	t = timeout.tv_sec + (timeout.tv_usec / 1000000.0);
 
-	syscall_check_timeout(s, t, threshold);
+	syscall_count_timeout(s, t, threshold);
 }
 
-void syscall_check_timespec(int arg, syscall_info_t *s, pid_t pid, double threshold)
+/*
+ *  syscall_timespec_timeout()
+ *	keep tally of timespec timeouts
+ */
+void syscall_timespec_timeout(const int arg, syscall_info_t *s, const pid_t pid, const double threshold)
 {
 	unsigned long args[arg + 1];
 	struct timespec timeout;
@@ -1588,29 +1652,42 @@ void syscall_check_timespec(int arg, syscall_info_t *s, pid_t pid, double thresh
 	syscall_get_arg_data(args[arg], pid, &timeout, sizeof(timeout));
 	t = timeout.tv_sec + (timeout.tv_nsec / 1000000000.0);
 
-	syscall_check_timeout(s, t, threshold);
+	syscall_count_timeout(s, t, threshold);
 }
 
-void syscall_check_timeout_ms(int arg, syscall_info_t *s, pid_t pid, double threshold)
+/*
+ *  syscall_timeout_millisec()
+ *	keep tally of integer millisecond timeouts
+ */
+void syscall_timeout_millisec(const int arg, syscall_info_t *s, const pid_t pid, const double threshold)
 {
 	unsigned long args[arg + 1];
 
 	syscall_getargs(pid, arg, args);
-	syscall_check_timeout(s, (double)(int)args[arg] / 1000.0, threshold);
+	syscall_count_timeout(s, (double)(int)args[arg] / 1000.0, threshold);
 }
 
-void syscall_check_timeout_sec(int arg, syscall_info_t *s, pid_t pid, double threshold)
+/*
+ *  syscall_timeout_sec()
+ *	keep tally of integer second timeouts
+ */
+void syscall_timeout_sec(const int arg, syscall_info_t *s, const pid_t pid, const double threshold)
 {
 	unsigned long args[arg + 1];
 
 	syscall_getargs(pid, arg, args);
-	syscall_check_timeout(s, (double)args[arg], threshold);
+	syscall_count_timeout(s, (double)args[arg], threshold);
 }
 
-char *format_time(char *buffer, size_t len, double t, bool end)
+/*
+ *  syscall_format_time()
+ *	convert timeout time into something human readable
+ */
+void syscall_format_time(char *buffer, const size_t len, const double timeout, const bool end)
 {
 	char *units[] = { "s ", "ms", "us", "ns", "ps" };
 	int i;
+	double t = timeout;
 
 	for (i = 0; t != 0.0 && t < 0.99999; i++)
 		t *= 1000.0;
@@ -1624,10 +1701,13 @@ char *format_time(char *buffer, size_t len, double t, bool end)
 	}
 
 	snprintf(buffer, len, "%5.1f %s", t, units[i]);
-	return buffer;
 }
 
-void syscall_pollers(double duration)
+/*
+ *  syscall_dump_pollers()
+ *	dump polling syscall abusers
+ */
+void syscall_dump_pollers(const double duration)
 {
 	int i;
 	list_t sorted;
@@ -1639,7 +1719,7 @@ void syscall_pollers(double duration)
 		syscall_info_t *s;
 
 		for (s = syscall_info[i]; s; s = s->next) {
-			if (syscalls[s->syscall].do_check) {
+			if (syscalls[s->syscall].check_func) {
 				list_add_ordered(&sorted, s, syscall_count_cmp);
 				break;
 			}
@@ -1661,17 +1741,15 @@ void syscall_pollers(double duration)
 				s->count, s->pid, name,
 				(double)s->count / duration);
 
-			if (s->poll_accounting)  {
-				printf(" %8lu %8lu ", s->poll_infinite, s->poll_zero);
-				if (s->poll_count)
-					printf(" %14.8f %14.8f %14.8f %6.2f",
-						s->poll_min < 0.0 ? 0.0 : s->poll_min,
-						s->poll_max < 0.0 ? 0.0 : s->poll_max,
-						(double)s->poll_total / (double)s->count,
-						100.0 * (double)s->poll_too_low / (double)s->poll_count);
-				else
-					printf("       n/a            n/a            n/a        n/a");
-			}
+			printf(" %8lu %8lu ", s->poll_infinite, s->poll_zero);
+			if (s->poll_count)
+				printf(" %14.8f %14.8f %14.8f %6.2f",
+					s->poll_min < 0.0 ? 0.0 : s->poll_min,
+					s->poll_max < 0.0 ? 0.0 : s->poll_max,
+					(double)s->poll_total / (double)s->count,
+					100.0 * (double)s->poll_too_low / (double)s->poll_count);
+			else
+				printf("       n/a            n/a            n/a        n/a");
 			printf("\n");
 		}
 
@@ -1699,8 +1777,8 @@ void syscall_pollers(double duration)
 
 		for (i = 0; i < MAX_BUCKET; i++) {
 			char t1[64], t2[64];
-			format_time(t1, sizeof(t1), prev, false);
-			format_time(t2, sizeof(t2), bucket, true);
+			syscall_format_time(t1, sizeof(t1), prev, false);
+			syscall_format_time(t2, sizeof(t2), bucket, true);
 			printf("%9.9s - %9.9s :",
 				i == 0 ? "" : t1,
 				i == (MAX_BUCKET-1) ? "" : t2);
@@ -1720,11 +1798,14 @@ void syscall_pollers(double duration)
 		}
 		printf("\n");
 	}
-
 	list_free(&sorted, NULL);
 }
 
-void syscall_count(pid_t pid, int syscall)
+/*
+ *  syscall_count()
+ *	tally syscall usage
+ */
+void syscall_count(const pid_t pid, const int syscall)
 {
 	unsigned long h = hash_syscall(pid, syscall);
 	syscall_info_t *s;
@@ -1758,7 +1839,6 @@ void syscall_count(pid_t pid, int syscall)
 	s->syscall = syscall;
 	s->pid = pid;
 	s->count = 1;
-	s->poll_accounting = false;
 	s->poll_zero = 0;
 	s->poll_infinite = 0;
 	s->poll_count = 0;
@@ -1779,6 +1859,10 @@ void syscall_count(pid_t pid, int syscall)
 	}
 }
 
+/*
+ *  syscall_wait()
+ *	wait for ptrace
+ */
 int syscall_wait(const pid_t pid)
 {
 	for (;;) {
@@ -1793,6 +1877,10 @@ int syscall_wait(const pid_t pid)
 	}
 }
 
+/*
+ *  syscall_trace()
+ *	syscall tracer, run in a pthread
+ */
 void *syscall_trace(void *arg)
 {
 	int status, syscall;
@@ -1813,10 +1901,15 @@ void *syscall_trace(void *arg)
 		if (syscall_wait(pid))
 			break;
 	}
-
 	pthread_exit(0);
+
+	return NULL;
 }
 
+/*
+ *  handle_sigint()
+ *	catch sigint, stop program
+ */
 static void handle_sigint(int dummy)
 {
 	(void)dummy;    /* Stop unused parameter warning with -Wextra */
@@ -1832,46 +1925,6 @@ static inline double timeval_double(const struct timeval *tv)
 {
 	return (double)tv->tv_sec + ((double)tv->tv_usec / 1000000.0);
 }
-
-
-
-
-
-
-/*
- *  Stop gcc complaining about no return func
- */
-static void health_check_exit(const int status) __attribute__ ((noreturn));
-
-
-
-/*
- *  list_append()
- *	add a new item to end of the list
- */
-static link_t *list_append(list_t *list, void *data)
-{
-	link_t *link;
-
-	if ((link = calloc(1, sizeof(link_t))) == NULL) {
-		fprintf(stderr, "Cannot allocate list link\n");
-		health_check_exit(EXIT_FAILURE);
-	}
-	link->data = data;
-
-	if (list->head == NULL) {
-		list->head = link;
-	} else {
-		list->tail->next = link;
-	}
-	list->tail = link;
-	list->length++;
-
-	return link;
-}
-
-
-
 
 /*
  *  get_pid_comm
@@ -1934,7 +1987,7 @@ static char *get_pid_cmdline(const pid_t pid)
  *  pid_exists()
  *	true if given process with given pid exists
  */
-static bool pid_exists(pid_t pid)
+static bool pid_exists(const pid_t pid)
 {
 	char path[PATH_MAX];
 	struct stat statbuf;
@@ -1943,9 +1996,13 @@ static bool pid_exists(pid_t pid)
 	return stat(path, &statbuf) == 0;
 }
 
-static proc_info_t *find_proc_info_by_pid(pid_t pid);
+static proc_info_t *proc_cache_find_by_pid(const pid_t pid);
 
-static proc_info_t *add_proc_cache(pid_t pid, pid_t ppid, bool thread)
+/*
+ *  proc_cache_add()
+ *	add process info to global cache
+ */
+static proc_info_t *proc_cache_add(const pid_t pid, const pid_t ppid, const bool is_thread)
 {
 	proc_info_t *p;
 	link_t *l;
@@ -1973,13 +2030,17 @@ static proc_info_t *add_proc_cache(pid_t pid, pid_t ppid, bool thread)
 	p->ppid = ppid;
 	p->cmdline = get_pid_cmdline(pid);
 	p->comm = get_pid_comm(pid);
-	p->thread = thread;
+	p->is_thread = is_thread;
 	list_append(&proc_cache, p);
 
 	return p;
 }
 
-static proc_info_t *find_proc_info_by_pid(pid_t pid)
+/*
+ *  proc_cache_find_by_pid()
+ *	find process info by the process id
+ */
+static proc_info_t *proc_cache_find_by_pid(pid_t pid)
 {
 	link_t *l;
 
@@ -1990,10 +2051,14 @@ static proc_info_t *find_proc_info_by_pid(pid_t pid)
 			return p;
 	}
 
-	return add_proc_cache(pid, 0, false);	/* Need to find parent really */
+	return proc_cache_add(pid, 0, false);	/* Need to find parent really */
 }
 
-static int get_proc_cache(void)
+/*
+ *  proc_cache_get()
+ *	load proc cache with current system process info
+ */
+static int proc_cache_get(void)
 {
 	DIR *procdir;
 	struct dirent *procentry;
@@ -2019,7 +2084,7 @@ static int get_proc_cache(void)
 			char comm[64];
 			/* 3173 (a.out) R 3093 3173 3093 34818 3173 4202496 165 0 0 0 3194 0 */
 			if (fscanf(fp, "%d (%[^)]) %*c %i", &pid, comm, &ppid) == 3) {
-				add_proc_cache(pid, ppid, false);
+				proc_cache_add(pid, ppid, false);
 			}
 			fclose(fp);
 		}
@@ -2029,7 +2094,11 @@ static int get_proc_cache(void)
 	return 0;
 }
 
-static int get_proc_cache_pthreads(void)
+/*
+ *  proc_cache_get_pthreads()
+ *	load proc cache with pthreads from current system process info
+ */
+static int proc_cache_get_pthreads(void)
 {
 	DIR *procdir;
 	struct dirent *procentry;
@@ -2058,7 +2127,7 @@ static int get_proc_cache_pthreads(void)
 		if ((taskdir = opendir(path)) == NULL)
 			continue;
 
-		add_proc_cache(ppid, 0, false);
+		proc_cache_add(ppid, 0, false);
 
 		while ((taskentry = readdir(taskdir)) != NULL) {
 			pid_t pid;
@@ -2068,7 +2137,7 @@ static int get_proc_cache_pthreads(void)
 			if (pid == ppid)
 				continue;
 
-			add_proc_cache(pid, ppid, true);
+			proc_cache_add(pid, ppid, true);
 		}
 		closedir(taskdir);
 	}
@@ -2077,7 +2146,11 @@ static int get_proc_cache_pthreads(void)
 	return 0;
 }
 
-static void free_pid_info(void *data)
+/*
+ *  proc_cache_info_free()
+ *	free a proc cache item
+ */
+static void proc_cache_info_free(void *data)
 {
 	proc_info_t *p = (proc_info_t*)data;
 
@@ -2087,7 +2160,7 @@ static void free_pid_info(void *data)
 }
 
 #if DUMP_PROC_CACHE
-static void dump_proc_cache(void)
+static void proc_cache_dump(void)
 {
 	link_t *l;
 
@@ -2099,7 +2172,11 @@ static void dump_proc_cache(void)
 }
 #endif
 
-static int find_proc_info_by_procname(list_t *pids, const char *procname) {
+/*
+ *  proc_cache_find_by_procname()
+ *	find process by process name (in cmdline)
+ */
+static int proc_cache_find_by_procname(list_t *pids, const char *procname) {
 
 	bool found = false;
 	link_t *l;
@@ -2121,7 +2198,11 @@ static int find_proc_info_by_procname(list_t *pids, const char *procname) {
 	return 0;
 }
 
-static int pid_find(pid_t pid, list_t *list)
+/*
+ *  pid_list_find()
+ *	find a pid in the pid list
+ */
+static bool pid_list_find(pid_t pid, list_t *list)
 {
 	link_t *l;
 
@@ -2133,7 +2214,12 @@ static int pid_find(pid_t pid, list_t *list)
 	return false;
 }
 
-static int pid_get_children(pid_t pid, list_t *children)
+/*
+ *  pid_get_children()
+ *	get all the children from the given pid, add
+ *	to children list
+ */
+static void pid_get_children(pid_t pid, list_t *children)
 {
 	link_t *l;
 
@@ -2144,11 +2230,14 @@ static int pid_get_children(pid_t pid, list_t *children)
 			pid_get_children(p->pid, children);
 		}
 	}
-
-	return 0;
 }
 
-static int pids_get_children(list_t *pids)
+/*
+ *  pid_list_get_children()
+ *	get all the chindren in the given pid list
+ *	and add this to the list
+ */
+static void pid_list_get_children(list_t *pids)
 {
 	link_t *l;
 	list_t children;
@@ -2164,7 +2253,7 @@ static int pids_get_children(list_t *pids)
 	/*  Append the children onto the pid list */
 	for (l = children.head; l; l = l->next) {
 		p = (proc_info_t *)l->data;
-		if (!pid_find(p->pid, pids))
+		if (!pid_list_find(p->pid, pids))
 			list_append(pids, p);
 	}
 
@@ -2173,8 +2262,6 @@ static int pids_get_children(list_t *pids)
 
 	for (l = pids->head; l; l = l->next)
 		p = (proc_info_t *)l->data;
-
-	return 0;
 }
 
 /*
@@ -2185,7 +2272,6 @@ static double timeval_to_double(const struct timeval *tv)
 {
 	return (double)tv->tv_sec + ((double)tv->tv_usec / 1000000.0);
 }
-
 
 /*
  *  timeval_add()
@@ -2234,12 +2320,11 @@ static struct timeval timeval_sub(const struct timeval *a, const struct timeval 
 	return ret;
 }
 
-
 /*
- *  set_timer_stat()
+ *  timer_stat_set()
  *	enable/disable timer stat
  */
-static void set_timer_stat(const char *str, const bool carp)
+static void timer_stat_set(const char *str, const bool carp)
 {
 	FILE *fp;
 
@@ -2261,11 +2346,15 @@ static void set_timer_stat(const char *str, const bool carp)
  */
 static void health_check_exit(const int status)
 {
-	set_timer_stat("0", false);
+	timer_stat_set("0", false);
 
 	exit(status);
 }
 
+/*
+ *  event_free()
+ *	free event info
+ */
 static void event_free(void *data)
 {
 	event_info_t *ev = (event_info_t *)data;
@@ -2276,7 +2365,11 @@ static void event_free(void *data)
 	free(ev);
 }
 
-static int events_cmp(void *data1, void *data2)
+/*
+ *  event_cmp()
+ *	compare event info for sorting
+ */
+static int event_cmp(void *data1, void *data2)
 {
 	event_info_t *ev1 = (event_info_t *)data1;
 	event_info_t *ev2 = (event_info_t *)data2;
@@ -2301,7 +2394,7 @@ static void event_add(
 	proc_info_t	*p;
 
 	/* Does it exist? */
-	if ((p = find_proc_info_by_pid(pid)) == NULL)
+	if ((p = proc_cache_find_by_pid(pid)) == NULL)
 		return;
 
 	snprintf(ident, sizeof(ident), "%d:%s:%s:%s", pid, p->comm, func, callback);
@@ -2335,10 +2428,74 @@ static void event_add(
 		health_check_exit(EXIT_FAILURE);
 	}
 
-	list_add_ordered(events, ev, events_cmp);
+	list_add_ordered(events, ev, event_cmp);
 }
 
-static void dump_events_diff(double duration, list_t *events_old, list_t *events_new)
+/*
+ *  event_get()
+ *	scan /proc/timer_stats and populate a timer stat hash table with
+ *	unique events
+ */
+static void event_get(list_t *pids, list_t *events)
+{
+	FILE *fp;
+	char buf[4096];
+
+	if ((fp = fopen(TIMER_STATS, "r")) == NULL) {
+		fprintf(stderr, "Cannot open %s\n", TIMER_STATS);
+		return;
+	}
+
+	while (!feof(fp)) {
+		char *ptr = buf;
+		unsigned long count = -1;
+		pid_t event_pid = -1;
+		char comm[64];
+		char func[128];
+		char timer[128];
+		link_t *l;
+
+		if (fgets(buf, sizeof(buf), fp) == NULL)
+			break;
+
+		if (strstr(buf, "total events") != NULL)
+			break;
+
+		if (strstr(buf, ",") == NULL)
+			continue;
+
+		/* format: count[D], pid, comm, func (timer) */
+
+		while (*ptr && *ptr != ',')
+			ptr++;
+
+		if (*ptr != ',')
+			continue;
+
+		if (ptr > buf && *(ptr-1) == 'D')
+			continue;	/* Deferred event, skip */
+
+		ptr++;
+		sscanf(buf, "%lu", &count);
+		sscanf(ptr, "%d %s %s (%[^)])", &event_pid, comm, func, timer);
+
+		for (l = pids->head; l; l = l->next) {
+			proc_info_t *p = (proc_info_t *)l->data;
+			if (event_pid == p->pid) {
+				event_add(events, count, event_pid, func, timer);
+				break;
+			}
+		}
+	}
+
+	fclose(fp);
+}
+
+/*
+ *  event_dump_diff()
+ *	dump differences between old and new events
+ */
+static void event_dump_diff(double duration, list_t *events_old, list_t *events_new)
 {
 	link_t *ln, *lo;
 	event_info_t *evo, *evn;
@@ -2377,7 +2534,7 @@ static int cpustat_cmp(void *data1, void *data2)
 	return cpustat2->ttime - cpustat1->ttime;
 }
 
-static void dump_cpustat_diff(double duration, list_t *cpustat_old, list_t *cpustat_new)
+static void cpustat_dump_diff(double duration, list_t *cpustat_old, list_t *cpustat_new)
 {
 	double nr_ticks =
 		/* (double)sysconf(_SC_NPROCESSORS_CONF) * */
@@ -2427,6 +2584,100 @@ static void dump_cpustat_diff(double duration, list_t *cpustat_old, list_t *cpus
 
 	printf("\n");
 }
+
+/*
+ *  cpustat_get()
+ *
+ */
+static int cpustat_get(list_t *pids, list_t *cpustat)
+{
+	char filename[PATH_MAX];
+	FILE *fp;
+	link_t *l;
+
+	for (l = pids->head; l; l = l->next) {
+		proc_info_t *p = (proc_info_t *)l->data;
+
+		if (p->is_thread)
+			continue;
+
+		snprintf(filename, sizeof(filename), "/proc/%d/stat", p->pid);
+		if ((fp = fopen(filename, "r")) != NULL) {
+			char comm[20];
+			unsigned long utime, stime;
+			pid_t pid;
+
+			/* 3173 (a.out) R 3093 3173 3093 34818 3173 4202496 165 0 0 0 3194 0 */
+			if (fscanf(fp, "%d (%[^)]) %*c %*d %*d %*d %*d %*d %*u %*u %*u %*u %*u %lu %lu",
+				&pid, comm, &utime, &stime) == 4) {
+				cpustat_info_t *info;
+
+				info = calloc(1, sizeof(*info));
+				if (info == NULL) {
+					fprintf(stderr, "Out of memory\n");
+					health_check_exit(EXIT_FAILURE);
+				}
+				info->proc  = p;
+				info->utime = utime;
+				info->stime = stime;
+				info->ttime = utime + stime;
+				list_append(cpustat, info);
+			}
+			fclose(fp);
+		}
+	}
+
+	return 0;
+}
+
+
+
+/*
+ *  fnotify_event_init()
+ *	initialize fnotify
+ */
+static int fnotify_event_init(void)
+{
+	int fan_fd;
+	int ret;
+	FILE* mounts;
+	struct mntent* mount;
+
+	if ((fan_fd = fanotify_init (0, 0)) < 0) {
+		fprintf(stderr, "Cannot initialize fanotify: %s\n", strerror(errno));
+		return -1;
+	}
+
+	ret = fanotify_mark(fan_fd, FAN_MARK_ADD | FAN_MARK_MOUNT,
+		FAN_ACCESS| FAN_MODIFY | FAN_OPEN | FAN_CLOSE |  FAN_ONDIR | FAN_EVENT_ON_CHILD,
+		AT_FDCWD, "/");
+	if (ret < 0) {
+		fprintf(stderr, "Cannot add fanotify watch on /: %s\n", strerror(errno));
+	}
+
+	if ((mounts = setmntent("/proc/self/mounts", "r")) == NULL) {
+		fprintf(stderr, "Cannot get mount points\n");
+		return -1;
+	}
+
+	while ((mount = getmntent (mounts)) != NULL) {
+		if (access (mount->mnt_fsname, F_OK) != 0)
+			continue;
+
+		ret = fanotify_mark(fan_fd, FAN_MARK_ADD | FAN_MARK_MOUNT,
+			FAN_ACCESS| FAN_MODIFY | FAN_OPEN | FAN_CLOSE | FAN_ONDIR | FAN_EVENT_ON_CHILD,
+			AT_FDCWD, mount->mnt_dir);
+		if ((ret < 0) && (errno != ENOENT)) {
+			fprintf(stderr, "Cannot add watch on %s mount %s: %s\n",
+				mount->mnt_type, mount->mnt_dir, strerror (errno));
+		}
+	}
+
+	endmntent (mounts);
+
+	return fan_fd;
+}
+
 
 static void fnotify_event_free(void *data)
 {
@@ -2500,7 +2751,7 @@ static void fnotify_event_add(
 	close(metadata->fd);
 }
 
-static int fnotify_events_cmp_count(void *data1, void *data2)
+static int fnotify_event_cmp_count(void *data1, void *data2)
 {
 	fnotify_fileinfo_t *info1 = (fnotify_fileinfo_t *)data1;
 	fnotify_fileinfo_t *info2 = (fnotify_fileinfo_t *)data2;
@@ -2508,7 +2759,7 @@ static int fnotify_events_cmp_count(void *data1, void *data2)
 	return info2->count - info1->count;
 }
 
-static int fnotify_events_cmp_io_ops(void *data1, void *data2)
+static int fnotify_event_cmp_io_ops(void *data1, void *data2)
 {
 	io_ops_t *io_ops1 = (io_ops_t *)data1;
 	io_ops_t *io_ops2 = (io_ops_t *)data2;
@@ -2516,7 +2767,7 @@ static int fnotify_events_cmp_io_ops(void *data1, void *data2)
 	return io_ops2->total - io_ops1->total;
 }
 
-static void dump_fnotify_events(double duration, list_t *pids, list_t *fnotify_files)
+static void fnotify_dump_events(double duration, list_t *pids, list_t *fnotify_files)
 {
 	link_t 	*l;
 	link_t  *lp;
@@ -2531,7 +2782,7 @@ static void dump_fnotify_events(double duration, list_t *pids, list_t *fnotify_f
 	list_init(&sorted);
 	for (l = fnotify_files->head; l; l = l->next) {
 		fnotify_fileinfo_t *info = (fnotify_fileinfo_t *)l->data;
-		list_add_ordered(&sorted, info, fnotify_events_cmp_count);
+		list_add_ordered(&sorted, info, fnotify_event_cmp_count);
 	}
 
 	printf("   PID  Process               Count  Op  Filename\n");
@@ -2587,7 +2838,7 @@ static void dump_fnotify_events(double duration, list_t *pids, list_t *fnotify_f
 				io_ops->read_total + io_ops->write_total;
 
 		if (io_ops->total)
-			list_add_ordered(&sorted, io_ops, fnotify_events_cmp_io_ops);
+			list_add_ordered(&sorted, io_ops, fnotify_event_cmp_io_ops);
 	}
 
 	printf("File I/O Operations per second:\n");
@@ -2604,154 +2855,6 @@ static void dump_fnotify_events(double duration, list_t *pids, list_t *fnotify_f
 	}
 	printf("\n");
 	list_free(&sorted, free);
-}
-
-/*
- *  get_cpustat()
- *
- */
-static int get_cpustat(list_t *pids, list_t *cpustat)
-{
-	char filename[PATH_MAX];
-	FILE *fp;
-	link_t *l;
-
-	for (l = pids->head; l; l = l->next) {
-		proc_info_t *p = (proc_info_t *)l->data;
-
-		if (p->thread)
-			continue;
-
-		snprintf(filename, sizeof(filename), "/proc/%d/stat", p->pid);
-		if ((fp = fopen(filename, "r")) != NULL) {
-			char comm[20];
-			unsigned long utime, stime;
-			pid_t pid;
-
-			/* 3173 (a.out) R 3093 3173 3093 34818 3173 4202496 165 0 0 0 3194 0 */
-			if (fscanf(fp, "%d (%[^)]) %*c %*d %*d %*d %*d %*d %*u %*u %*u %*u %*u %lu %lu",
-				&pid, comm, &utime, &stime) == 4) {
-				cpustat_info_t *info;
-
-				info = calloc(1, sizeof(*info));
-				if (info == NULL) {
-					fprintf(stderr, "Out of memory\n");
-					health_check_exit(EXIT_FAILURE);
-				}
-				info->proc  = p;
-				info->utime = utime;
-				info->stime = stime;
-				info->ttime = utime + stime;
-				list_append(cpustat, info);
-			}
-			fclose(fp);
-		}
-	}
-
-	return 0;
-}
-
-
-/*
- *  get_events()
- *	scan /proc/timer_stats and populate a timer stat hash table with
- *	unique events
- */
-static void get_events(list_t *pids, list_t *events)
-{
-	FILE *fp;
-	char buf[4096];
-
-	if ((fp = fopen(TIMER_STATS, "r")) == NULL) {
-		fprintf(stderr, "Cannot open %s\n", TIMER_STATS);
-		return;
-	}
-
-	while (!feof(fp)) {
-		char *ptr = buf;
-		unsigned long count = -1;
-		pid_t event_pid = -1;
-		char comm[64];
-		char func[128];
-		char timer[128];
-		link_t *l;
-
-		if (fgets(buf, sizeof(buf), fp) == NULL)
-			break;
-
-		if (strstr(buf, "total events") != NULL)
-			break;
-
-		if (strstr(buf, ",") == NULL)
-			continue;
-
-		/* format: count[D], pid, comm, func (timer) */
-
-		while (*ptr && *ptr != ',')
-			ptr++;
-
-		if (*ptr != ',')
-			continue;
-
-		if (ptr > buf && *(ptr-1) == 'D')
-			continue;	/* Deferred event, skip */
-
-		ptr++;
-		sscanf(buf, "%lu", &count);
-		sscanf(ptr, "%d %s %s (%[^)])", &event_pid, comm, func, timer);
-
-		for (l = pids->head; l; l = l->next) {
-			proc_info_t *p = (proc_info_t *)l->data;
-			if (event_pid == p->pid) {
-				event_add(events, count, event_pid, func, timer);
-				break;
-			}
-		}
-	}
-
-	fclose(fp);
-}
-
-static int fnotify_init(void)
-{
-	int fan_fd;
-	int ret;
-	FILE* mounts;
-	struct mntent* mount;
-
-	if ((fan_fd = fanotify_init (0, 0)) < 0) {
-		fprintf(stderr, "Cannot initialize fanotify: %s\n", strerror(errno));
-		return -1;
-	}
-
-	ret = fanotify_mark(fan_fd, FAN_MARK_ADD | FAN_MARK_MOUNT,
-		FAN_ACCESS| FAN_MODIFY | FAN_OPEN | FAN_CLOSE |  FAN_ONDIR | FAN_EVENT_ON_CHILD,
-		AT_FDCWD, "/");
-	if (ret < 0) {
-		fprintf(stderr, "Cannot add fanotify watch on /: %s\n", strerror(errno));
-	}
-
-	if ((mounts = setmntent("/proc/self/mounts", "r")) == NULL) {
-		fprintf(stderr, "Cannot get mount points\n");
-		return -1;
-	}
-
-	while ((mount = getmntent (mounts)) != NULL) {
-		if (access (mount->mnt_fsname, F_OK) != 0)
-			continue;
-
-		ret = fanotify_mark(fan_fd, FAN_MARK_ADD | FAN_MARK_MOUNT,
-			FAN_ACCESS| FAN_MODIFY | FAN_OPEN | FAN_CLOSE | FAN_ONDIR | FAN_EVENT_ON_CHILD,
-			AT_FDCWD, mount->mnt_dir);
-		if ((ret < 0) && (errno != ENOENT)) {
-			fprintf(stderr, "Cannot add watch on %s mount %s: %s\n",
-				mount->mnt_type, mount->mnt_dir, strerror (errno));
-		}
-	}
-
-	endmntent (mounts);
-
-	return fan_fd;
 }
 
 /*
@@ -2780,13 +2883,13 @@ static int parse_pid_list(char *arg, list_t *pids)
 			pid_t pid;
 
 			pid = atoi(token);
-			if ((p = find_proc_info_by_pid(pid)) == NULL) {
+			if ((p = proc_cache_find_by_pid(pid)) == NULL) {
 				fprintf(stderr, "Cannot find process with PID %i\n", pid);
 				return -1;
 			}
 			list_append(pids, p);
 		} else {
-			if (find_proc_info_by_procname(pids, token) < 0) {
+			if (proc_cache_find_by_procname(pids, token) < 0) {
 				return -1;
 			}
 		}
@@ -2816,10 +2919,10 @@ int main(int argc, char **argv)
 	list_init(&pids);
 	list_init(&proc_cache);
 
-	get_proc_cache();
-	get_proc_cache_pthreads();
+	proc_cache_get();
+	proc_cache_get_pthreads();
 #if DUMP_PROC_CACHE
-	dump_proc_cache();
+	proc_cache_dump();
 #endif
 
 	for (;;) {
@@ -2861,14 +2964,14 @@ int main(int argc, char **argv)
 		}
 	}
 	if (opt_flags & OPT_GET_CHILDREN)
-		pids_get_children(&pids);
+		pid_list_get_children(&pids);
 
 	if (opt_duration_secs < 0.5) {
 		fprintf(stderr, "Duration must 0.5 or more.\n");
 		health_check_exit(EXIT_FAILURE);
 	}
 
-	if ((fan_fd = fnotify_init()) < 0) {
+	if ((fan_fd = fnotify_event_init()) < 0) {
 		health_check_exit(EXIT_FAILURE);
 	}
 
@@ -2881,12 +2984,12 @@ int main(int argc, char **argv)
 	signal(SIGINT, &handle_sigint);
 	for (l = pids.head; l; l = l->next) {
 		proc_info_t *p = (proc_info_t *)l->data;
-		if (!p->thread)
+		if (!p->is_thread)
 			pthread_create(&p->pthread, NULL, syscall_trace, &p->pid);
 	}
 
 	/* Should really catch signals and set back to zero before we die */
-	set_timer_stat("1", true);
+	timer_stat_set("1", true);
 
 	duration.tv_sec = (time_t)opt_duration_secs;
 	duration.tv_usec = (suseconds_t)(opt_duration_secs * 1000000.0) - (duration.tv_sec * 1000000);
@@ -2894,8 +2997,8 @@ int main(int argc, char **argv)
 	gettimeofday(&tv_start, NULL);
 	tv_end = timeval_add(&tv_start, &duration);
 
-	get_events(&pids, &event_info_old);
-	get_cpustat(&pids, &cpustat_info_old);
+	event_get(&pids, &event_info_old);
+	cpustat_get(&pids, &cpustat_info_old);
 
 	gettimeofday(&tv_now, NULL);
 	duration = timeval_sub(&tv_end, &tv_now);
@@ -2934,15 +3037,14 @@ int main(int argc, char **argv)
 	duration = timeval_sub(&tv_now, &tv_start);
 	actual_duration = timeval_to_double(&duration);
 
-	get_events(&pids, &event_info_new);
-	get_cpustat(&pids, &cpustat_info_new);
+	event_get(&pids, &event_info_new);
+	cpustat_get(&pids, &cpustat_info_new);
 
-	dump_cpustat_diff(actual_duration, &cpustat_info_old, &cpustat_info_new);
-	dump_events_diff(actual_duration, &event_info_old, &event_info_new);
-	dump_fnotify_events(actual_duration, &pids, &fnotify_files);
-
-	hash_syscall_dump(actual_duration);
-	syscall_pollers(actual_duration);
+	cpustat_dump_diff(actual_duration, &cpustat_info_old, &cpustat_info_new);
+	event_dump_diff(actual_duration, &event_info_old, &event_info_new);
+	fnotify_dump_events(actual_duration, &pids, &fnotify_files);
+	syscall_dump_hashtable(actual_duration);
+	syscall_dump_pollers(actual_duration);
 
 out:
 	free(buffer);
@@ -2952,7 +3054,7 @@ out:
 	list_free(&cpustat_info_old, free);
 	list_free(&cpustat_info_new, free);
 	list_free(&fnotify_files, fnotify_event_free);
-	list_free(&proc_cache, free_pid_info);
+	list_free(&proc_cache, proc_cache_info_free);
 
 	pthread_mutex_destroy(&ptrace_mutex);
 
