@@ -1,6 +1,7 @@
 VERSION=0.01.02
 
 CFLAGS += -g -Wall -DVERSION='"$(VERSION)"'
+LDFLAGS += -lpthread
 
 BINDIR=/usr/bin
 MANDIR=/usr/share/man/man8
