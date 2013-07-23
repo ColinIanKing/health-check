@@ -52,8 +52,8 @@
 
 #define	OPT_GET_CHILDREN		0x00000001
 
-#define MAX_BUCKET			(11)
-#define BUCKET_START			(0.0000001)
+#define MAX_BUCKET			(9)
+#define BUCKET_START			(0.00001)
 
 #define SYSCALL(n) \
 	[SYS_ ## n] = { #n, SYS_ ## n, 0, NULL, NULL }
@@ -1680,12 +1680,12 @@ void syscall_timeout_sec(const int arg, syscall_info_t *s, const pid_t pid, cons
 }
 
 /*
- *  syscall_format_time()
+ *  syscall_timeout_to_human_time()
  *	convert timeout time into something human readable
  */
-void syscall_format_time(char *buffer, const size_t len, const double timeout, const bool end)
+char *syscall_timeout_to_human_time(const double timeout, const bool end, char *buffer, const size_t len)
 {
-	char *units[] = { "s ", "ms", "us", "ns", "ps" };
+	char *units[] = { "sec", "msec", "usec", "nsec", "psec" };
 	int i;
 	double t = timeout;
 
@@ -1700,7 +1700,9 @@ void syscall_format_time(char *buffer, const size_t len, const double timeout, c
 		t -= 0.1;
 	}
 
-	snprintf(buffer, len, "%5.1f %s", t, units[i]);
+	snprintf(buffer, len, "%5.1f", t);
+
+	return units[i];
 }
 
 /*
@@ -1727,7 +1729,8 @@ void syscall_dump_pollers(const double duration)
 	}
 
 	if (sorted.head) {
-		double prev, bucket = BUCKET_START;
+		double prev, bucket;
+		char tmp[64], *units;
 
 		printf("\nTop Polling System Calls:\n");
 		printf("Count   PID  Syscall             Rate/Sec   Infinite   Zero       Minimum        Maximum        Average     %% BAD\n");
@@ -1754,47 +1757,51 @@ void syscall_dump_pollers(const double duration)
 		}
 
 		printf("\nDistribution of poll timeout times:\n");
-		printf("          System call : ");
-		for (l = sorted.head; l; l = l->next) {
-			char name[32];
-			syscall_info_t *s = (syscall_info_t *)l->data;
-			syscall_name(s->syscall, name, sizeof(name));
-			printf("%10.10s ", name);
-		}
-		printf("\n");
-		printf("                  PID : ");
-		for (l = sorted.head; l; l = l->next) {
-			syscall_info_t *s = (syscall_info_t *)l->data;
-			printf("    %6u ", s->pid);
-		}
-		printf("\n");
-		printf("                 zero :");
-		for (l = sorted.head; l; l = l->next) {
-			syscall_info_t *s = (syscall_info_t *)l->data;
-			printf(" %10lu", s->poll_zero);
-		}
-		printf("\n");
 
-		for (i = 0; i < MAX_BUCKET; i++) {
-			char t1[64], t2[64];
-			syscall_format_time(t1, sizeof(t1), prev, false);
-			syscall_format_time(t2, sizeof(t2), bucket, true);
-			printf("%9.9s - %9.9s :",
-				i == 0 ? "" : t1,
-				i == (MAX_BUCKET-1) ? "" : t2);
-
-			for (l = sorted.head; l; l = l->next) {
-				syscall_info_t *s = (syscall_info_t *)l->data;
-				printf(" %10lu", s->bucket[i]);
-			}
-			printf("\n");
+		printf("                             ");
+		for (prev = 0.0, bucket = BUCKET_START, i = 0; i < MAX_BUCKET; i++, bucket *= 10.0) {
+			units = syscall_timeout_to_human_time(prev, false, tmp, sizeof(tmp));
+			printf(" %6s", i == 0 ? "" : tmp);
 			prev = bucket;
-			bucket *= 10;
 		}
-		printf("           indefinite :");
+		printf("\n");
+		printf("                             ");
+		for (bucket = BUCKET_START, i = 0; i < MAX_BUCKET; i++) {
+			if (i == 0)
+				printf("  up to");
+			else if (i == MAX_BUCKET - 1)
+				printf(" or more");
+			else
+				printf("    to ");
+		}
+		printf("\n");
+
+		printf("                         Zero");
+		for (bucket = BUCKET_START, i = 0; i < MAX_BUCKET; i++, bucket *= 10.0) {
+			units = syscall_timeout_to_human_time(bucket, true, tmp, sizeof(tmp));
+			printf(" %6s", i == (MAX_BUCKET-1) ? "" : tmp);
+		}
+		printf(" Infinite\n");
+		printf("Syscall            PID    sec");
+		for (bucket = BUCKET_START, i = 0; i < MAX_BUCKET; i++, bucket *= 10.0) {
+			units = syscall_timeout_to_human_time(bucket, true, tmp, sizeof(tmp));
+			printf(" %6s", units);
+		}
+		printf("   Wait\n");
+		
 		for (l = sorted.head; l; l = l->next) {
 			syscall_info_t *s = (syscall_info_t *)l->data;
-			printf(" %10lu", s->poll_infinite);
+
+			syscall_name(s->syscall, tmp, sizeof(tmp));
+			printf("%-15.15s %6u %6lu", tmp, s->pid, s->poll_zero);
+			for (i = 0; i < MAX_BUCKET; i++)
+				if (s->bucket[i])
+					printf(" %6lu", s->bucket[i]);
+				else
+					printf("     - ");
+				
+			printf(" %6lu", s->poll_infinite);
+			printf("\n");
 		}
 		printf("\n");
 	}
