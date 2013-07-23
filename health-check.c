@@ -168,7 +168,7 @@ static void sys_semtimedop_ret(syscall_t *sc, syscall_info_t *s);
 static void sys_mq_timedreceive_ret(syscall_t *sc, syscall_info_t *s);
 static void sys_mq_timedsend_ret(syscall_t *sc, syscall_info_t *s);
 
-static bool keep_running = true;
+volatile static bool keep_running = true;
 static int  opt_flags;
 static list_t	proc_cache;
 static pthread_mutex_t ptrace_mutex = PTHREAD_MUTEX_INITIALIZER;
@@ -1914,18 +1914,18 @@ static void syscall_dump_pollers(const double duration)
 			printf(" %6s", units);
 		}
 		printf("   Wait\n");
-		
+
 		for (l = sorted.head; l; l = l->next) {
 			syscall_info_t *s = (syscall_info_t *)l->data;
 
 			syscall_name(s->syscall, tmp, sizeof(tmp));
 			printf("%-15.15s %6u %6lu", tmp, s->pid, s->poll_zero);
-			for (i = 0; i < MAX_BUCKET; i++)
+			for (i = 0; i < MAX_BUCKET; i++) {
 				if (s->bucket[i])
 					printf(" %6lu", s->bucket[i]);
 				else
 					printf("     - ");
-				
+			}
 			printf(" %6lu", s->poll_infinite);
 			printf("\n");
 		}
@@ -2008,7 +2008,7 @@ static void syscall_count(const pid_t pid, const int syscall, const int ret)
  */
 static int syscall_wait(const pid_t pid)
 {
-	for (;;) {
+	while (keep_running) {
 		int status;
 		ptrace(PTRACE_SYSCALL, pid, 0, 0);
 		waitpid(pid, &status, 0);
@@ -2018,6 +2018,7 @@ static int syscall_wait(const pid_t pid)
 		if (WIFEXITED(status))
 			return 1;
 	}
+	return 1;
 }
 
 /*
@@ -2037,18 +2038,16 @@ static void *syscall_trace(void *arg)
 	while (keep_running) {
 		if (syscall_wait(pid))
 			break;
-
 		syscall = syscall_get_call(pid);
 		if (syscall_wait(pid))
 			break;
-
 		ret = syscall_get_ret(pid);
 		/* printf("%s --> %d\n", syscalls[syscall].name, ret); */
 		syscall_count(pid, syscall, ret);
 	}
-	pthread_exit(0);
 
-	return NULL;
+	ptrace(PTRACE_DETACH, pid, 0, 0);
+	pthread_exit(0);
 }
 
 /*
@@ -2058,6 +2057,8 @@ static void *syscall_trace(void *arg)
 static void handle_sigint(int dummy)
 {
 	(void)dummy;    /* Stop unused parameter warning with -Wextra */
+
+	printf("PID got sigint! %d\n", getpid());
 
 	keep_running = false;
 }
@@ -3048,7 +3049,7 @@ int main(int argc, char **argv)
 	double opt_duration_secs = 10.0;
 	struct timeval tv_start, tv_end, tv_now, duration;
 	double actual_duration;
-	int ret;
+	int ret, rc = EXIT_SUCCESS;
 	list_t		event_info_old, event_info_new;
 	list_t		fnotify_files, pids;
 	list_t		cpustat_info_old, cpustat_info_new;
@@ -3129,8 +3130,12 @@ int main(int argc, char **argv)
 	signal(SIGINT, &handle_sigint);
 	for (l = pids.head; l; l = l->next) {
 		proc_info_t *p = (proc_info_t *)l->data;
-		if (!p->is_thread)
-			pthread_create(&p->pthread, NULL, syscall_trace, &p->pid);
+		if (!p->is_thread) {
+			if (pthread_create(&p->pthread, NULL, syscall_trace, &p->pid) < 0) {
+				fprintf(stderr, "Failed to create tracing thread for pid %i\n", p->pid);
+				goto out;
+			}
+		}
 	}
 
 	/* Should really catch signals and set back to zero before we die */
@@ -3178,12 +3183,14 @@ int main(int argc, char **argv)
 		gettimeofday(&tv_now, NULL);
 		duration = timeval_sub(&tv_end, &tv_now);
 	}
+	keep_running = false;
 
 	duration = timeval_sub(&tv_now, &tv_start);
 	actual_duration = timeval_to_double(&duration);
 
 	event_get(&pids, &event_info_new);
 	cpustat_get(&pids, &cpustat_info_new);
+
 
 	cpustat_dump_diff(actual_duration, &cpustat_info_old, &cpustat_info_new);
 	event_dump_diff(actual_duration, &event_info_old, &event_info_new);
@@ -3192,6 +3199,12 @@ int main(int argc, char **argv)
 	syscall_dump_pollers(actual_duration);
 
 out:
+	for (l = pids.head; l; l = l->next) {
+		proc_info_t *p = (proc_info_t *)l->data;
+		if (!p->is_thread && p->pthread)
+			pthread_join(p->pthread, NULL);
+	}
+
 	free(buffer);
 	list_free(&pids, NULL);
 	list_free(&event_info_old, event_free);
@@ -3203,5 +3216,5 @@ out:
 
 	pthread_mutex_destroy(&ptrace_mutex);
 
-	health_check_exit(EXIT_SUCCESS);
+	health_check_exit(rc);
 }
