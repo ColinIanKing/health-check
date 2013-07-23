@@ -1522,6 +1522,14 @@ void syscall_check_timeout(syscall_info_t *s, double timeout, double threshold)
 		pthread_mutex_unlock(&ptrace_mutex);
 		return;
 	}
+
+	if (timeout == 0.0) {
+		s->poll_zero++;
+		s->poll_too_low++;
+		pthread_mutex_unlock(&ptrace_mutex);
+		return;
+	}
+
 	if (s->poll_min < 0.0) {
 		s->poll_min = timeout;
 		s->poll_max = timeout;
@@ -1532,13 +1540,9 @@ void syscall_check_timeout(syscall_info_t *s, double timeout, double threshold)
 			s->poll_max = timeout;
 	}
 	s->poll_total += timeout;
+	s->bucket[bucket]++;
 	if (timeout <= threshold)
 		s->poll_too_low++;
-
-	if (timeout == 0.0)
-		s->poll_zero++;
-	else
-		s->bucket[bucket]++;
 
 	pthread_mutex_unlock(&ptrace_mutex);
 }
