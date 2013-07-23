@@ -56,10 +56,10 @@
 #define BUCKET_START			(0.00001)
 
 #define SYSCALL(n) \
-	[SYS_ ## n] = { #n, SYS_ ## n, 0, NULL, NULL }
+	[SYS_ ## n] = { #n, SYS_ ## n, 0, NULL, NULL, NULL }
 
-#define SYSCALL_TIMEOUT(n, arg, func) \
-	[SYS_ ## n] = { #n, SYS_ ## n, arg, &timeout[SYS_ ## n], func }
+#define SYSCALL_TIMEOUT(n, arg, func_check, func_ret) \
+	[SYS_ ## n] = { #n, SYS_ ## n, arg, &timeout[SYS_ ## n], func_check, func_ret }
 
 #define TIMEOUT(n, timeout) \
 	[SYS_ ## n] = timeout
@@ -78,6 +78,11 @@ typedef struct {
 typedef void (*list_link_free_t)(void *);
 typedef int  (*list_comp_t)(void *, void *);
 
+typedef struct {
+	double		timeout;
+	int		ret;
+} syscall_return_info_t;
+
 typedef struct syscall_info {
 	pid_t		pid;		/* caller's pid */
 	int 		syscall;	/* system call number */
@@ -90,18 +95,24 @@ typedef struct syscall_info {
 	unsigned long	poll_infinite;	/* number of -ve (infinite) poll times */
 	unsigned long	poll_zero;	/* number of zero poll times */
 	unsigned long 	bucket[MAX_BUCKET]; /* bucket count of poll times */
+	list_t		return_history;	/* history system call returns */
 	struct syscall_info *next;
 } syscall_info_t;
 
-typedef void (*check_func_t)(int arg, syscall_info_t *s, pid_t pid, double threshold);
+typedef struct syscall syscall_t;
 
-typedef struct {
+typedef void (*check_timeout_func_t)(syscall_t *sc, syscall_info_t *s, pid_t pid, double threshold, int ret);
+typedef void (*check_return_func_t)(syscall_t *sc, syscall_info_t *s);
+
+typedef struct syscall {
 	char 		*name;		/* name of the syscall */
 	int  		syscall;	/* system call number */
 	int		arg;		/* nth arg to check for timeout value (1st arg is zero) */
 	double		*threshold;	/* threshold - points to timeout array items indexed by syscall */
-	check_func_t	check_func;	/* timeout checking function, NULL means don't check */
+	check_timeout_func_t check_func;/* timeout checking function, NULL means don't check */
+	check_return_func_t  check_ret; /* return checking function, NULL means don't check */
 } syscall_t;
+
 
 typedef struct {
 	pid_t		pid;		/* PID */
@@ -143,12 +154,19 @@ typedef struct {
 	proc_info_t   	*proc;		/* process information */
 } io_ops_t;
 
-int  syscall_getargs(pid_t pid, int n_args, unsigned long args[]);
-void syscall_timeout_millisec(int arg, syscall_info_t *s, pid_t pid, double threshold);
-void syscall_timeout_sec(int arg, syscall_info_t *s, pid_t pid, double threshold);
-void syscall_timespec_timeout(int arg, syscall_info_t *s, pid_t pid, double threshold);
-void syscall_timeval_timeout(int arg, syscall_info_t *s, pid_t pid, double threshold);
+typedef void (*check_timeout_func_t)(syscall_t *sc, syscall_info_t *s, pid_t pid, double threshold, int ret);
+
+static int  syscall_get_args(pid_t pid, int n_args, unsigned long args[]);
+static void syscall_timeout_millisec(syscall_t *sc, syscall_info_t *s, pid_t pid, double threshold, int ret);
+static void syscall_timeout_sec(syscall_t *sc, syscall_info_t *s, pid_t pid, double threshold, int ret);
+static void syscall_timespec_timeout(syscall_t *sc, syscall_info_t *s, pid_t pid, double threshold, int ret);
+static void syscall_timeval_timeout(syscall_t *sc, syscall_info_t *s, pid_t pid, double threshold, int ret);
 static void health_check_exit(const int status) __attribute__ ((noreturn));
+static void sys_nanosleep_generic_ret(syscall_t *sc, syscall_info_t *s);
+static void sys_poll_generic_ret(syscall_t *sc, syscall_info_t *s);
+static void sys_semtimedop_ret(syscall_t *sc, syscall_info_t *s);
+static void sys_mq_timedreceive_ret(syscall_t *sc, syscall_info_t *s);
+static void sys_mq_timedsend_ret(syscall_t *sc, syscall_info_t *s);
 
 static bool keep_running = true;
 static int  opt_flags;
@@ -156,7 +174,6 @@ static list_t	proc_cache;
 static pthread_mutex_t ptrace_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 static double timeout[] = {
-	TIMEOUT(alarm, 1.0),
 	TIMEOUT(clock_nanosleep, 1.0),
 	TIMEOUT(epoll_pwait, 1.0),
 	TIMEOUT(epoll_wait, 1.0),
@@ -198,7 +215,7 @@ static syscall_t syscalls[] = {
 	SYSCALL(afs_syscall),
 #endif
 #ifdef SYS_alarm
-	SYSCALL_TIMEOUT(alarm, 0, syscall_timeout_sec),
+	SYSCALL(alarm),
 #endif
 #ifdef SYS_arch_prctl
 	SYSCALL(arch_prctl),
@@ -246,7 +263,7 @@ static syscall_t syscalls[] = {
 	SYSCALL(clock_gettime),
 #endif
 #ifdef SYS_clock_nanosleep
-	SYSCALL_TIMEOUT(clock_nanosleep, 2, syscall_timespec_timeout),
+	SYSCALL_TIMEOUT(clock_nanosleep, 2, syscall_timespec_timeout, sys_nanosleep_generic_ret),
 #endif
 #ifdef SYS_clock_settime
 	SYSCALL(clock_settime),
@@ -291,10 +308,10 @@ static syscall_t syscalls[] = {
 	SYSCALL(epoll_ctl_old),
 #endif
 #ifdef SYS_epoll_pwait
-	SYSCALL_TIMEOUT(epoll_pwait, 3, syscall_timeout_millisec),
+	SYSCALL_TIMEOUT(epoll_pwait, 3, syscall_timeout_millisec, sys_poll_generic_ret),
 #endif
 #ifdef SYS_epoll_wait
-	SYSCALL_TIMEOUT(epoll_wait, 3, syscall_timeout_millisec),
+	SYSCALL_TIMEOUT(epoll_wait, 3, syscall_timeout_millisec, sys_poll_generic_ret),
 #endif
 #ifdef SYS_epoll_wait_old
 	SYSCALL(epoll_wait_old),
@@ -702,10 +719,10 @@ static syscall_t syscalls[] = {
 	SYSCALL(mq_open),
 #endif
 #ifdef SYS_mq_timedreceive
-	SYSCALL_TIMEOUT(mq_timedreceive, 4, syscall_timespec_timeout),
+	SYSCALL_TIMEOUT(mq_timedreceive, 4, syscall_timespec_timeout, sys_mq_timedreceive_ret),
 #endif
 #ifdef SYS_mq_timedsend
-	SYSCALL_TIMEOUT(mq_timedsend, 4, syscall_timespec_timeout),
+	SYSCALL_TIMEOUT(mq_timedsend, 4, syscall_timespec_timeout, sys_mq_timedsend_ret),
 #endif
 #ifdef SYS_mq_unlink
 	SYSCALL(mq_unlink),
@@ -741,7 +758,7 @@ static syscall_t syscalls[] = {
 	SYSCALL(name_to_handle_at),
 #endif
 #ifdef SYS_nanosleep
-	SYSCALL_TIMEOUT(nanosleep, 0, syscall_timespec_timeout),
+	SYSCALL_TIMEOUT(nanosleep, 0, syscall_timespec_timeout, sys_nanosleep_generic_ret),
 #endif
 #ifdef SYS_newfstatat
 	SYSCALL(newfstatat),
@@ -798,10 +815,10 @@ static syscall_t syscalls[] = {
 	SYSCALL(pivot_root),
 #endif
 #ifdef SYS_poll
-	SYSCALL_TIMEOUT(poll, 2, syscall_timeout_millisec),
+	SYSCALL_TIMEOUT(poll, 2, syscall_timeout_millisec, sys_poll_generic_ret),
 #endif
 #ifdef SYS_ppoll
-	SYSCALL_TIMEOUT(ppoll, 2, syscall_timespec_timeout),
+	SYSCALL_TIMEOUT(ppoll, 2, syscall_timespec_timeout, sys_poll_generic_ret),
 #endif
 #ifdef SYS_prctl
 	SYSCALL(prctl),
@@ -828,7 +845,7 @@ static syscall_t syscalls[] = {
 	SYSCALL(profil),
 #endif
 #ifdef SYS_pselect6
-	SYSCALL_TIMEOUT(pselect6, 4, syscall_timespec_timeout),
+	SYSCALL_TIMEOUT(pselect6, 4, syscall_timespec_timeout, sys_poll_generic_ret),
 #endif
 #ifdef SYS_ptrace
 	SYSCALL(ptrace),
@@ -873,7 +890,7 @@ static syscall_t syscalls[] = {
 	SYSCALL(recvfrom),
 #endif
 #ifdef SYS_recvmmsg
-	SYSCALL_TIMEOUT(recvmmsg, 4, syscall_timespec_timeout),
+	SYSCALL_TIMEOUT(recvmmsg, 4, syscall_timespec_timeout, NULL),
 #endif
 #ifdef SYS_recvmsg
 	SYSCALL(recvmsg),
@@ -918,7 +935,7 @@ static syscall_t syscalls[] = {
 	SYSCALL(rt_sigsuspend),
 #endif
 #ifdef SYS_rt_sigtimedwait
-	SYSCALL_TIMEOUT(rt_sigtimedwait, 2, syscall_timespec_timeout),
+	SYSCALL_TIMEOUT(rt_sigtimedwait, 2, syscall_timespec_timeout, sys_poll_generic_ret),
 #endif
 #ifdef SYS_rt_tgsigqueueinfo
 	SYSCALL(rt_tgsigqueueinfo),
@@ -957,7 +974,7 @@ static syscall_t syscalls[] = {
 	SYSCALL(security),
 #endif
 #ifdef SYS_select
-	SYSCALL_TIMEOUT(select, 4, syscall_timespec_timeout),
+	SYSCALL_TIMEOUT(select, 4, syscall_timespec_timeout, sys_poll_generic_ret),
 #endif
 #ifdef SYS_semctl
 	SYSCALL(semctl),
@@ -969,7 +986,7 @@ static syscall_t syscalls[] = {
 	SYSCALL(semop),
 #endif
 #ifdef SYS_semtimedop
-	SYSCALL_TIMEOUT(semtimedop, 3, syscall_timespec_timeout),
+	SYSCALL_TIMEOUT(semtimedop, 3, syscall_timespec_timeout, sys_semtimedop_ret),
 #endif
 #ifdef SYS_sendfile
 	SYSCALL(sendfile),
@@ -1417,11 +1434,83 @@ static inline bool syscall_valid(const int syscall)
 	return (syscall > 0) && (syscall <= (int)ARRAY_SIZE(syscalls));
 }
 
+static void sys_nanosleep_generic_ret(syscall_t *sc, syscall_info_t *s)
+{
+	link_t *l;
+
+	unsigned long ret_error = 0;
+
+	for (l = s->return_history.head; l; l = l->next) {
+		syscall_return_info_t *ret = (syscall_return_info_t *)l->data;
+		if (ret->ret != 0)
+			ret_error++;
+	}
+
+	if (ret_error)
+		printf("%-15.15s %6i %lu errors\n",
+			sc->name, s->pid, ret_error);
+}
+
+static void sys_poll_generic_ret(syscall_t *sc, syscall_info_t *s)
+{
+	link_t *l;
+	int prev_ret = -1;
+	double prev_timeout = -1.0;
+	unsigned long zero_timeout_repeats = 0;
+	unsigned long zero_timeouts = 0;
+	unsigned long timeout_repeats = 0;
+	unsigned long ret_error = 0;
+
+	for (l = s->return_history.head; l; l = l->next) {
+		syscall_return_info_t *ret = (syscall_return_info_t *)l->data;
+
+		/* Timed out? */
+		if (ret->ret == 0) {
+			/* And the timeout time was zero, we're abusing the poll */
+			if (ret->timeout == 0.0) {
+				zero_timeouts++;
+				/* And if the previous poll was also abusive.. */
+				if (prev_ret == 0) {
+					if (prev_timeout == 0.0) {
+						/* somebody is polling hard and wasting cycles */
+						zero_timeout_repeats++;
+					} else {
+						/* polling, but not so hard */
+						timeout_repeats++;
+					}
+				}
+			}
+		} else if (ret->ret < 0)
+			ret_error++;
+		prev_ret = ret->ret;
+	}
+
+	if (zero_timeouts + zero_timeout_repeats + ret_error > 0) {
+		printf("%-15.15s %6i %lu zero timeouts, %lu repeated timeouts, %lu repeated zero timeouts (heavy polling), %lu errors\n",
+			sc->name, s->pid, zero_timeouts, timeout_repeats, zero_timeout_repeats, ret_error);
+	}
+}
+
+static void sys_semtimedop_ret(syscall_t *sc, syscall_info_t *s)
+{
+	/* No-op for now, need to examine errno */
+}
+
+static void sys_mq_timedreceive_ret(syscall_t *sc, syscall_info_t *s)
+{
+	/* No-op for now, need to examine errno */
+}
+
+static void sys_mq_timedsend_ret(syscall_t *sc, syscall_info_t *s)
+{
+	/* No-op for now, need to examine errno */
+}
+
 /*
  *  syscall_get_call()
  *	get syscall number
  */
-int syscall_get_call(const pid_t pid)
+static int syscall_get_call(const pid_t pid)
 {
 #if defined(__x86_64__)
 	return ptrace(PTRACE_PEEKUSER, pid, 8 * ORIG_RAX, NULL);
@@ -1441,14 +1530,26 @@ int syscall_get_call(const pid_t pid)
 #endif
 }
 
+static int syscall_get_ret(const pid_t pid)
+{
+#if defined (__x86_64__)
+	return ptrace(PTRACE_PEEKUSER, pid, sizeof(long) * RAX, NULL);
+#elif defined (__i386__)
+	return ptrace(PTRACE_PEEKUSER, pid, sizeof(long) * EAX, NULL);
+#else
+	fprintf(stderr, "Unknown arch\n");
+	return -1;
+#endif
+}
+
 /*
- *  syscall_getargs()
+ *  syscall_get_args()
  *	fetch n args from system call
  */
-int syscall_getargs(const pid_t pid, const int arg, unsigned long args[])
+static int syscall_get_args(const pid_t pid, const int arg, unsigned long args[])
 {
 	int n_args = arg > 6 ? 6 : arg;
-#if defined (I386)
+#if defined (__i386__)
 	return 0;
 #elif defined (__x86_64__)
 	int i;
@@ -1483,7 +1584,7 @@ int syscall_getargs(const pid_t pid, const int arg, unsigned long args[])
  *  syscall_name
  *	get system call name
  */
-void syscall_name(const int syscall, char *name, const size_t len)
+static void syscall_name(const int syscall, char *name, const size_t len)
 {
 	if (syscall_valid(syscall) && (syscalls[syscall].name)) {
 		strncpy(name, syscalls[syscall].name, len);
@@ -1493,11 +1594,27 @@ void syscall_name(const int syscall, char *name, const size_t len)
 	}
 }
 
+static void syscall_append_return(syscall_t *sc, syscall_info_t *s, const pid_t pid, const double timeout, int ret)
+{
+	syscall_return_info_t *info;
+
+	if ((info = (syscall_return_info_t *)calloc(1, sizeof(*info))) == NULL) {
+		fprintf(stderr, "Out of memory\n");
+		health_check_exit(EXIT_FAILURE);
+	}
+
+	info->timeout = timeout;
+	info->ret = ret;
+	pthread_mutex_lock(&ptrace_mutex);
+	list_append(&s->return_history, info);
+	pthread_mutex_unlock(&ptrace_mutex);
+}
+
 /*
  *  hash_syscall()
  *	hash syscall and pid
  */
-unsigned long hash_syscall(const pid_t pid, const int syscall)
+static unsigned long hash_syscall(const pid_t pid, const int syscall)
 {
 	unsigned long h;
 
@@ -1511,7 +1628,7 @@ unsigned long hash_syscall(const pid_t pid, const int syscall)
  *  syscall_count_cmp()
  *	syscall usage count sort comparitor
  */
-int syscall_count_cmp(void *data1, void *data2)
+static int syscall_count_cmp(void *data1, void *data2)
 {
 	syscall_info_t *s1 = (syscall_info_t *)data1;
 	syscall_info_t *s2 = (syscall_info_t *)data2;
@@ -1523,7 +1640,7 @@ int syscall_count_cmp(void *data1, void *data2)
  *  syscall_dump_hashtable
  *	dump syscall hashtable stats
  */
-void syscall_dump_hashtable(const double duration)
+static void syscall_dump_hashtable(const double duration)
 {
 	list_t sorted;
 	link_t *l;
@@ -1556,7 +1673,7 @@ void syscall_dump_hashtable(const double duration)
  *  syscall_count_timeout
  *	gather stats on timeout
  */
-void syscall_count_timeout(syscall_info_t *s, const double timeout, const double threshold)
+static void syscall_count_timeout(syscall_t *sc, syscall_info_t *s, const pid_t pid, const double timeout, const double threshold, const int ret)
 {
 	double t = BUCKET_START;
 	int bucket = 0;
@@ -1604,7 +1721,7 @@ void syscall_count_timeout(syscall_info_t *s, const double timeout, const double
  *  syscall_get_arg_data()
  *	gather dereferenced arg data
  */
-void syscall_get_arg_data(const unsigned long addr, const pid_t pid, void *data, const size_t len)
+static void syscall_get_arg_data(const unsigned long addr, const pid_t pid, void *data, const size_t len)
 {
 	size_t i, n = (len + sizeof(unsigned long) - 1) / sizeof(unsigned long);
 	unsigned long tmpdata[n];
@@ -1619,71 +1736,80 @@ void syscall_get_arg_data(const unsigned long addr, const pid_t pid, void *data,
  *  syscall_timeval_timeout()
  *	keep tally of timeval timeouts
  */
-void syscall_timeval_timeout(const int arg, syscall_info_t *s, const pid_t pid, const double threshold)
+static void syscall_timeval_timeout(syscall_t *sc, syscall_info_t *s, const pid_t pid, const double threshold, int ret)
 {
-	unsigned long args[arg + 1];
+	unsigned long args[sc->arg + 1];
 	struct timeval timeout;
 	double t;
 
-	syscall_getargs(pid, arg, args);
-	if (args[arg] == 0)
+	syscall_get_args(pid, sc->arg, args);
+	if (args[sc->arg] == 0)
 		return;
 
-	syscall_get_arg_data(args[arg], pid, &timeout, sizeof(timeout));
+	syscall_get_arg_data(args[sc->arg], pid, &timeout, sizeof(timeout));
 	t = timeout.tv_sec + (timeout.tv_usec / 1000000.0);
 
-	syscall_count_timeout(s, t, threshold);
+	syscall_count_timeout(sc, s, pid, t, threshold, ret);
+	syscall_append_return(sc, s, pid, t, ret);
 }
 
 /*
  *  syscall_timespec_timeout()
  *	keep tally of timespec timeouts
  */
-void syscall_timespec_timeout(const int arg, syscall_info_t *s, const pid_t pid, const double threshold)
+static void syscall_timespec_timeout(syscall_t *sc, syscall_info_t *s, const pid_t pid, const double threshold, int ret)
 {
-	unsigned long args[arg + 1];
+	unsigned long args[sc->arg + 1];
 	struct timespec timeout;
 	double t;
 
-	syscall_getargs(pid, arg, args);
-	if (args[arg] == 0)
-		return;
+	syscall_get_args(pid, sc->arg, args);
+	if (args[sc->arg] == 0) {
+		t = -1.0;	/* block indefinitely, flagged with -ve timeout */
+	} else {
+		syscall_get_arg_data(args[sc->arg], pid, &timeout, sizeof(timeout));
+		t = timeout.tv_sec + (timeout.tv_nsec / 1000000000.0);
+	}
 
-	syscall_get_arg_data(args[arg], pid, &timeout, sizeof(timeout));
-	t = timeout.tv_sec + (timeout.tv_nsec / 1000000000.0);
-
-	syscall_count_timeout(s, t, threshold);
+	syscall_count_timeout(sc, s, pid, t, threshold, ret);
+	syscall_append_return(sc, s, pid, t, ret);
 }
 
 /*
  *  syscall_timeout_millisec()
  *	keep tally of integer millisecond timeouts
  */
-void syscall_timeout_millisec(const int arg, syscall_info_t *s, const pid_t pid, const double threshold)
+static void syscall_timeout_millisec(syscall_t *sc, syscall_info_t *s, const pid_t pid, const double threshold, int ret)
 {
-	unsigned long args[arg + 1];
+	unsigned long args[sc->arg + 1];
+	double t;
 
-	syscall_getargs(pid, arg, args);
-	syscall_count_timeout(s, (double)(int)args[arg] / 1000.0, threshold);
+	syscall_get_args(pid, sc->arg, args);
+	t = (double)(int)args[sc->arg] / 1000.0;
+	syscall_count_timeout(sc, s, pid, t, threshold, ret);
+	syscall_append_return(sc, s, pid, t, ret);
 }
 
 /*
  *  syscall_timeout_sec()
  *	keep tally of integer second timeouts
  */
-void syscall_timeout_sec(const int arg, syscall_info_t *s, const pid_t pid, const double threshold)
+static void syscall_timeout_sec(syscall_t *sc, syscall_info_t *s, const pid_t pid, const double threshold, int ret)
 {
-	unsigned long args[arg + 1];
+	unsigned long args[sc->arg + 1];
+	double t;
 
-	syscall_getargs(pid, arg, args);
-	syscall_count_timeout(s, (double)args[arg], threshold);
+	syscall_get_args(pid, sc->arg, args);
+	t = (double)args[sc->arg];
+	syscall_count_timeout(sc, s, pid, t, threshold, ret);
+	syscall_append_return(sc, s, pid, t, ret);
 }
 
 /*
  *  syscall_timeout_to_human_time()
  *	convert timeout time into something human readable
  */
-char *syscall_timeout_to_human_time(const double timeout, const bool end, char *buffer, const size_t len)
+static char *syscall_timeout_to_human_time(const double timeout, const bool end, char *buffer, const size_t len)
 {
 	char *units[] = { "sec", "msec", "usec", "nsec", "psec" };
 	int i;
@@ -1709,7 +1835,7 @@ char *syscall_timeout_to_human_time(const double timeout, const bool end, char *
  *  syscall_dump_pollers()
  *	dump polling syscall abusers
  */
-void syscall_dump_pollers(const double duration)
+static void syscall_dump_pollers(const double duration)
 {
 	int i;
 	list_t sorted;
@@ -1804,6 +1930,15 @@ void syscall_dump_pollers(const double duration)
 			printf("\n");
 		}
 		printf("\n");
+
+		for (l = sorted.head; l; l = l->next) {
+			syscall_info_t *s = (syscall_info_t *)l->data;
+			if (syscall_valid(s->syscall)) {
+				syscall_t *sc = &syscalls[s->syscall];
+				if (sc->check_ret)
+					sc->check_ret(sc, s);
+			}
+		}
 	}
 	list_free(&sorted, NULL);
 }
@@ -1812,7 +1947,7 @@ void syscall_dump_pollers(const double duration)
  *  syscall_count()
  *	tally syscall usage
  */
-void syscall_count(const pid_t pid, const int syscall)
+static void syscall_count(const pid_t pid, const int syscall, const int ret)
 {
 	unsigned long h = hash_syscall(pid, syscall);
 	syscall_info_t *s;
@@ -1830,7 +1965,7 @@ void syscall_count(const pid_t pid, const int syscall)
 			if (valid) {
 				sc = &syscalls[syscall];
 				if (sc->check_func) {
-					sc->check_func(sc->arg, s, pid, *(sc->threshold));
+					sc->check_func(sc, s, pid, *(sc->threshold), ret);
 				}
 			}
 			return;
@@ -1853,6 +1988,7 @@ void syscall_count(const pid_t pid, const int syscall)
 	s->poll_max = -1.0;
 	s->poll_total = 0;
 	s->poll_too_low = 0;
+	list_init(&s->return_history);
 
 	pthread_mutex_lock(&ptrace_mutex);
 	s->next = syscall_info[h];
@@ -1862,7 +1998,7 @@ void syscall_count(const pid_t pid, const int syscall)
 	if (valid) {
 		sc = &syscalls[syscall];
 		if (sc->check_func)
-			sc->check_func(sc->arg, s, pid, *(sc->threshold));
+			sc->check_func(sc, s, pid, *(sc->threshold), ret);
 	}
 }
 
@@ -1870,7 +2006,7 @@ void syscall_count(const pid_t pid, const int syscall)
  *  syscall_wait()
  *	wait for ptrace
  */
-int syscall_wait(const pid_t pid)
+static int syscall_wait(const pid_t pid)
 {
 	for (;;) {
 		int status;
@@ -1888,9 +2024,9 @@ int syscall_wait(const pid_t pid)
  *  syscall_trace()
  *	syscall tracer, run in a pthread
  */
-void *syscall_trace(void *arg)
+static void *syscall_trace(void *arg)
 {
-	int status, syscall;
+	int ret, status, syscall;
 	pid_t pid = *((pid_t*)arg);
 
 	waitpid(pid, &status, 0);
@@ -1903,10 +2039,12 @@ void *syscall_trace(void *arg)
 			break;
 
 		syscall = syscall_get_call(pid);
-		syscall_count(pid, syscall);
-
 		if (syscall_wait(pid))
 			break;
+
+		ret = syscall_get_ret(pid);
+		/* printf("%s --> %d\n", syscalls[syscall].name, ret); */
+		syscall_count(pid, syscall, ret);
 	}
 	pthread_exit(0);
 
