@@ -64,11 +64,13 @@
 #define TIMEOUT(n, timeout) \
 	[SYS_ ## n] = timeout
 
+/* single link and pointer to data item for a generic linked list */
 typedef struct link {
 	void *data;			/* Data in list */
 	struct link *next;		/* Next item in list */
 } link_t;
 
+/* linked list */
 typedef struct {
 	link_t	*head;			/* Head of list */
 	link_t	*tail;			/* Tail of list */
@@ -78,11 +80,13 @@ typedef struct {
 typedef void (*list_link_free_t)(void *);
 typedef int  (*list_comp_t)(void *, void *);
 
+/* Stash timeout related syscall return value */
 typedef struct {
-	double		timeout;
-	int		ret;
+	double		timeout;	/* syscall timeout in seconds */
+	int		ret;		/* syscall return */
 } syscall_return_info_t;
 
+/* Syscall polling stats for a particular process */
 typedef struct syscall_info {
 	pid_t		pid;		/* caller's pid */
 	int 		syscall;	/* system call number */
@@ -104,6 +108,7 @@ typedef struct syscall syscall_t;
 typedef void (*check_timeout_func_t)(syscall_t *sc, syscall_info_t *s, pid_t pid, double threshold, int ret);
 typedef void (*check_return_func_t)(syscall_t *sc, syscall_info_t *s);
 
+/* syscall specific information */
 typedef struct syscall {
 	char 		*name;		/* name of the syscall */
 	int  		syscall;	/* system call number */
@@ -113,7 +118,7 @@ typedef struct syscall {
 	check_return_func_t  check_ret; /* return checking function, NULL means don't check */
 } syscall_t;
 
-
+/* process specific information */
 typedef struct {
 	pid_t		pid;		/* PID */
 	pid_t		ppid;		/* Parent PID */
@@ -123,6 +128,7 @@ typedef struct {
 	pthread_t	pthread;	/* thread to do ptrace monitoring of process */
 } proc_info_t;
 
+/* wakeup event information per process */
 typedef struct {
 	proc_info_t	*proc;		/* Proc specific info */
 	char		*func;		/* Kernel waiting func */
@@ -131,6 +137,7 @@ typedef struct {
 	unsigned long	count;		/* Number of events */
 } event_info_t;
 
+/* cpu usage information per process */
 typedef struct {
 	proc_info_t	*proc;		/* Proc specific info */
 	unsigned long	utime;		/* User time quantum */
@@ -138,6 +145,7 @@ typedef struct {
 	unsigned long	ttime;		/* Total time */
 } cpustat_info_t;
 
+/* fnotify file information per process */
 typedef struct {
 	proc_info_t	*proc;		/* Proc specific info */
 	char		*filename;	/* Name of device or filename being accessed */
@@ -145,6 +153,7 @@ typedef struct {
 	unsigned 	count;		/* Count of accesses */
 } fnotify_fileinfo_t;
 
+/* fnotify I/O operations counts per process */
 typedef struct {
 	unsigned long 	open_total;	/* open() count */
 	unsigned long 	close_total;	/* close() count */
@@ -158,9 +167,11 @@ typedef void (*check_timeout_func_t)(syscall_t *sc, syscall_info_t *s, pid_t pid
 
 static int  syscall_get_args(pid_t pid, int n_args, unsigned long args[]);
 static void syscall_timeout_millisec(syscall_t *sc, syscall_info_t *s, pid_t pid, double threshold, int ret);
-static void syscall_timeout_sec(syscall_t *sc, syscall_info_t *s, pid_t pid, double threshold, int ret);
 static void syscall_timespec_timeout(syscall_t *sc, syscall_info_t *s, pid_t pid, double threshold, int ret);
+#if 0
 static void syscall_timeval_timeout(syscall_t *sc, syscall_info_t *s, pid_t pid, double threshold, int ret);
+static void syscall_timeout_sec(syscall_t *sc, syscall_info_t *s, pid_t pid, double threshold, int ret);
+#endif
 static void health_check_exit(const int status) __attribute__ ((noreturn));
 static void sys_nanosleep_generic_ret(syscall_t *sc, syscall_info_t *s);
 static void sys_poll_generic_ret(syscall_t *sc, syscall_info_t *s);
@@ -173,6 +184,7 @@ static int  opt_flags;
 static list_t	proc_cache;
 static pthread_mutex_t ptrace_mutex = PTHREAD_MUTEX_INITIALIZER;
 
+/* minimum allowed thresholds for poll'd system calls that have timeouts */
 static double timeout[] = {
 	TIMEOUT(clock_nanosleep, 1.0),
 	TIMEOUT(epoll_pwait, 1.0),
@@ -189,6 +201,7 @@ static double timeout[] = {
 	TIMEOUT(semtimedop, 1.0),
 };
 
+/* system call table */
 static syscall_t syscalls[] = {
 #ifdef SYS_setup
 	SYSCALL(setup),
@@ -1338,6 +1351,7 @@ static syscall_t syscalls[] = {
 #endif
 };
 
+/* hash table for syscalls, hashed on pid and syscall number */
 syscall_info_t *syscall_info[HASH_TABLE_SIZE];
 
 /*
@@ -1364,7 +1378,6 @@ static link_t *list_append(list_t *list, void *data)
 		health_check_exit(EXIT_FAILURE);
 	}
 	link->data = data;
-
 	if (list->head == NULL) {
 		list->head = link;
 	} else {
@@ -1381,7 +1394,10 @@ static link_t *list_append(list_t *list, void *data)
  *  list_add_ordered()
  *	add new data into list, based on order from callback func compare().
  */
-static link_t *list_add_ordered(list_t *list, void *new_data, const list_comp_t compare)
+static link_t *list_add_ordered(
+	list_t *list,
+	void *new_data,
+	const list_comp_t compare)
 {
 	link_t *link, **l;
 
@@ -1410,7 +1426,9 @@ static link_t *list_add_ordered(list_t *list, void *new_data, const list_comp_t 
  *  list_free()
  *	free the list
  */
-static void list_free(list_t *list, const list_link_free_t freefunc)
+static void list_free(
+	list_t *list,
+	const list_link_free_t freefunc)
 {
 	link_t	*link, *next;
 
@@ -1431,7 +1449,8 @@ static void list_free(list_t *list, const list_link_free_t freefunc)
  */
 static inline bool syscall_valid(const int syscall)
 {
-	return (syscall > 0) && (syscall <= (int)ARRAY_SIZE(syscalls));
+	return (syscall > 0) &&
+	       (syscall <= (int)ARRAY_SIZE(syscalls));
 }
 
 static void sys_nanosleep_generic_ret(syscall_t *sc, syscall_info_t *s)
@@ -1546,7 +1565,10 @@ static int syscall_get_ret(const pid_t pid)
  *  syscall_get_args()
  *	fetch n args from system call
  */
-static int syscall_get_args(const pid_t pid, const int arg, unsigned long args[])
+static int syscall_get_args(
+	const pid_t pid,
+	const int arg,
+	unsigned long args[])
 {
 	int n_args = arg > 6 ? 6 : arg;
 #if defined (__i386__)
@@ -1594,7 +1616,12 @@ static void syscall_name(const int syscall, char *name, const size_t len)
 	}
 }
 
-static void syscall_append_return(syscall_t *sc, syscall_info_t *s, const pid_t pid, const double timeout, int ret)
+static void syscall_append_return(
+	syscall_t *sc,
+	syscall_info_t *s,
+	const pid_t pid,
+	const double timeout,
+	int ret)
 {
 	syscall_return_info_t *info;
 
@@ -1618,9 +1645,7 @@ static unsigned long hash_syscall(const pid_t pid, const int syscall)
 {
 	unsigned long h;
 
-	h = pid ^ (syscall << 2);
-	h %= HASH_TABLE_SIZE;
-
+	h = (pid ^ (pid << 3) ^ syscall) % HASH_TABLE_SIZE;
 	return h;
 }
 
@@ -1673,7 +1698,13 @@ static void syscall_dump_hashtable(const double duration)
  *  syscall_count_timeout
  *	gather stats on timeout
  */
-static void syscall_count_timeout(syscall_t *sc, syscall_info_t *s, const pid_t pid, const double timeout, const double threshold, const int ret)
+static void syscall_count_timeout(
+	syscall_t *sc,
+	syscall_info_t *s,
+	const pid_t pid,
+	const double timeout,
+	const double threshold,
+	const int ret)
 {
 	double t = BUCKET_START;
 	int bucket = 0;
@@ -1721,22 +1752,33 @@ static void syscall_count_timeout(syscall_t *sc, syscall_info_t *s, const pid_t 
  *  syscall_get_arg_data()
  *	gather dereferenced arg data
  */
-static void syscall_get_arg_data(const unsigned long addr, const pid_t pid, void *data, const size_t len)
+static void syscall_get_arg_data(
+	const unsigned long addr,
+	const pid_t pid,
+	void *data,
+	const size_t len)
 {
 	size_t i, n = (len + sizeof(unsigned long) - 1) / sizeof(unsigned long);
 	unsigned long tmpdata[n];
 
 	for (i = 0; i < n; i++)
-		tmpdata[i] = ptrace(PTRACE_PEEKDATA, pid, addr + (sizeof(unsigned long) * i), NULL);
+		tmpdata[i] = ptrace(PTRACE_PEEKDATA, pid, 
+				addr + (sizeof(unsigned long) * i), NULL);
 
 	memcpy(data, tmpdata, len);
 }
 
+#if 0
 /*
  *  syscall_timeval_timeout()
  *	keep tally of timeval timeouts
  */
-static void syscall_timeval_timeout(syscall_t *sc, syscall_info_t *s, const pid_t pid, const double threshold, int ret)
+static void syscall_timeval_timeout(
+	syscall_t *sc,
+	syscall_info_t *s,
+	const pid_t pid,
+	const double threshold,
+	const int ret)
 {
 	unsigned long args[sc->arg + 1];
 	struct timeval timeout;
@@ -1752,12 +1794,18 @@ static void syscall_timeval_timeout(syscall_t *sc, syscall_info_t *s, const pid_
 	syscall_count_timeout(sc, s, pid, t, threshold, ret);
 	syscall_append_return(sc, s, pid, t, ret);
 }
+#endif
 
 /*
  *  syscall_timespec_timeout()
  *	keep tally of timespec timeouts
  */
-static void syscall_timespec_timeout(syscall_t *sc, syscall_info_t *s, const pid_t pid, const double threshold, int ret)
+static void syscall_timespec_timeout(
+	syscall_t *sc,
+	syscall_info_t *s,
+	const pid_t pid,
+	const double threshold,
+	const int ret)
 {
 	unsigned long args[sc->arg + 1];
 	struct timespec timeout;
@@ -1779,7 +1827,12 @@ static void syscall_timespec_timeout(syscall_t *sc, syscall_info_t *s, const pid
  *  syscall_timeout_millisec()
  *	keep tally of integer millisecond timeouts
  */
-static void syscall_timeout_millisec(syscall_t *sc, syscall_info_t *s, const pid_t pid, const double threshold, int ret)
+static void syscall_timeout_millisec(
+	syscall_t *sc,
+	syscall_info_t *s,
+	const pid_t pid,
+	const double threshold,
+	const int ret)
 {
 	unsigned long args[sc->arg + 1];
 	double t;
@@ -1790,11 +1843,17 @@ static void syscall_timeout_millisec(syscall_t *sc, syscall_info_t *s, const pid
 	syscall_append_return(sc, s, pid, t, ret);
 }
 
+#if 0
 /*
  *  syscall_timeout_sec()
  *	keep tally of integer second timeouts
  */
-static void syscall_timeout_sec(syscall_t *sc, syscall_info_t *s, const pid_t pid, const double threshold, int ret)
+static void syscall_timeout_sec(
+	syscall_t *sc,
+	syscall_info_t *s,
+	const pid_t pid,
+	const double threshold,
+	const int ret)
 {
 	unsigned long args[sc->arg + 1];
 	double t;
@@ -1804,12 +1863,17 @@ static void syscall_timeout_sec(syscall_t *sc, syscall_info_t *s, const pid_t pi
 	syscall_count_timeout(sc, s, pid, t, threshold, ret);
 	syscall_append_return(sc, s, pid, t, ret);
 }
+#endif
 
 /*
  *  syscall_timeout_to_human_time()
  *	convert timeout time into something human readable
  */
-static char *syscall_timeout_to_human_time(const double timeout, const bool end, char *buffer, const size_t len)
+static char *syscall_timeout_to_human_time(
+	const double timeout,
+	const bool end,
+	char *buffer,
+	const size_t len)
 {
 	char *units[] = { "sec", "msec", "usec", "nsec", "psec" };
 	int i;
@@ -1947,7 +2011,10 @@ static void syscall_dump_pollers(const double duration)
  *  syscall_count()
  *	tally syscall usage
  */
-static void syscall_count(const pid_t pid, const int syscall, const int ret)
+static void syscall_count(
+	const pid_t pid,
+	const int syscall,
+	const int ret)
 {
 	unsigned long h = hash_syscall(pid, syscall);
 	syscall_info_t *s;
@@ -2021,6 +2088,7 @@ static int syscall_wait(const pid_t pid)
 	return 1;
 }
 
+
 /*
  *  syscall_trace()
  *	syscall tracer, run in a pthread
@@ -2057,8 +2125,6 @@ static void *syscall_trace(void *arg)
 static void handle_sigint(int dummy)
 {
 	(void)dummy;    /* Stop unused parameter warning with -Wextra */
-
-	printf("PID got sigint! %d\n", getpid());
 
 	keep_running = false;
 }
@@ -2322,8 +2388,10 @@ static void proc_cache_dump(void)
  *  proc_cache_find_by_procname()
  *	find process by process name (in cmdline)
  */
-static int proc_cache_find_by_procname(list_t *pids, const char *procname) {
-
+static int proc_cache_find_by_procname(
+	list_t *pids,
+	const char *procname)
+{
 	bool found = false;
 	link_t *l;
 
@@ -2348,7 +2416,9 @@ static int proc_cache_find_by_procname(list_t *pids, const char *procname) {
  *  pid_list_find()
  *	find a pid in the pid list
  */
-static bool pid_list_find(pid_t pid, list_t *list)
+static bool pid_list_find(
+	pid_t pid,
+	list_t *list)
 {
 	link_t *l;
 
@@ -2365,7 +2435,9 @@ static bool pid_list_find(pid_t pid, list_t *list)
  *	get all the children from the given pid, add
  *	to children list
  */
-static void pid_get_children(pid_t pid, list_t *children)
+static void pid_get_children(
+	pid_t pid,
+	list_t *children)
 {
 	link_t *l;
 
@@ -2442,7 +2514,9 @@ static struct timeval timeval_add(const struct timeval *a, const struct timeval 
  *  timeval_sub()
  *	timeval a - b
  */
-static struct timeval timeval_sub(const struct timeval *a, const struct timeval *b)
+static struct timeval timeval_sub(
+	const struct timeval *a,
+	const struct timeval *b)
 {
 	struct timeval ret, _b;
 
@@ -2641,7 +2715,10 @@ static void event_get(list_t *pids, list_t *events)
  *  event_dump_diff()
  *	dump differences between old and new events
  */
-static void event_dump_diff(double duration, list_t *events_old, list_t *events_new)
+static void event_dump_diff(
+	const double duration,
+	list_t *events_old,
+	list_t *events_new)
 {
 	link_t *ln, *lo;
 	event_info_t *evo, *evn;
@@ -2680,7 +2757,10 @@ static int cpustat_cmp(void *data1, void *data2)
 	return cpustat2->ttime - cpustat1->ttime;
 }
 
-static void cpustat_dump_diff(double duration, list_t *cpustat_old, list_t *cpustat_new)
+static void cpustat_dump_diff(
+	const double duration,
+	list_t *cpustat_old,
+	list_t *cpustat_new)
 {
 	double nr_ticks =
 		/* (double)sysconf(_SC_NPROCESSORS_CONF) * */
@@ -2776,8 +2856,6 @@ static int cpustat_get(list_t *pids, list_t *cpustat)
 	return 0;
 }
 
-
-
 /*
  *  fnotify_event_init()
  *	initialize fnotify
@@ -2790,15 +2868,17 @@ static int fnotify_event_init(void)
 	struct mntent* mount;
 
 	if ((fan_fd = fanotify_init (0, 0)) < 0) {
-		fprintf(stderr, "Cannot initialize fanotify: %s\n", strerror(errno));
+		fprintf(stderr, "Cannot initialize fanotify: %s\n",
+			strerror(errno));
 		return -1;
 	}
 
 	ret = fanotify_mark(fan_fd, FAN_MARK_ADD | FAN_MARK_MOUNT,
-		FAN_ACCESS| FAN_MODIFY | FAN_OPEN | FAN_CLOSE |  FAN_ONDIR | FAN_EVENT_ON_CHILD,
-		AT_FDCWD, "/");
+		FAN_ACCESS| FAN_MODIFY | FAN_OPEN | FAN_CLOSE |
+		FAN_ONDIR | FAN_EVENT_ON_CHILD, AT_FDCWD, "/");
 	if (ret < 0) {
-		fprintf(stderr, "Cannot add fanotify watch on /: %s\n", strerror(errno));
+		fprintf(stderr, "Cannot add fanotify watch on /: %s\n",
+			strerror(errno));
 	}
 
 	if ((mounts = setmntent("/proc/self/mounts", "r")) == NULL) {
@@ -2811,11 +2891,13 @@ static int fnotify_event_init(void)
 			continue;
 
 		ret = fanotify_mark(fan_fd, FAN_MARK_ADD | FAN_MARK_MOUNT,
-			FAN_ACCESS| FAN_MODIFY | FAN_OPEN | FAN_CLOSE | FAN_ONDIR | FAN_EVENT_ON_CHILD,
-			AT_FDCWD, mount->mnt_dir);
+			FAN_ACCESS| FAN_MODIFY | FAN_OPEN | FAN_CLOSE |
+			FAN_ONDIR | FAN_EVENT_ON_CHILD, AT_FDCWD,
+			mount->mnt_dir);
 		if ((ret < 0) && (errno != ENOENT)) {
 			fprintf(stderr, "Cannot add watch on %s mount %s: %s\n",
-				mount->mnt_type, mount->mnt_dir, strerror (errno));
+				mount->mnt_type, mount->mnt_dir,
+				strerror (errno));
 		}
 	}
 
@@ -2913,7 +2995,10 @@ static int fnotify_event_cmp_io_ops(void *data1, void *data2)
 	return io_ops2->total - io_ops1->total;
 }
 
-static void fnotify_dump_events(double duration, list_t *pids, list_t *fnotify_files)
+static void fnotify_dump_events(
+	const double duration,
+	list_t *pids,
+	list_t *fnotify_files)
 {
 	link_t 	*l;
 	link_t  *lp;
@@ -3201,8 +3286,10 @@ int main(int argc, char **argv)
 out:
 	for (l = pids.head; l; l = l->next) {
 		proc_info_t *p = (proc_info_t *)l->data;
-		if (!p->is_thread && p->pthread)
+		if (!p->is_thread && p->pthread) {
+			pthread_cancel(p->pthread);
 			pthread_join(p->pthread, NULL);
+		}
 	}
 
 	free(buffer);
@@ -3213,7 +3300,6 @@ out:
 	list_free(&cpustat_info_new, free);
 	list_free(&fnotify_files, fnotify_event_free);
 	list_free(&proc_cache, proc_cache_info_free);
-
 	pthread_mutex_destroy(&ptrace_mutex);
 
 	health_check_exit(rc);
