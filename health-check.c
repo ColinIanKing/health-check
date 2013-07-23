@@ -1590,7 +1590,7 @@ static void syscall_name(const int syscall, char *name, const size_t len)
 		strncpy(name, syscalls[syscall].name, len);
 	} else {
 		/*  Don't know it */
-		snprintf(name, len, "SYS_%d", syscall);
+		snprintf(name, len, "SYS_NR_%d", syscall);
 	}
 }
 
