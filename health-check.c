@@ -44,6 +44,17 @@
 #include <ctype.h>
 #include <dirent.h>
 
+#define APP_NAME			"health-check"
+
+#define HASH_TABLE_SIZE			(1997)
+#define ARRAY_SIZE(a)			(sizeof(a) / sizeof(a[0]))
+#define TIMER_STATS			"/proc/timer_stats"
+
+#define	OPT_GET_CHILDREN		0x00000001
+
+#define MAX_BUCKET			(11)
+#define BUCKET_START			(0.0000001)
+
 typedef struct link {
 	void *data;			/* Data in list */
 	struct link *next;		/* Next item in list */
@@ -69,6 +80,8 @@ typedef struct syscall_info {
 	unsigned long	poll_count;
 	unsigned long	poll_too_low;
 	unsigned long	poll_infinite;
+	unsigned long	poll_zero;
+	unsigned long 	bucket[MAX_BUCKET];
 	struct syscall_info *next;
 } syscall_info_t;
 
@@ -131,17 +144,12 @@ typedef struct {
 typedef void (*list_link_free_t)(void *);
 typedef int  (*list_comp_t)(void *, void *);
 
-#define HASH_TABLE_SIZE	(1997)
-
-#define ARRAY_SIZE(a)	(sizeof(a) / sizeof(a[0]))
 
 int  syscall_getargs(pid_t pid, int n_args, unsigned long args[]);
 void syscall_check_timeout_ms(int arg, syscall_info_t *s, pid_t pid, double threshold);
 void syscall_check_timeout_sec(int arg, syscall_info_t *s, pid_t pid, double threshold);
 void syscall_check_timespec(int arg, syscall_info_t *s, pid_t pid, double threshold);
 void syscall_check_timeval(int arg, syscall_info_t *s, pid_t pid, double threshold);
-void syscall_check_poll(syscall_info_t *s, pid_t pid);
-void syscall_check_select(syscall_info_t *s, pid_t pid);
 
 static bool keep_running = true;
 static int  opt_flags;
@@ -153,19 +161,19 @@ static pthread_mutex_t ptrace_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 static double timeout[] = {
 	TIMEOUT(alarm, 1.0),
-	TIMEOUT(clock_nanosleep, 0.5),
-	TIMEOUT(epoll_pwait, 0.5),
-	TIMEOUT(epoll_wait, 0.5),
-	TIMEOUT(mq_timedreceive, 0.5),
-	TIMEOUT(mq_timedsend, 0.5),
-	TIMEOUT(nanosleep , 0.5),
-	TIMEOUT(poll , 1.0),
-	TIMEOUT(ppoll , 0.5),
-	TIMEOUT(pselect6 , 0.5),
-	TIMEOUT(recvmmsg , 0.5),
-	TIMEOUT(rt_sigtimedwait , 0.5),
-	TIMEOUT(select , 0.5),
-	TIMEOUT(semtimedop, 0.5),
+	TIMEOUT(clock_nanosleep, 1.0),
+	TIMEOUT(epoll_pwait, 1.0),
+	TIMEOUT(epoll_wait, 1.0),
+	TIMEOUT(mq_timedreceive, 1.0),
+	TIMEOUT(mq_timedsend, 1.0),
+	TIMEOUT(nanosleep, 1.0),
+	TIMEOUT(poll, 1.0),
+	TIMEOUT(ppoll, 1.0),
+	TIMEOUT(pselect6, 1.0),
+	TIMEOUT(recvmmsg, 1.0),
+	TIMEOUT(rt_sigtimedwait, 1.0),
+	TIMEOUT(select, 1.0),
+	TIMEOUT(semtimedop, 1.0),
 };
 
 static syscall_t syscalls[] = {
@@ -1496,9 +1504,17 @@ void hash_syscall_dump(double duration)
 
 void syscall_check_timeout(syscall_info_t *s, double timeout, double threshold)
 {
-	pthread_mutex_lock(&ptrace_mutex);
+	double t = BUCKET_START;
+	int bucket = 0;
 
+	while (t <= timeout) {
+		bucket++;
+		t *= 10;
+	}
+
+	pthread_mutex_lock(&ptrace_mutex);
 	s->poll_accounting = true;
+	s->poll_count++;
 
 	/*  Indefinite waits we ignore in the stats */
 	if (timeout < 0.0) {
@@ -1506,15 +1522,23 @@ void syscall_check_timeout(syscall_info_t *s, double timeout, double threshold)
 		pthread_mutex_unlock(&ptrace_mutex);
 		return;
 	}
-
-	s->poll_count++;
-	if (s->poll_min > timeout)
+	if (s->poll_min < 0.0) {
 		s->poll_min = timeout;
-	if (s->poll_max < timeout)
 		s->poll_max = timeout;
+	} else {
+		if (s->poll_min > timeout)
+			s->poll_min = timeout;
+		if (s->poll_max < timeout)
+			s->poll_max = timeout;
+	}
 	s->poll_total += timeout;
 	if (timeout <= threshold)
 		s->poll_too_low++;
+
+	if (timeout == 0.0)
+		s->poll_zero++;
+	else
+		s->bucket[bucket]++;
 
 	pthread_mutex_unlock(&ptrace_mutex);
 }
@@ -1563,7 +1587,6 @@ void syscall_check_timespec(int arg, syscall_info_t *s, pid_t pid, double thresh
 	syscall_check_timeout(s, t, threshold);
 }
 
-
 void syscall_check_timeout_ms(int arg, syscall_info_t *s, pid_t pid, double threshold)
 {
 	unsigned long args[arg + 1];
@@ -1580,14 +1603,24 @@ void syscall_check_timeout_sec(int arg, syscall_info_t *s, pid_t pid, double thr
 	syscall_check_timeout(s, (double)args[arg], threshold);
 }
 
-void syscall_check_poll(syscall_info_t *s, pid_t pid)
+char *format_time(char *buffer, size_t len, double t, bool end)
 {
-	syscall_check_timeout_ms(3, s, pid, 0.5);
-}
+	char *units[] = { "s ", "ms", "us", "ns", "ps" };
+	int i;
 
-void syscall_check_select(syscall_info_t *s, pid_t pid)
-{
-	syscall_check_timeval(4, s, pid, 0.5);
+	for (i = 0; t != 0.0 && t < 0.99999; i++)
+		t *= 1000.0;
+
+	if (end) {
+		if (t - 0.1 < 0.99999) {
+			t *= 1000.0;
+			i++;
+		}
+		t -= 0.1;
+	}
+
+	snprintf(buffer, len, "%5.1f %s", t, units[i]);
+	return buffer;
 }
 
 void syscall_pollers(double duration)
@@ -1610,9 +1643,11 @@ void syscall_pollers(double duration)
 	}
 
 	if (sorted.head) {
+		double prev, bucket = BUCKET_START;
+
 		printf("\nTop Polling System Calls:\n");
-		printf("Count   PID  Syscall             Rate/Sec   Infinite     Minimum        Maximum        Average    %% BAD\n");
-		printf("                                            Timeouts  Timeout (Sec)  Timeout (Sec)  Timeout (Sec) Polling\n");
+		printf("Count   PID  Syscall             Rate/Sec   Infinite   Zero       Minimum        Maximum        Average     %% BAD\n");
+		printf("                                            Timeouts Timeouts   Timeout (Sec)  Timeout (Sec)  Timeout (Sec) Polling\n");
 		for (l = sorted.head; l; l = l->next) {
 			char name[64];
 			syscall_info_t *s = (syscall_info_t *)l->data;
@@ -1623,10 +1658,11 @@ void syscall_pollers(double duration)
 				(double)s->count / duration);
 
 			if (s->poll_accounting)  {
-				printf(" %8lu", s->poll_infinite);
-				if (s->poll_total)
+				printf(" %8lu %8lu ", s->poll_infinite, s->poll_zero);
+				if (s->poll_count)
 					printf(" %14.8f %14.8f %14.8f %6.2f",
-						s->poll_min, s->poll_max,
+						s->poll_min < 0.0 ? 0.0 : s->poll_min,
+						s->poll_max < 0.0 ? 0.0 : s->poll_max,
 						(double)s->poll_total / (double)s->count,
 						100.0 * (double)s->poll_too_low / (double)s->poll_count);
 				else
@@ -1634,6 +1670,51 @@ void syscall_pollers(double duration)
 			}
 			printf("\n");
 		}
+
+		printf("\nDistribution of poll timeout times:\n");
+		printf("          System call : ");
+		for (l = sorted.head; l; l = l->next) {
+			char name[32];
+			syscall_info_t *s = (syscall_info_t *)l->data;
+			syscall_name(s->syscall, name, sizeof(name));
+			printf("%10.10s ", name);
+		}
+		printf("\n");
+		printf("                  PID : ");
+		for (l = sorted.head; l; l = l->next) {
+			syscall_info_t *s = (syscall_info_t *)l->data;
+			printf("    %6u ", s->pid);
+		}
+		printf("\n");
+		printf("                 zero :");
+		for (l = sorted.head; l; l = l->next) {
+			syscall_info_t *s = (syscall_info_t *)l->data;
+			printf(" %10lu", s->poll_zero);
+		}
+		printf("\n");
+
+		for (i = 0; i < MAX_BUCKET; i++) {
+			char t1[64], t2[64];
+			format_time(t1, sizeof(t1), prev, false);
+			format_time(t2, sizeof(t2), bucket, true);
+			printf("%9.9s - %9.9s :",
+				i == 0 ? "" : t1,
+				i == (MAX_BUCKET-1) ? "" : t2);
+
+			for (l = sorted.head; l; l = l->next) {
+				syscall_info_t *s = (syscall_info_t *)l->data;
+				printf(" %10lu", s->bucket[i]);
+			}
+			printf("\n");
+			prev = bucket;
+			bucket *= 10;
+		}
+		printf("           indefinite :");
+		for (l = sorted.head; l; l = l->next) {
+			syscall_info_t *s = (syscall_info_t *)l->data;
+			printf(" %10lu", s->poll_infinite);
+		}
+		printf("\n");
 	}
 
 	list_free(&sorted, NULL);
@@ -1674,10 +1755,11 @@ void syscall_count(pid_t pid, int syscall)
 	s->pid = pid;
 	s->count = 1;
 	s->poll_accounting = false;
+	s->poll_zero = 0;
 	s->poll_infinite = 0;
 	s->poll_count = 0;
-	s->poll_min = ULONG_MAX;
-	s->poll_max = 0;
+	s->poll_min = -1.0;
+	s->poll_max = -1.0;
 	s->poll_total = 0;
 	s->poll_too_low = 0;
 
@@ -1747,34 +1829,7 @@ static inline double timeval_double(const struct timeval *tv)
 	return (double)tv->tv_sec + ((double)tv->tv_usec / 1000000.0);
 }
 
-#if 0
-int main(int argc, char *argv[])
-{
-	pid_t pid = atoi(argv[1]);
-	struct timeval tv_start, tv_end;
-	double duration;
 
-	signal(SIGINT, &handle_sigint);
-
-	gettimeofday(&tv_start, NULL);
-	syscall_trace(pid);
-	gettimeofday(&tv_end, NULL);
-	duration = timeval_double(&tv_end) - timeval_double(&tv_start);
-	printf("\n\n");
-	hash_syscall_dump(duration);
-	syscall_pollers(duration);
-
-	exit(EXIT_SUCCESS);
-}
-#endif
-
-
-
-
-#define APP_NAME		"health-check"
-#define TIMER_STATS		"/proc/timer_stats"
-
-#define	OPT_GET_CHILDREN	0x00000001
 
 
 
