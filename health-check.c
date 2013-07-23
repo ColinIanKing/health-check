@@ -178,6 +178,7 @@ static void sys_poll_generic_ret(syscall_t *sc, syscall_info_t *s);
 static void sys_semtimedop_ret(syscall_t *sc, syscall_info_t *s);
 static void sys_mq_timedreceive_ret(syscall_t *sc, syscall_info_t *s);
 static void sys_mq_timedsend_ret(syscall_t *sc, syscall_info_t *s);
+static proc_info_t *proc_cache_find_by_pid(const pid_t pid);
 
 volatile static bool keep_running = true;
 static int  opt_flags;
@@ -1681,14 +1682,15 @@ static void syscall_dump_hashtable(const double duration)
 	}
 
 	printf("System Calls Traced:\n");
-	printf("Count   PID  Syscall             Rate/Sec\n");
+	printf("   PID  Process              Syscall               Count    Rate/Sec\n");
 	for (l = sorted.head; l; l = l->next) {
 		char name[64];
 		syscall_info_t *s = (syscall_info_t *)l->data;
+		proc_info_t *i = proc_cache_find_by_pid(s->pid);
 		syscall_name(s->syscall, name, sizeof(name));
 
-		printf("%6lu %5i %-17.17s %12.4f\n",
-			s->count, s->pid, name, (double)s->count / duration);
+		printf("  %5i %-20.20s %-20.20s %6lu %12.4f\n",
+			s->pid, i ? i->cmdline : "unknown", name, s->count, (double)s->count / duration);
 	}
 
 	list_free(&sorted, NULL);
@@ -2207,8 +2209,6 @@ static bool pid_exists(const pid_t pid)
 	snprintf(path, sizeof(path), "/proc/%i", pid);
 	return stat(path, &statbuf) == 0;
 }
-
-static proc_info_t *proc_cache_find_by_pid(const pid_t pid);
 
 /*
  *  proc_cache_add()
@@ -2796,14 +2796,15 @@ static void cpustat_dump_diff(
 	}
 
 	printf("CPU usage:\n");
-	printf("   PID  Process                USR%%   SYS%%\n");
+	printf("   PID  Process                USR%%   SYS%%  TOTAL%%\n");
 	for (ln = sorted.head; ln; ln = ln->next) {
 		cin = (cpustat_info_t*)ln->data;
-		printf("  %5d %-20.20s %6.2f %6.2f\n",
+		printf("  %5d %-20.20s %6.2f %6.2f %6.2f\n",
 			cin->proc->pid,
 			cin->proc->cmdline,
 			100.0 * (double)cin->utime / (double)nr_ticks,
-			100.0 * (double)cin->stime / (double)nr_ticks);
+			100.0 * (double)cin->stime / (double)nr_ticks,
+			100.0 * (double)cin->ttime / (double)nr_ticks);
 	}
 
 	list_free(&sorted, free);
