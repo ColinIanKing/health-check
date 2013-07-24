@@ -1,4 +1,4 @@
-VERSION=0.01.02
+VERSION=0.01.03
 
 CFLAGS += -g -Wall -Wextra -Werror -DVERSION='"$(VERSION)"'
 LDFLAGS += -lpthread
