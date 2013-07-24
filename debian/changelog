@@ -1,3 +1,24 @@
+health-check (0.01.03) saucy; urgency=low
+
+  * Enable ARM support
+  * Re-structure the code, break into logical parts
+  * Update prev_timeout and improve polling reporting
+  * Update formatting of the output, cosmetic changes
+  * File I/O process name should be cmdline rather than comm
+  * Add some more info in tables
+  * Clean up code, add more comments, tweak hash func
+  * Join pthreads on exit. force exit on timeout
+  * Minor formatting of syscall number
+  * Add some system call return sanity checking on pollers
+  * Re-organise timeout polling bucket display
+  * Tidy up, rename a bunch of functions
+  * Zero timeouts are another special corner case
+  * Makefile: add pthread lib
+  * Rework the ptrace stats, re-format code
+  * Add first rough cut of ptrace tracing
+
+ -- Colin King <colin.king@canonical.com>  Wed, 24 Jul 2013 22:26:33 +0100
+
 health-check (0.01.02) saucy; urgency=low
 
   * Makefile: bump version
