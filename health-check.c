@@ -1502,16 +1502,22 @@ static void sys_poll_generic_ret(syscall_t *sc, syscall_info_t *s)
 			}
 		} else if (ret->ret < 0)
 			ret_error++;
+
 		prev_ret = ret->ret;
+		prev_timeout = ret->timeout;
 	}
 
-	if (zero_timeouts + zero_timeout_repeats + ret_error > 0) {
+	if (zero_timeouts | timeout_repeats | zero_timeout_repeats | ret_error) {
 		printf(" %s (%i), %s:\n",
 			s->proc->cmdline, s->proc->pid, sc->name);
-		printf("   %8lu immediate timed out calls with zero timeout (non-blocking peeks)\n", zero_timeouts);
-		printf("   %8lu repeated timed out polled calls with non-zero timeouts (light polling)\n", timeout_repeats);
-		printf("   %8lu repeated immediate timed out polled calls with zero timeouts (heavy polling)\n", zero_timeout_repeats);
-		printf("   %8lu system call errors\n", ret_error);
+		if (zero_timeouts)
+			printf("   %8lu immediate timed out calls with zero timeout (non-blocking peeks)\n", zero_timeouts);
+		if (timeout_repeats)
+			printf("   %8lu repeated timed out polled calls with non-zero timeouts (light polling)\n", timeout_repeats);
+		if (zero_timeout_repeats)
+			printf("   %8lu repeated immediate timed out polled calls with zero timeouts (heavy polling)\n", zero_timeout_repeats);
+		if (ret_error)
+			printf("   %8lu system call errors\n", ret_error);
 		printf("\n");
 	}
 }
@@ -1929,8 +1935,8 @@ static void syscall_dump_pollers(const double duration)
 		char tmp[64], *units;
 
 		printf("\nTop Polling System Calls:\n");
-		printf("  PID  Process              Syscall             Rate/Sec   Infinite   Zero       Minimum        Maximum        Average     %% BAD\n");
-		printf("                                                           Timeouts Timeouts   Timeout (Sec)  Timeout (Sec)  Timeout (Sec) Polling\n");
+		printf("  PID  Process              Syscall             Rate/Sec   Infinite   Zero       Minimum        Maximum        Average\n");
+		printf("                                                           Timeouts Timeouts   Timeout (Sec)  Timeout (Sec)  Timeout (Sec)\n");
 		for (l = sorted.head; l; l = l->next) {
 			syscall_info_t *s = (syscall_info_t *)l->data;
 			syscall_name(s->syscall, tmp, sizeof(tmp));
@@ -1941,11 +1947,10 @@ static void syscall_dump_pollers(const double duration)
 
 			printf(" %8lu %8lu ", s->poll_infinite, s->poll_zero);
 			if (s->poll_count)
-				printf(" %14.8f %14.8f %14.8f %6.2f",
+				printf(" %14.8f %14.8f %14.8f",
 					s->poll_min < 0.0 ? 0.0 : s->poll_min,
 					s->poll_max < 0.0 ? 0.0 : s->poll_max,
-					(double)s->poll_total / (double)s->count,
-					100.0 * (double)s->poll_too_low / (double)s->poll_count);
+					(double)s->poll_total / (double)s->count);
 			else
 				printf("       n/a            n/a            n/a        n/a");
 			printf("\n");
