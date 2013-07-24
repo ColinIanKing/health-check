@@ -3034,7 +3034,7 @@ static void fnotify_dump_events(
 		modes[i] = '\0';
 
 		printf("  %5d %-20.20s %6d %4s %s\n",
-			info->proc->pid, info->proc->comm,
+			info->proc->pid, info->proc->cmdline,
 			info->count, modes, info->filename);
 	}
 	printf("\n");
