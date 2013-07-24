@@ -1,13 +1,15 @@
 VERSION=0.01.02
 
-CFLAGS += -g -Wall -DVERSION='"$(VERSION)"'
+CFLAGS += -g -Wall -Wextra -Werror -DVERSION='"$(VERSION)"'
 LDFLAGS += -lpthread
 
 BINDIR=/usr/bin
 MANDIR=/usr/share/man/man8
 
-health-check: health-check.o
-	$(CC) $(CFLAGS) $< -lm -o $@ $(LDFLAGS)
+OBJS = list.o pid.o proc.o syscall.o timeval.o fnotify.o event.o cpustat.o health-check.o
+
+health-check: $(OBJS)
+	$(CC) $(CFLAGS) $(OBJS) -o $@ $(LDFLAGS)
 
 health-check.8.gz: health-check.8
 	gzip -c $< > $@
@@ -19,6 +21,7 @@ dist:
 clean:
 	rm -f health-check health-check.o health-check.8.gz
 	rm -f health-check-$(VERSION).tar.gz
+	rm -f $(OBJS)
 
 install: health-check health-check.8.gz
 	mkdir -p ${DESTDIR}${BINDIR}
