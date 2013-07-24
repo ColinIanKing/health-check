@@ -25,8 +25,12 @@
 #include <sys/syscall.h>
 #include <sys/ptrace.h>
 #include <sys/wait.h>
+#if defined(__x86_64__) || defined(__i386__)
 #include <sys/reg.h>
+#endif
 #include <sys/user.h>
+#include <errno.h>
+#include <linux/ptrace.h>
 
 #include "syscall.h"
 #include "proc.h"
@@ -39,19 +43,45 @@ static pthread_mutex_t ptrace_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 /* minimum allowed thresholds for poll'd system calls that have timeouts */
 static double syscall_timeout[] = {
+#ifdef SYS_clock_nanosleep
 	TIMEOUT(clock_nanosleep, 1.0),
+#endif
+#ifdef SYS_epoll_pwait
 	TIMEOUT(epoll_pwait, 1.0),
+#endif
+#ifdef SYS_epoll_wait
 	TIMEOUT(epoll_wait, 1.0),
+#endif
+#ifdef SYS_mq_timedreceive
 	TIMEOUT(mq_timedreceive, 1.0),
+#endif
+#ifdef SYS_mq_timedsend
 	TIMEOUT(mq_timedsend, 1.0),
+#endif
+#ifdef SYS_nanosleep
 	TIMEOUT(nanosleep, 1.0),
+#endif
+#ifdef SYS_poll
 	TIMEOUT(poll, 1.0),
+#endif
+#ifdef SYS_ppoll
 	TIMEOUT(ppoll, 1.0),
+#endif
+#ifdef SYS_pselect6
 	TIMEOUT(pselect6, 1.0),
+#endif
+#ifdef SYS_recvmmsg
 	TIMEOUT(recvmmsg, 1.0),
+#endif
+#ifdef SYS_rt_sigtimedwait
 	TIMEOUT(rt_sigtimedwait, 1.0),
+#endif
+#ifdef SYS_select
 	TIMEOUT(select, 1.0),
+#endif
+#ifdef SYS_semtimedop
 	TIMEOUT(semtimedop, 1.0),
+#endif
 };
 
 
@@ -169,13 +199,34 @@ static int syscall_get_call(const pid_t pid)
 	return ptrace(PTRACE_PEEKUSER, pid, 4 * ORIG_EAX, NULL);
 #elif defined(__arm__)
 	struct pt_regs regs;
+	unsigned long syscall;
 
-	if (ptrace(PTRACE_GETREGS, tcp->pid, NULL, (void *)&regs) < 0)
+	if (ptrace(PTRACE_GETREGS, pid, NULL, (void *)&regs) < 0)
 		return -1;
 
-	/* NEEDS IMPLEMENTING! */
+	/* Thumb mode */
+	if (regs.ARM_cpsr & 0x20)
+		return regs.ARM_r7;
 
-	return -1;
+	errno = 0;
+	syscall = ptrace(PTRACE_PEEKTEXT, pid, (void *)(regs.ARM_pc - 4), NULL);
+	if (errno)
+		return -1;
+
+	if (syscall == 0xef000000)
+		syscall = regs.ARM_r7;
+	else {
+		if ((syscall & 0x0ff00000) != 0x0f900000) {
+			fprintf(stderr, "bad syscall trap 0x%lx\n", syscall);
+			return -1;
+		}
+		syscall &= 0xfffff;
+	}
+
+	if (syscall & 0x0f0000)
+		syscall &= 0xffff;
+
+	return syscall;
 #else
 #error Only currently implemented for x86 and ARM
 #endif
@@ -187,6 +238,12 @@ static int syscall_get_ret(const pid_t pid)
 	return ptrace(PTRACE_PEEKUSER, pid, sizeof(long) * RAX, NULL);
 #elif defined (__i386__)
 	return ptrace(PTRACE_PEEKUSER, pid, sizeof(long) * EAX, NULL);
+#elif defined (__arm__)
+	struct pt_regs regs;
+	if (ptrace(PTRACE_GETREGS, pid, NULL, (void *)&regs) < 0)
+		return -1;
+
+	return regs.ARM_r0;
 #else
 	fprintf(stderr, "Unknown arch\n");
 	return -1;
@@ -228,7 +285,23 @@ static int syscall_get_args(
 	for (i = 0; i <= n_args; i++)
 		args[i] = ptrace(PTRACE_PEEKUSER, pid, regs[i] * 8, NULL);
 	return 0;
+#elif defined (__arm__)
+	int i;
+	struct pt_regs regs;
+
+	if (ptrace(PTRACE_GETREGS, pid, NULL, (void *)&regs) < 0)
+		return -1;
+
+	for (i = 0; i <= n_args; i++)
+		args[i] = regs.uregs[i];
+
+	return 0;
 #else
+	int i;
+
+	for (i = 0; i <= n_args; i++)
+		args[i] = 0;
+	
 	fprintf(stderr, "Unknown arch\n");
 	return -1;
 #endif
