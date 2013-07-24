@@ -80,6 +80,16 @@ typedef struct {
 typedef void (*list_link_free_t)(void *);
 typedef int  (*list_comp_t)(void *, void *);
 
+/* process specific information */
+typedef struct {
+	pid_t		pid;		/* PID */
+	pid_t		ppid;		/* Parent PID */
+	char		*comm;		/* Kernel process comm name */
+	char		*cmdline;	/* Process name from cmdline */
+	bool		is_thread;	/* true if process is a thread */
+	pthread_t	pthread;	/* thread to do ptrace monitoring of process */
+} proc_info_t;
+
 /* Stash timeout related syscall return value */
 typedef struct {
 	double		timeout;	/* syscall timeout in seconds */
@@ -88,7 +98,7 @@ typedef struct {
 
 /* Syscall polling stats for a particular process */
 typedef struct syscall_info {
-	pid_t		pid;		/* caller's pid */
+	proc_info_t	*proc;		/* process info */
 	int 		syscall;	/* system call number */
 	unsigned long	count;		/* number times call has been made */
 	double 		poll_min;	/* minumum poll time */
@@ -117,16 +127,6 @@ typedef struct syscall {
 	check_timeout_func_t check_func;/* timeout checking function, NULL means don't check */
 	check_return_func_t  check_ret; /* return checking function, NULL means don't check */
 } syscall_t;
-
-/* process specific information */
-typedef struct {
-	pid_t		pid;		/* PID */
-	pid_t		ppid;		/* Parent PID */
-	char		*comm;		/* Kernel process comm name */
-	char		*cmdline;	/* Process name from cmdline */
-	bool		is_thread;	/* true if process is a thread */
-	pthread_t	pthread;	/* thread to do ptrace monitoring of process */
-} proc_info_t;
 
 /* wakeup event information per process */
 typedef struct {
@@ -1468,7 +1468,7 @@ static void sys_nanosleep_generic_ret(syscall_t *sc, syscall_info_t *s)
 
 	if (ret_error)
 		printf("%-15.15s %6i %lu errors\n",
-			sc->name, s->pid, ret_error);
+			sc->name, s->proc->pid, ret_error);
 }
 
 static void sys_poll_generic_ret(syscall_t *sc, syscall_info_t *s)
@@ -1506,8 +1506,13 @@ static void sys_poll_generic_ret(syscall_t *sc, syscall_info_t *s)
 	}
 
 	if (zero_timeouts + zero_timeout_repeats + ret_error > 0) {
-		printf("%-15.15s %6i %lu zero timeouts, %lu repeated timeouts, %lu repeated zero timeouts (heavy polling), %lu errors\n",
-			sc->name, s->pid, zero_timeouts, timeout_repeats, zero_timeout_repeats, ret_error);
+		printf(" %s (%i), %s:\n",
+			s->proc->cmdline, s->proc->pid, sc->name);
+		printf("   %8lu immediate timed out calls with zero timeout (non-blocking peeks)\n", zero_timeouts);
+		printf("   %8lu repeated timed out polled calls with non-zero timeouts (light polling)\n", timeout_repeats);
+		printf("   %8lu repeated immediate timed out polled calls with zero timeouts (heavy polling)\n", zero_timeout_repeats);
+		printf("   %8lu system call errors\n", ret_error);
+		printf("\n");
 	}
 }
 
@@ -1682,15 +1687,14 @@ static void syscall_dump_hashtable(const double duration)
 	}
 
 	printf("System Calls Traced:\n");
-	printf("   PID  Process              Syscall               Count    Rate/Sec\n");
+	printf("  PID  Process              Syscall               Count    Rate/Sec\n");
 	for (l = sorted.head; l; l = l->next) {
 		char name[64];
 		syscall_info_t *s = (syscall_info_t *)l->data;
-		proc_info_t *i = proc_cache_find_by_pid(s->pid);
 		syscall_name(s->syscall, name, sizeof(name));
 
-		printf("  %5i %-20.20s %-20.20s %6lu %12.4f\n",
-			s->pid, i ? i->cmdline : "unknown", name, s->count, (double)s->count / duration);
+		printf(" %5i %-20.20s %-20.20s %6lu %12.4f\n",
+			s->proc->pid, s->proc->cmdline, name, s->count, (double)s->count / duration);
 	}
 
 	list_free(&sorted, NULL);
@@ -1925,15 +1929,14 @@ static void syscall_dump_pollers(const double duration)
 		char tmp[64], *units;
 
 		printf("\nTop Polling System Calls:\n");
-		printf("Count   PID  Syscall             Rate/Sec   Infinite   Zero       Minimum        Maximum        Average     %% BAD\n");
-		printf("                                            Timeouts Timeouts   Timeout (Sec)  Timeout (Sec)  Timeout (Sec) Polling\n");
+		printf("  PID  Process              Syscall             Rate/Sec   Infinite   Zero       Minimum        Maximum        Average     %% BAD\n");
+		printf("                                                           Timeouts Timeouts   Timeout (Sec)  Timeout (Sec)  Timeout (Sec) Polling\n");
 		for (l = sorted.head; l; l = l->next) {
-			char name[64];
 			syscall_info_t *s = (syscall_info_t *)l->data;
-			syscall_name(s->syscall, name, sizeof(name));
+			syscall_name(s->syscall, tmp, sizeof(tmp));
 
-			printf("%6lu %5i %-17.17s %12.4f",
-				s->count, s->pid, name,
+			printf(" %5i %-20.20s %-17.17s %12.4f",
+				s->proc->pid, s->proc->cmdline, tmp,
 				(double)s->count / duration);
 
 			printf(" %8lu %8lu ", s->poll_infinite, s->poll_zero);
@@ -1950,14 +1953,14 @@ static void syscall_dump_pollers(const double duration)
 
 		printf("\nDistribution of poll timeout times:\n");
 
-		printf("                             ");
+		printf("%50.50s", "");
 		for (prev = 0.0, bucket = BUCKET_START, i = 0; i < MAX_BUCKET; i++, bucket *= 10.0) {
 			units = syscall_timeout_to_human_time(prev, false, tmp, sizeof(tmp));
 			printf(" %6s", i == 0 ? "" : tmp);
 			prev = bucket;
 		}
 		printf("\n");
-		printf("                             ");
+		printf("%50.50s", "");
 		for (bucket = BUCKET_START, i = 0; i < MAX_BUCKET; i++) {
 			if (i == 0)
 				printf("  up to");
@@ -1968,13 +1971,13 @@ static void syscall_dump_pollers(const double duration)
 		}
 		printf("\n");
 
-		printf("                         Zero");
+		printf("%46.46sZero", "");
 		for (bucket = BUCKET_START, i = 0; i < MAX_BUCKET; i++, bucket *= 10.0) {
 			units = syscall_timeout_to_human_time(bucket, true, tmp, sizeof(tmp));
 			printf(" %6s", i == (MAX_BUCKET-1) ? "" : tmp);
 		}
 		printf(" Infinite\n");
-		printf("Syscall            PID    sec");
+		printf("  PID  Process              Syscall            sec");
 		for (bucket = BUCKET_START, i = 0; i < MAX_BUCKET; i++, bucket *= 10.0) {
 			units = syscall_timeout_to_human_time(bucket, true, tmp, sizeof(tmp));
 			printf(" %6s", units);
@@ -1985,7 +1988,7 @@ static void syscall_dump_pollers(const double duration)
 			syscall_info_t *s = (syscall_info_t *)l->data;
 
 			syscall_name(s->syscall, tmp, sizeof(tmp));
-			printf("%-15.15s %6u %6lu", tmp, s->pid, s->poll_zero);
+			printf(" %5u %-20.20s %-15.15s %6lu", s->proc->pid, s->proc->cmdline, tmp, s->poll_zero);
 			for (i = 0; i < MAX_BUCKET; i++) {
 				if (s->bucket[i])
 					printf(" %6lu", s->bucket[i]);
@@ -2027,7 +2030,7 @@ static void syscall_count(
 
 	for (s = syscall_info[h]; s; s = s->next) {
 		if ((s->syscall == syscall) &&
-		    (s->pid == pid)) {
+		    (s->proc->pid == pid)) {
 			s->count++;
 			pthread_mutex_unlock(&ptrace_mutex);
 
@@ -2048,7 +2051,7 @@ static void syscall_count(
 	}
 
 	s->syscall = syscall;
-	s->pid = pid;
+	s->proc = proc_cache_find_by_pid(pid);
 	s->count = 1;
 	s->poll_zero = 0;
 	s->poll_infinite = 0;
@@ -2729,7 +2732,7 @@ static void event_dump_diff(
 		return;
 	}
 
-	printf("   PID  Process               Wake/Sec Kernel Functions\n");
+	printf("  PID  Process               Wake/Sec Kernel Functions\n");
 	for (ln = events_new->head; ln; ln = ln->next) {
 		evn = (event_info_t*)ln->data;
 		unsigned long delta = evn->count;
@@ -2741,7 +2744,7 @@ static void event_dump_diff(
 				break;
 			}
 		}
-		printf("  %5d %-20.20s %9.2f (%s, %s)\n",
+		printf(" %5d %-20.20s %9.2f (%s, %s)\n",
 			evn->proc->pid, evn->proc->cmdline,
 			(double)delta / duration,
 			evn->func, evn->callback);
@@ -2796,10 +2799,10 @@ static void cpustat_dump_diff(
 	}
 
 	printf("CPU usage:\n");
-	printf("   PID  Process                USR%%   SYS%%  TOTAL%%\n");
+	printf("  PID  Process                USR%%   SYS%%  TOTAL%%\n");
 	for (ln = sorted.head; ln; ln = ln->next) {
 		cin = (cpustat_info_t*)ln->data;
-		printf("  %5d %-20.20s %6.2f %6.2f %6.2f\n",
+		printf(" %5d %-20.20s %6.2f %6.2f %6.2f\n",
 			cin->proc->pid,
 			cin->proc->cmdline,
 			100.0 * (double)cin->utime / (double)nr_ticks,
@@ -3017,7 +3020,7 @@ static void fnotify_dump_events(
 		list_add_ordered(&sorted, info, fnotify_event_cmp_count);
 	}
 
-	printf("   PID  Process               Count  Op  Filename\n");
+	printf("  PID  Process               Count  Op  Filename\n");
 	for (l = sorted.head; l; l = l->next) {
 		fnotify_fileinfo_t *info = (fnotify_fileinfo_t *)l->data;
 		char modes[5];
@@ -3033,7 +3036,7 @@ static void fnotify_dump_events(
 			modes[i++] = 'W';
 		modes[i] = '\0';
 
-		printf("  %5d %-20.20s %6d %4s %s\n",
+		printf(" %5d %-20.20s %6d %4s %s\n",
 			info->proc->pid, info->proc->cmdline,
 			info->count, modes, info->filename);
 	}
@@ -3074,11 +3077,11 @@ static void fnotify_dump_events(
 	}
 
 	printf("File I/O Operations per second:\n");
-	printf("   PID  Process                 Open   Close    Read   Write\n");
+	printf("  PID  Process                 Open   Close    Read   Write\n");
 	for (l = sorted.head; l; l = l->next) {
 		io_ops_t *io_ops = (io_ops_t *)l->data;
 
-		printf("  %5d %-20.20s %7.2f %7.2f %7.2f %7.2f\n",
+		printf(" %5d %-20.20s %7.2f %7.2f %7.2f %7.2f\n",
 			io_ops->proc->pid, io_ops->proc->cmdline,
 			(double)io_ops->open_total / duration,
 			(double)io_ops->close_total / duration,
