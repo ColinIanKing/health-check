@@ -61,7 +61,7 @@ typedef struct syscall_info {
 
 typedef struct syscall syscall_t;
 
-typedef void (*check_timeout_func_t)(syscall_t *sc, syscall_info_t *s, pid_t pid, double threshold, int ret);
+typedef void (*check_timeout_func_t)(syscall_t *sc, syscall_info_t *s, pid_t pid, double threshold, double *timeout);
 typedef void (*check_return_func_t)(syscall_t *sc, syscall_info_t *s);
 
 /* syscall specific information */
