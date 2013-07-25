@@ -655,10 +655,16 @@ void syscall_dump_pollers(const double duration)
 }
 
 /*
- *
- *
+ *  syscall_account_return()
+ *	if the system call has return check handler then
+ *	fetch return value from syscall and add it to 
+ *	list of returns
  */
-static void syscall_account_return(syscall_info_t *s, const int pid, const int syscall, double timeout)
+static void syscall_account_return(
+	syscall_info_t *s,
+	const int pid,
+	const int syscall,
+	const double timeout)
 {
 	if (syscall_valid(syscall)) {
 		syscall_t *sc = &syscalls[syscall];
