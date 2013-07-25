@@ -1,3 +1,16 @@
+health-check (0.01.04) saucy; urgency=low
+
+  * Bump version
+  * update man page
+  * Bump default run duration to 1 minute
+  * More missing header changes
+  * Forgot to include changes in header
+  * Add -m maximum polling syscalls option
+  * Minor tidyup
+  * get i386 working, restructure to get args before sys call changes them
+
+ -- Colin King <colin.king@canonical.com>  Thu, 25 Jul 2013 12:37:47 +0100
+
 health-check (0.01.03) saucy; urgency=low
 
   * Enable ARM support
