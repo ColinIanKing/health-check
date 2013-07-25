@@ -40,6 +40,7 @@
 #define ARRAY_SIZE(a)	(sizeof(a) / sizeof(a[0]))
 
 static pthread_mutex_t ptrace_mutex = PTHREAD_MUTEX_INITIALIZER;
+static int syscall_count = 0;
 
 /* minimum allowed thresholds for poll'd system calls that have timeouts */
 static double syscall_timeout[] = {
@@ -697,52 +698,53 @@ static syscall_info_t *syscall_count_usage(
 	unsigned long h = hash_syscall(pid, syscall);
 	syscall_info_t *s;
 	syscall_t *sc;
-	bool valid = syscall_valid(syscall);
+	bool found = false;
+	sc = syscall_valid(syscall) ? &syscalls[syscall] : NULL;
 
 	*timeout = -1.0;
 	pthread_mutex_lock(&ptrace_mutex);
-
 	for (s = syscall_info[h]; s; s = s->next) {
 		if ((s->syscall == syscall) &&
 		    (s->proc->pid == pid)) {
 			s->count++;
-			pthread_mutex_unlock(&ptrace_mutex);
-
-			if (valid) {
-				sc = &syscalls[syscall];
-				if (sc->check_func)
-					sc->check_func(sc, s, pid, *(sc->threshold), timeout);
-			}
-			return s;
+			found = true;
+			break;
 		}
 	}
 	pthread_mutex_unlock(&ptrace_mutex);
 
-	if ((s = calloc(1, sizeof(*s))) == NULL) {
-		fprintf(stderr, "Cannot allocate syscall hash item\n");
-		exit(EXIT_FAILURE);
+	if (!found) {
+		/*
+		 *  Doesn't exist, create new one
+		 */
+		if ((s = calloc(1, sizeof(*s))) == NULL) {
+			fprintf(stderr, "Cannot allocate syscall hash item\n");
+			exit(EXIT_FAILURE);
+		}
+		s->syscall = syscall;
+		s->proc = proc_cache_find_by_pid(pid);
+		s->count = 1;
+		s->poll_zero = 0;
+		s->poll_infinite = 0;
+		s->poll_count = 0;
+		s->poll_min = -1.0;
+		s->poll_max = -1.0;
+		s->poll_total = 0;
+		s->poll_too_low = 0;
+		list_init(&s->return_history);
+
+		pthread_mutex_lock(&ptrace_mutex);
+		s->next = syscall_info[h];
+		syscall_info[h] = s;
+		pthread_mutex_unlock(&ptrace_mutex);
 	}
-	s->syscall = syscall;
-	s->proc = proc_cache_find_by_pid(pid);
-	s->count = 1;
-	s->poll_zero = 0;
-	s->poll_infinite = 0;
-	s->poll_count = 0;
-	s->poll_min = -1.0;
-	s->poll_max = -1.0;
-	s->poll_total = 0;
-	s->poll_too_low = 0;
-	list_init(&s->return_history);
 
-	pthread_mutex_lock(&ptrace_mutex);
-	s->next = syscall_info[h];
-	syscall_info[h] = s;
-	pthread_mutex_unlock(&ptrace_mutex);
-
-	if (valid) {
-		sc = &syscalls[syscall];
-		if (sc->check_func)
-			sc->check_func(sc, s, pid, *(sc->threshold), timeout);
+	if (sc && sc->check_func) {
+		pthread_mutex_lock(&ptrace_mutex);
+		if (++syscall_count >= opt_max_syscalls)
+			keep_running = false;
+		pthread_mutex_unlock(&ptrace_mutex);
+		sc->check_func(sc, s, pid, *(sc->threshold), timeout);
 	}
 	return s;
 }
@@ -751,19 +753,18 @@ static syscall_info_t *syscall_count_usage(
  *  syscall_wait()
  *	wait for ptrace
  */
-static int syscall_wait(const pid_t pid)
+static bool syscall_wait(const pid_t pid)
 {
-	while (keep_running) {
+	for (;;) {
 		int status;
 		ptrace(PTRACE_SYSCALL, pid, 0, 0);
 		waitpid(pid, &status, 0);
 		if (WIFSTOPPED(status) &&
 		    WSTOPSIG(status) & 0x80)
-			return 0;
+			return false;
 		if (WIFEXITED(status))
-			return 1;
+			return true;
 	}
-	return 1;
 }
 
 

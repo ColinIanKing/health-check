@@ -45,6 +45,7 @@
 
 volatile bool keep_running = true;
 static int  opt_flags;
+int opt_max_syscalls = 1000000;
 
 /*
  *  handle_sigint()
@@ -79,7 +80,8 @@ static void show_usage(void)
 	printf("  -c            find all child and threads\n");
 	printf("  -d            specify the analysis duration in seconds\n");
 	printf("  -h            show this help\n");
-	printf("  -p pid[,pid]  specify process id(s) or process name(s) \n");
+	printf("  -p pid[,pid]  specify process id(s) or process name(s)\n");
+	printf("  -m max	specify maximum number of system calls to trace\n");
 	health_check_exit(EXIT_SUCCESS);
 }
 
@@ -136,7 +138,7 @@ int main(int argc, char **argv)
 #endif
 
 	for (;;) {
-		int c = getopt(argc, argv, "cd:hp:");
+		int c = getopt(argc, argv, "cd:hp:m:");
 		if (c == -1)
 			break;
 		switch (c) {
@@ -152,6 +154,9 @@ int main(int argc, char **argv)
 			break;
 		case 'd':
 			opt_duration_secs = atof(optarg);
+			break;
+		case 'm':
+			opt_max_syscalls = atoi(optarg);
 			break;
 		}
 	}
