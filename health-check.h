@@ -25,5 +25,6 @@
 
 extern void health_check_exit(const int status) __attribute__ ((noreturn));
 extern volatile bool keep_running;
+extern int opt_max_syscalls;
 
 #endif
