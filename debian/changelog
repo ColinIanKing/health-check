@@ -1,3 +1,10 @@
+health-check (0.01.05) saucy; urgency=low
+
+  * Bump version
+  * Makefile: remove -g by default, don't break build on warnings
+
+ -- Colin King <colin.king@canonical.com>  Thu, 25 Jul 2013 12:41:03 +0100
+
 health-check (0.01.04) saucy; urgency=low
 
   * Bump version
