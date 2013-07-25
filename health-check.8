@@ -34,16 +34,22 @@ It can be used to diagnose unhealthy bad processes.
 health-check options are as follow:
 .TP
 .B \-h
-show help
+Show help
 .TP
 .B \-c 
-find and monitor all child and threads of a given set of processes.
+Find and monitor all child and threads of a given set of processes.
 .TP
 .B \-d 
-specify analysis duration in seconds. Default is 10 seconds.
+Specify analysis duration in seconds. Default is 10 seconds.
 .TP
 .B \-p pid[,pid]
-specify which processes to analyse. Can be process ID or process name.
+Specify which processes to analyse. Can be process ID or process name.
+.TP
+.B \-m max
+Specify maximum number of timeout blocking system calls are logged
+before completing. This is useful with very busy processes that can
+generate tens of thousands of ptrace events that have to be logged by
+health-check. The default is 1 million.
 .SH AUTHOR
 health-check was written by Colin King <colin.king@canonical.com>
 .PP
