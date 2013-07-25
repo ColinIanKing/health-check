@@ -112,7 +112,7 @@ static int parse_pid_list(char *arg, list_t *pids)
 
 int main(int argc, char **argv)
 {
-	double opt_duration_secs = 10.0;
+	double opt_duration_secs = 60.0;
 	struct timeval tv_start, tv_end, tv_now, duration;
 	double actual_duration;
 	int ret, rc = EXIT_SUCCESS;
