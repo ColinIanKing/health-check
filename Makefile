@@ -1,6 +1,6 @@
 VERSION=0.01.04
 
-CFLAGS += -g -Wall -Wextra -Werror -DVERSION='"$(VERSION)"'
+CFLAGS += -Wall -Wextra -DVERSION='"$(VERSION)"'
 LDFLAGS += -lpthread
 
 BINDIR=/usr/bin
