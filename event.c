@@ -248,7 +248,6 @@ void event_dump_diff(
 	}
 
 	if (opt_flags & OPT_BRIEF) {
-		unsigned long total = 0;
 		double event_rate = 0.0;
 		for (l = events_new->head; l; l = l->next) {
 			event_info_t *event_new = (event_info_t *)l->data;
