@@ -188,7 +188,7 @@ void fnotify_dump_events(
 
 	printf("File I/O operations:\n");
 	if (fnotify_files->head == NULL) {
-		printf("  No file I/O operations detected\n\n");
+		printf(" No file I/O operations detected\n\n");
 		return;
 	}
 
