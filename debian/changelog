@@ -1,3 +1,12 @@
+health-check (0.01.07) saucy; urgency=low
+
+  * Makefile: bump version
+  * More consifications
+  * Fix spelling mistake in comment
+  * man: update 60 seconds default
+
+ -- Colin King <colin.king@canonical.com>  Mon, 29 Jul 2013 15:25:22 +0100
+
 health-check (0.01.06) saucy; urgency=low
 
   * Makefile: bump version
