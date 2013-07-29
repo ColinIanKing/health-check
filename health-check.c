@@ -37,6 +37,7 @@
 #include "fnotify.h"
 #include "event.h"
 #include "cpustat.h"
+#include "mem.h"
 #include "health-check.h"
 
 #define APP_NAME			"health-check"
@@ -120,6 +121,7 @@ int main(int argc, char **argv)
 	list_t		event_info_old, event_info_new;
 	list_t		fnotify_files, pids;
 	list_t		cpustat_info_old, cpustat_info_new;
+	list_t		mem_info_old, mem_info_new;
 	link_t		*l;
 	int fan_fd = 0;
 	void *buffer;
@@ -128,6 +130,8 @@ int main(int argc, char **argv)
 	list_init(&event_info_new);
 	list_init(&cpustat_info_old);
 	list_init(&cpustat_info_new);
+	list_init(&mem_info_old);
+	list_init(&mem_info_new);
 	list_init(&fnotify_files);
 	list_init(&pids);
 	list_init(&proc_cache);
@@ -221,6 +225,7 @@ int main(int argc, char **argv)
 
 	event_get(&pids, &event_info_old);
 	cpustat_get(&pids, &cpustat_info_old);
+	mem_get(&pids, &mem_info_old);
 
 	gettimeofday(&tv_now, NULL);
 	duration = timeval_sub(&tv_end, &tv_now);
@@ -262,6 +267,7 @@ int main(int argc, char **argv)
 
 	event_get(&pids, &event_info_new);
 	cpustat_get(&pids, &cpustat_info_new);
+	mem_get(&pids, &mem_info_new);
 	event_deinit();
 
 	cpustat_dump_diff(actual_duration, &cpustat_info_old, &cpustat_info_new);
@@ -269,6 +275,7 @@ int main(int argc, char **argv)
 	fnotify_dump_events(actual_duration, &pids, &fnotify_files);
 	syscall_dump_hashtable(actual_duration);
 	syscall_dump_pollers(actual_duration);
+	mem_dump_diff(actual_duration, &mem_info_old, &mem_info_new);
 
 out:
 	for (l = pids.head; l; l = l->next) {
@@ -285,6 +292,8 @@ out:
 	list_free(&event_info_new, event_free);
 	list_free(&cpustat_info_old, free);
 	list_free(&cpustat_info_new, free);
+	list_free(&mem_info_old, free);
+	list_free(&mem_info_new, free);
 	list_free(&fnotify_files, fnotify_event_free);
 	list_free(&proc_cache, proc_cache_info_free);
 
