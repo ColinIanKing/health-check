@@ -166,10 +166,9 @@ static void syscall_poll_generic_ret(syscall_t *sc, syscall_info_t *s)
 		if (timeout_repeats)
 			printf("   %8lu repeated timed out polled calls with non-zero timeouts (light polling)\n", timeout_repeats);
 		if (zero_timeout_repeats)
-			printf("   %8lu repeated immediate timed out polled calls with zero timeouts (heavy polling)\n", zero_timeout_repeats);
+			printf("   %8lu repeated immediate timed out polled calls with zero timeouts (heavy polling peeks)\n", zero_timeout_repeats);
 		if (ret_error)
 			printf("   %8lu system call errors\n", ret_error);
-		printf("\n");
 	}
 }
 #endif
@@ -372,6 +371,11 @@ void syscall_dump_hashtable(const double duration)
 	list_t sorted;
 	link_t *l;
 	int i;
+	int count = 0;
+	unsigned long total = 0;
+
+	if (opt_flags & OPT_BRIEF)
+		return;
 
 	list_init(&sorted);
 
@@ -382,7 +386,7 @@ void syscall_dump_hashtable(const double duration)
 			list_add_ordered(&sorted, s, syscall_count_cmp);
 	}
 
-	printf("System Calls Traced:\n");
+	printf("System calls traced:\n");
 	printf("  PID  Process              Syscall               Count    Rate/Sec\n");
 	for (l = sorted.head; l; l = l->next) {
 		char name[64];
@@ -391,7 +395,14 @@ void syscall_dump_hashtable(const double duration)
 
 		printf(" %5i %-20.20s %-20.20s %6lu %12.4f\n",
 			s->proc->pid, s->proc->cmdline, name, s->count, (double)s->count / duration);
+		count++;
+		total += s->count;
 	}
+	if (count > 1) {
+		printf(" %-46.46s%8lu %12.4f\n", "Total",
+			total, (double)total / duration);
+	}
+	printf("\n");
 
 	list_free(&sorted, NULL);
 }
@@ -562,87 +573,107 @@ void syscall_dump_pollers(const double duration)
 	}
 
 	if (sorted.head) {
-		double prev, bucket;
-		char tmp[64], *units;
+		if (!(opt_flags & OPT_BRIEF)) {
+			double prev, bucket;
+			char tmp[64], *units;
+			double total_rate = 0.0;
+			unsigned long poll_infinite = 0, poll_zero = 0;
+			int count = 0;
 
+			printf("Top polling system calls:\n");
+			printf("  PID  Process              Syscall             Rate/Sec   Infinite   Zero     Minimum    Maximum    Average\n");
+			printf("                                                           Timeouts Timeouts   Timeout    Timeout    Timeout\n");
+			for (l = sorted.head; l; l = l->next) {
+				double rate;
+				syscall_info_t *s = (syscall_info_t *)l->data;
+				syscall_name(s->syscall, tmp, sizeof(tmp));
+				rate = (double)s->count / duration;
 
-		printf("\nTop Polling System Calls:\n");
-		printf("  PID  Process              Syscall             Rate/Sec   Infinite   Zero     Minimum    Maximum    Average\n");
-		printf("                                                           Timeouts Timeouts   Timeout    Timeout    Timeout\n");
-		for (l = sorted.head; l; l = l->next) {
-			syscall_info_t *s = (syscall_info_t *)l->data;
-			syscall_name(s->syscall, tmp, sizeof(tmp));
+				printf(" %5i %-20.20s %-17.17s %12.4f %8lu %8lu",
+					s->proc->pid, s->proc->cmdline, tmp, rate,
+					s->poll_infinite, s->poll_zero);
+				if (s->poll_count) {	
+					char min_timeout[64], max_timeout[64], avg_timeout[64];
 
-			printf(" %5i %-20.20s %-17.17s %12.4f",
-				s->proc->pid, s->proc->cmdline, tmp,
-				(double)s->count / duration);
+					units = syscall_timeout_to_human_time(s->poll_min < 0.0 ? 0.0 : s->poll_min, false, tmp, sizeof(tmp));
+					snprintf(min_timeout, sizeof(min_timeout), "%s %-4s", tmp, units);
+					units = syscall_timeout_to_human_time(s->poll_max < 0.0 ? 0.0 : s->poll_max, false, tmp, sizeof(tmp));
+					snprintf(max_timeout, sizeof(max_timeout), "%s %-4s", tmp, units);
+					units = syscall_timeout_to_human_time(s->poll_total / (double)s->count, false, tmp, sizeof(tmp));
+					snprintf(avg_timeout, sizeof(avg_timeout), "%s %-4s", tmp, units);
+	
+					printf(" %10s %10s %10s", min_timeout, max_timeout, avg_timeout);
+				} else {
+					printf("       n/a            n/a            n/a        n/a");
+				}
+				printf("\n");
 
-			printf(" %8lu %8lu ", s->poll_infinite, s->poll_zero);
-			if (s->poll_count) {	
-				char min_timeout[64], max_timeout[64], avg_timeout[64];
-
-				units = syscall_timeout_to_human_time(s->poll_min < 0.0 ? 0.0 : s->poll_min, false, tmp, sizeof(tmp));
-				snprintf(min_timeout, sizeof(min_timeout), "%s %-4s", tmp, units);
-				units = syscall_timeout_to_human_time(s->poll_max < 0.0 ? 0.0 : s->poll_max, false, tmp, sizeof(tmp));
-				snprintf(max_timeout, sizeof(max_timeout), "%s %-4s", tmp, units);
-				units = syscall_timeout_to_human_time(s->poll_total / (double)s->count, false, tmp, sizeof(tmp));
-				snprintf(avg_timeout, sizeof(avg_timeout), "%s %-4s", tmp, units);
-
-				printf(" %10s %10s %10s", min_timeout, max_timeout, avg_timeout);
-			} else
-				printf("       n/a            n/a            n/a        n/a");
-			printf("\n");
-		}
-
-		printf("\nDistribution of poll timeout times:\n");
-
-		printf("%50.50s", "");
-		for (prev = 0.0, bucket = BUCKET_START, i = 0; i < MAX_BUCKET; i++, bucket *= 10.0) {
-			units = syscall_timeout_to_human_time(prev, false, tmp, sizeof(tmp));
-			printf(" %6s", i == 0 ? "" : tmp);
-			prev = bucket;
-		}
-		printf("\n");
-		printf("%50.50s", "");
-		for (bucket = BUCKET_START, i = 0; i < MAX_BUCKET; i++) {
-			if (i == 0)
-				printf("  up to");
-			else if (i == MAX_BUCKET - 1)
-				printf(" or more");
-			else
-				printf("    to ");
-		}
-		printf("\n");
-
-		printf("%46.46sZero", "");
-		for (bucket = BUCKET_START, i = 0; i < MAX_BUCKET; i++, bucket *= 10.0) {
-			units = syscall_timeout_to_human_time(bucket, true, tmp, sizeof(tmp));
-			printf(" %6s", i == (MAX_BUCKET-1) ? "" : tmp);
-		}
-		printf(" Infinite\n");
-		printf("  PID  Process              Syscall            sec");
-		for (bucket = BUCKET_START, i = 0; i < MAX_BUCKET; i++, bucket *= 10.0) {
-			units = syscall_timeout_to_human_time(bucket, true, tmp, sizeof(tmp));
-			printf(" %6s", units);
-		}
-		printf("   Wait\n");
-
-		for (l = sorted.head; l; l = l->next) {
-			syscall_info_t *s = (syscall_info_t *)l->data;
-
-			syscall_name(s->syscall, tmp, sizeof(tmp));
-			printf(" %5u %-20.20s %-15.15s %6lu", s->proc->pid, s->proc->cmdline, tmp, s->poll_zero);
-			for (i = 0; i < MAX_BUCKET; i++) {
-				if (s->bucket[i])
-					printf(" %6lu", s->bucket[i]);
-				else
-					printf("     - ");
+				total_rate += rate;
+				poll_infinite += s->poll_infinite;
+				poll_zero += s->poll_zero;
+				count++;
 			}
-			printf(" %6lu", s->poll_infinite);
+			if (count > 1)
+				printf(" %-45.45s%12.4f %8lu %8lu\n", "Total",
+					total_rate, poll_infinite, poll_zero);
+
+			printf("\nDistribution of poll timeout times:\n");
+
+			printf("%50.50s", "");
+			for (prev = 0.0, bucket = BUCKET_START, i = 0; i < MAX_BUCKET; i++, bucket *= 10.0) {
+				units = syscall_timeout_to_human_time(prev, false, tmp, sizeof(tmp));
+				printf(" %6s", i == 0 ? "" : tmp);
+				prev = bucket;
+			}
+			printf("\n");
+			printf("%50.50s", "");
+			for (bucket = BUCKET_START, i = 0; i < MAX_BUCKET; i++) {
+				if (i == 0)
+					printf("  up to");
+				else if (i == MAX_BUCKET - 1)
+					printf(" or more");
+				else
+					printf("    to ");
+			}
+			printf("\n");
+
+			printf("%46.46sZero", "");
+			for (bucket = BUCKET_START, i = 0; i < MAX_BUCKET; i++, bucket *= 10.0) {
+				units = syscall_timeout_to_human_time(bucket, true, tmp, sizeof(tmp));
+				printf(" %6s", i == (MAX_BUCKET-1) ? "" : tmp);
+			}
+			printf(" Infinite\n");
+			printf("  PID  Process              Syscall            sec");
+			for (bucket = BUCKET_START, i = 0; i < MAX_BUCKET; i++, bucket *= 10.0) {
+				units = syscall_timeout_to_human_time(bucket, true, tmp, sizeof(tmp));
+				printf(" %6s", units);
+			}
+			printf("   Wait\n");
+	
+			for (l = sorted.head; l; l = l->next) {
+				syscall_info_t *s = (syscall_info_t *)l->data;
+
+				syscall_name(s->syscall, tmp, sizeof(tmp));
+				printf(" %5u %-20.20s %-15.15s %6lu", s->proc->pid, s->proc->cmdline, tmp, s->poll_zero);
+				for (i = 0; i < MAX_BUCKET; i++) {
+					if (s->bucket[i])
+						printf(" %6lu", s->bucket[i]);
+					else
+						printf("     - ");
+				}
+				printf(" %6lu", s->poll_infinite);
+				printf("\n");
+			}
 			printf("\n");
 		}
-		printf("\n");
 
+		for (l = sorted.head; l; l = l->next) {
+			syscall_info_t *s = (syscall_info_t *)l->data;
+			if (syscall_valid(s->syscall) && syscalls[s->syscall].check_ret) {
+				printf("Polling system call analysis:\n");
+				break;
+			}
+		}
 		for (l = sorted.head; l; l = l->next) {
 			syscall_info_t *s = (syscall_info_t *)l->data;
 			if (syscall_valid(s->syscall)) {

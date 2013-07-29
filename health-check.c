@@ -42,9 +42,10 @@
 #define APP_NAME			"health-check"
 
 #define	OPT_GET_CHILDREN		0x00000001
+#define OPT_BRIEF			0x00000002
 
 volatile bool keep_running = true;
-static int  opt_flags;
+int opt_flags;
 int opt_max_syscalls = 1000000;
 
 /*
@@ -138,10 +139,13 @@ int main(int argc, char **argv)
 #endif
 
 	for (;;) {
-		int c = getopt(argc, argv, "cd:hp:m:");
+		int c = getopt(argc, argv, "bcd:hp:m:");
 		if (c == -1)
 			break;
 		switch (c) {
+		case 'b':
+			opt_flags |= OPT_BRIEF;
+			break;
 		case 'c':
 			opt_flags |= OPT_GET_CHILDREN;
 			break;

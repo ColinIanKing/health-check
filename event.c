@@ -188,6 +188,49 @@ void event_get(list_t *pids, list_t *events)
 }
 
 /*
+ *  event_loading()
+ *
+ */
+static const char *event_loading(const double wakeup_rate)
+{
+	if (wakeup_rate == 0.0)
+		return "idle";
+	if (wakeup_rate > 200.0)
+		return "very excessive";
+	if (wakeup_rate > 60.0)
+		return "excessive";
+	if (wakeup_rate > 20.0)
+		return "very high";
+	if (wakeup_rate > 10.0)
+		return "high";
+	if (wakeup_rate > 5.0)
+		return "quite high";
+	if (wakeup_rate > 1.0)
+		return "moderate";
+	if (wakeup_rate > 0.25)
+		return "low";
+	return "very low";
+}
+
+/*
+ *  event_delta()
+ *	find delta in events between old, new. 
+ *	if no old then delta is the new.
+ */
+static unsigned long event_delta(event_info_t *event_new, list_t *events_old)
+{
+	link_t *l;
+
+	for (l = events_old->head; l; l = l->next) {
+		event_info_t *event_old = (event_info_t*)l->data;
+		if (strcmp(event_new->ident, event_old->ident) == 0)
+			return event_new->count - event_old->count;
+	}
+	return event_new->count;
+}
+
+
+/*
  *  event_dump_diff()
  *	dump differences between old and new events
  */
@@ -196,33 +239,50 @@ void event_dump_diff(
 	list_t *events_old,
 	list_t *events_new)
 {
-	link_t *ln, *lo;
-	event_info_t *evo, *evn;
+	link_t *l;
 
 	printf("Wakeups:\n");
 	if (events_new->head == NULL) {
-		printf("  No wakeups detected\n\n");
+		printf(" No wakeups detected\n\n");
 		return;
 	}
 
-	printf("  PID  Process               Wake/Sec Kernel Functions\n");
-	for (ln = events_new->head; ln; ln = ln->next) {
-		evn = (event_info_t*)ln->data;
-		unsigned long delta = evn->count;
-
-		for (lo = events_old->head; lo; lo = lo->next) {
-			evo = (event_info_t*)lo->data;
-			if (strcmp(evn->ident, evo->ident) == 0) {
-				delta = evn->count - evo->count;
-				break;
-			}
+	if (opt_flags & OPT_BRIEF) {
+		unsigned long total = 0;
+		double event_rate = 0.0;
+		for (l = events_new->head; l; l = l->next) {
+			event_info_t *event_new = (event_info_t *)l->data;
+			unsigned long delta = event_delta(event_new, events_old);
+			event_rate += (double)delta;
 		}
-		printf(" %5d %-20.20s %9.2f (%s, %s)\n",
-			evn->proc->pid, evn->proc->cmdline,
-			(double)delta / duration,
-			evn->func, evn->callback);
+		event_rate /= duration;
+		printf(" %6.2f wakeups/sec (%s)\n\n",
+			event_rate, event_loading(event_rate));
+			
+	} else {
+		int count = 0;
+		double total = 0.0;
+
+		printf("  PID  Process               Wake/Sec Kernel Functions\n");
+		for (l = events_new->head; l; l = l->next) {
+			event_info_t *event_new = (event_info_t *)l->data;
+			unsigned long delta = event_delta(event_new, events_old);
+			double event_rate = (double)delta / duration;
+	
+			printf(" %5d %-20.20s %9.2f (%s, %s) (%s)\n",
+				event_new->proc->pid, event_new->proc->cmdline,
+				event_rate,
+				event_new->func, event_new->callback,
+				event_loading(event_rate));
+			total += event_rate;
+			count++;
+		}
+		if (count > 1)
+			printf(" %-27.27s%9.2f\n", "Total",
+				total);
+			
+		printf("\n");
 	}
-	printf("\n");
 }
 
 void event_init(void)

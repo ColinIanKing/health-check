@@ -182,41 +182,50 @@ void fnotify_dump_events(
 	link_t 	*l;
 	link_t  *lp;
 	list_t	sorted;
+	int count;
+	unsigned long total;
+	unsigned long read_total, write_total, open_total, close_total;
 
-	printf("File I/O Operations:\n");
+	printf("File I/O operations:\n");
 	if (fnotify_files->head == NULL) {
 		printf("  No file I/O operations detected\n\n");
 		return;
 	}
 
-	list_init(&sorted);
-	for (l = fnotify_files->head; l; l = l->next) {
-		fnotify_fileinfo_t *info = (fnotify_fileinfo_t *)l->data;
-		list_add_ordered(&sorted, info, fnotify_event_cmp_count);
+	if (!(opt_flags & OPT_BRIEF)) {
+		list_init(&sorted);
+		for (l = fnotify_files->head; l; l = l->next) {
+			fnotify_fileinfo_t *info = (fnotify_fileinfo_t *)l->data;
+			list_add_ordered(&sorted, info, fnotify_event_cmp_count);
+		}
+		printf("  PID  Process               Count  Op  Filename\n");
+		for (count = 0, total = 0, l = sorted.head; l; l = l->next) {
+			fnotify_fileinfo_t *info = (fnotify_fileinfo_t *)l->data;
+			char modes[5];
+			int i = 0;
+	
+			if (info->mask & FAN_OPEN)
+				modes[i++] = 'O';
+			if (info->mask & (FAN_CLOSE_WRITE | FAN_CLOSE_NOWRITE))
+				modes[i++] = 'C';
+			if (info->mask & FAN_ACCESS)
+				modes[i++] = 'R';
+			if (info->mask & (FAN_MODIFY | FAN_CLOSE_WRITE))
+				modes[i++] = 'W';
+			modes[i] = '\0';
+	
+			printf(" %5d %-20.20s %6d %4s %s\n",
+				info->proc->pid, info->proc->cmdline,
+				info->count, modes, info->filename);
+	
+			total += info->count;
+			count++;
+		}
+		if (count > 1)
+			printf(" %-25.25s%8lu\n", "Total", total);
+		printf("\n");
+		list_free(&sorted, NULL);
 	}
-
-	printf("  PID  Process               Count  Op  Filename\n");
-	for (l = sorted.head; l; l = l->next) {
-		fnotify_fileinfo_t *info = (fnotify_fileinfo_t *)l->data;
-		char modes[5];
-		int i = 0;
-
-		if (info->mask & FAN_OPEN)
-			modes[i++] = 'O';
-		if (info->mask & (FAN_CLOSE_WRITE | FAN_CLOSE_NOWRITE))
-			modes[i++] = 'C';
-		if (info->mask & FAN_ACCESS)
-			modes[i++] = 'R';
-		if (info->mask & (FAN_MODIFY | FAN_CLOSE_WRITE))
-			modes[i++] = 'W';
-		modes[i] = '\0';
-
-		printf(" %5d %-20.20s %6d %4s %s\n",
-			info->proc->pid, info->proc->cmdline,
-			info->count, modes, info->filename);
-	}
-	printf("\n");
-	list_free(&sorted, NULL);
 
 	list_init(&sorted);
 	for (lp = pids->head; lp; lp = lp->next) {
@@ -251,17 +260,47 @@ void fnotify_dump_events(
 			list_add_ordered(&sorted, io_ops, fnotify_event_cmp_io_ops);
 	}
 
-	printf("File I/O Operations per second:\n");
-	printf("  PID  Process                 Open   Close    Read   Write\n");
-	for (l = sorted.head; l; l = l->next) {
-		io_ops_t *io_ops = (io_ops_t *)l->data;
+	open_total = close_total = read_total = write_total = 0;
+	if (opt_flags & OPT_BRIEF) {
+		for (l = sorted.head; l; l = l->next) {
+			io_ops_t *io_ops = (io_ops_t *)l->data;
+			open_total  += io_ops->open_total;
+			close_total += io_ops->close_total;
+			read_total  += io_ops->read_total;
+			write_total += io_ops->write_total;
+		}
+		printf("  I/O Operations per second: %.2f open, %.2f close, %.2f read, %.2f write\n",
+			(double)open_total / duration,
+			(double)close_total / duration,
+			(double)read_total / duration,
+			(double)write_total / duration);
+	} else {
+		printf("File I/O Operations per second:\n");
+		printf("  PID  Process                 Open   Close    Read   Write\n");
+		for (count = 0, l = sorted.head; l; l = l->next) {
+			io_ops_t *io_ops = (io_ops_t *)l->data;
 
-		printf(" %5d %-20.20s %7.2f %7.2f %7.2f %7.2f\n",
-			io_ops->proc->pid, io_ops->proc->cmdline,
-			(double)io_ops->open_total / duration,
-			(double)io_ops->close_total / duration,
-			(double)io_ops->read_total / duration,
-			(double)io_ops->write_total / duration);
+			printf(" %5d %-20.20s %7.2f %7.2f %7.2f %7.2f\n",
+				io_ops->proc->pid, io_ops->proc->cmdline,
+				(double)io_ops->open_total / duration,
+				(double)io_ops->close_total / duration,
+				(double)io_ops->read_total / duration,
+				(double)io_ops->write_total / duration);
+
+			open_total  += io_ops->open_total;
+			close_total += io_ops->close_total;
+			read_total  += io_ops->read_total;
+			write_total += io_ops->write_total;
+			count++;
+		}
+		if (count > 1) {
+			printf(" %-27.27s%7.2f %7.2f %7.2f %7.2f\n",
+				"Total",
+				(double)open_total / duration,
+				(double)close_total / duration,
+				(double)read_total / duration,
+				(double)write_total / duration);
+		}
 	}
 	printf("\n");
 	list_free(&sorted, free);
