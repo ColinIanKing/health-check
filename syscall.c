@@ -562,7 +562,6 @@ void syscall_dump_pollers(const double duration)
 	int i;
 	list_t sorted;
 	link_t *l;
-	int count;
 
 	list_init(&sorted);
 
