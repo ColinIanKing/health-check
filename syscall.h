@@ -47,7 +47,7 @@ typedef struct syscall_info {
 	proc_info_t	*proc;		/* process info */
 	int 		syscall;	/* system call number */
 	unsigned long	count;		/* number times call has been made */
-	double 		poll_min;	/* minumum poll time */
+	double 		poll_min;	/* minimum poll time */
 	double		poll_max;	/* maximum poll time */
 	double		poll_total;	/* sum of non zero or negative poll times */
 	unsigned long	poll_count;	/* number of polls */
