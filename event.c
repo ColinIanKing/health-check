@@ -256,7 +256,7 @@ void event_dump_diff(
 			event_rate += (double)delta;
 		}
 		event_rate /= duration;
-		printf(" %6.2f wakeups/sec (%s)\n\n",
+		printf(" %.2f wakeups/sec (%s)\n\n",
 			event_rate, event_loading(event_rate));
 			
 	} else {
