@@ -41,6 +41,7 @@
 
 static pthread_mutex_t ptrace_mutex = PTHREAD_MUTEX_INITIALIZER;
 static int syscall_count = 0;
+static int info_emit = false;
 
 /* minimum allowed thresholds for poll'd system calls that have timeouts */
 static double syscall_timeout[] = {
@@ -112,9 +113,11 @@ static void syscall_nanosleep_generic_ret(syscall_t *sc, syscall_info_t *s)
 			ret_error++;
 	}
 
-	if (ret_error)
+	if (ret_error) {
 		printf("%-15.15s %6i %lu errors\n",
 			sc->name, s->proc->pid, ret_error);
+		info_emit = true;
+	}
 }
 #endif
 
@@ -169,6 +172,7 @@ static void syscall_poll_generic_ret(syscall_t *sc, syscall_info_t *s)
 			printf("   %8lu repeated immediate timed out polled calls with zero timeouts (heavy polling peeks)\n", zero_timeout_repeats);
 		if (ret_error)
 			printf("   %8lu system call errors\n", ret_error);
+		info_emit = true;
 	}
 }
 #endif
@@ -558,6 +562,7 @@ void syscall_dump_pollers(const double duration)
 	int i;
 	list_t sorted;
 	link_t *l;
+	int count;
 
 	list_init(&sorted);
 
@@ -667,13 +672,7 @@ void syscall_dump_pollers(const double duration)
 			printf("\n");
 		}
 
-		for (l = sorted.head; l; l = l->next) {
-			syscall_info_t *s = (syscall_info_t *)l->data;
-			if (syscall_valid(s->syscall) && syscalls[s->syscall].check_ret) {
-				printf("Polling system call analysis:\n");
-				break;
-			}
-		}
+		printf("Polling system call analysis:\n");
 		for (l = sorted.head; l; l = l->next) {
 			syscall_info_t *s = (syscall_info_t *)l->data;
 			if (syscall_valid(s->syscall)) {
@@ -682,6 +681,9 @@ void syscall_dump_pollers(const double duration)
 					sc->check_ret(sc, s);
 			}
 		}
+		if (!info_emit)
+			printf(" No bad polling discovered.\n");
+		printf("\n");
 	}
 	list_free(&sorted, NULL);
 }
