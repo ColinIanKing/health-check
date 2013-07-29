@@ -79,6 +79,7 @@ static void show_usage(void)
 	printf("%s, version %s\n\n", APP_NAME, VERSION);
 	printf("Usage: %s [options]\n", APP_NAME);
 	printf("Options are:\n");
+	printf("  -b		brief (terse) output\n");
 	printf("  -c            find all child and threads\n");
 	printf("  -d            specify the analysis duration in seconds\n");
 	printf("  -h            show this help\n");
