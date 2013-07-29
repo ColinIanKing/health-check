@@ -37,8 +37,8 @@ typedef struct {
 
 extern void timer_stat_set(const char *str, const bool carp);
 extern void event_free(void *data);
-extern void event_get(list_t *pids, list_t *events);
-extern void event_dump_diff(const double duration, list_t *events_old, list_t *events_new);
+extern void event_get(const list_t *pids, list_t *events);
+extern void event_dump_diff(const double duration, const list_t *events_old, const list_t *events_new);
 extern void event_init(void);
 extern void event_deinit(void);
 

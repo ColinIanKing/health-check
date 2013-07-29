@@ -75,7 +75,7 @@ proc_info_t *proc_cache_add(const pid_t pid, const pid_t ppid, const bool is_thr
  *  proc_cache_find_by_pid()
  *	find process info by the process id
  */
-proc_info_t *proc_cache_find_by_pid(pid_t pid)
+proc_info_t *proc_cache_find_by_pid(const pid_t pid)
 {
 	link_t *l;
 
@@ -234,4 +234,3 @@ int proc_cache_find_by_procname(
 
 	return 0;
 }
-

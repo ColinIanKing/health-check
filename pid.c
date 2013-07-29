@@ -108,7 +108,7 @@ bool pid_exists(const pid_t pid)
  *	find a pid in the pid list
  */
 bool pid_list_find(
-	pid_t pid,
+	const pid_t pid,
 	list_t *list)
 {
 	link_t *l;
@@ -127,7 +127,7 @@ bool pid_list_find(
  *	to children list
  */
 void pid_get_children(
-	pid_t pid,
+	const pid_t pid,
 	list_t *children)
 {
 	link_t *l;

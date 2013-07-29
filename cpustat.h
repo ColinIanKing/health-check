@@ -32,7 +32,7 @@ typedef struct {
 	unsigned long	ttime;		/* Total time */
 } cpustat_info_t;
 
-void cpustat_dump_diff(const double duration, list_t *cpustat_old, list_t *cpustat_new);
-int cpustat_get(list_t *pids, list_t *cpustat);
+void cpustat_dump_diff(const double duration, const list_t *cpustat_old, const list_t *cpustat_new);
+int cpustat_get(const list_t *pids, list_t *cpustat);
 
 #endif

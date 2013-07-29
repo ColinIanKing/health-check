@@ -65,7 +65,7 @@ void event_free(void *data)
  *  event_cmp()
  *	compare event info for sorting
  */
-static int event_cmp(void *data1, void *data2)
+static int event_cmp(const void *data1, const void *data2)
 {
 	event_info_t *ev1 = (event_info_t *)data1;
 	event_info_t *ev2 = (event_info_t *)data2;
@@ -81,8 +81,8 @@ static void event_add(
 	list_t *events,			/* event list */
 	const unsigned long count,	/* event count */
 	const pid_t pid,		/* PID of task */
-	char *func,			/* Kernel function */
-	char *callback)			/* Kernel timer callback */
+	const char *func,		/* Kernel function */
+	const char *callback)		/* Kernel timer callback */
 {
 	char ident[4096];
 	event_info_t	*ev;
@@ -132,7 +132,7 @@ static void event_add(
  *	scan /proc/timer_stats and populate a timer stat hash table with
  *	unique events
  */
-void event_get(list_t *pids, list_t *events)
+void event_get(const list_t *pids, list_t *events)
 {
 	FILE *fp;
 	char buf[4096];
@@ -217,7 +217,7 @@ static const char *event_loading(const double wakeup_rate)
  *	find delta in events between old, new. 
  *	if no old then delta is the new.
  */
-static unsigned long event_delta(event_info_t *event_new, list_t *events_old)
+static unsigned long event_delta(const event_info_t *event_new, const list_t *events_old)
 {
 	link_t *l;
 
@@ -236,8 +236,8 @@ static unsigned long event_delta(event_info_t *event_new, list_t *events_old)
  */
 void event_dump_diff(
 	const double duration,
-	list_t *events_old,
-	list_t *events_new)
+	const list_t *events_old,
+	const list_t *events_new)
 {
 	link_t *l;
 

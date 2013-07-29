@@ -101,7 +101,7 @@ static bool syscall_valid(const int syscall)
 }
 
 #if defined(SYS_clock_nanosleep) || defined(SYS_nanosleep)
-static void syscall_nanosleep_generic_ret(syscall_t *sc, syscall_info_t *s)
+static void syscall_nanosleep_generic_ret(const syscall_t *sc, const syscall_info_t *s)
 {
 	link_t *l;
 
@@ -125,7 +125,7 @@ static void syscall_nanosleep_generic_ret(syscall_t *sc, syscall_info_t *s)
     defined(SYS_poll) || defined(SYS_ppol) || \
     defined(SYS_pselect6) || defined(SYS_rt_sigtimedwait) || \
     defined(SYS_select)
-static void syscall_poll_generic_ret(syscall_t *sc, syscall_info_t *s)
+static void syscall_poll_generic_ret(const syscall_t *sc, const syscall_info_t *s)
 {
 	link_t *l;
 	int prev_ret = -1;
@@ -178,7 +178,7 @@ static void syscall_poll_generic_ret(syscall_t *sc, syscall_info_t *s)
 #endif
 
 #if defined(SYS_semtimedop)
-static void syscall_semtimedop_ret(syscall_t *sc, syscall_info_t *s)
+static void syscall_semtimedop_ret(const syscall_t *sc, const syscall_info_t *s)
 {
 	(void)sc;
 	(void)s;
@@ -187,7 +187,7 @@ static void syscall_semtimedop_ret(syscall_t *sc, syscall_info_t *s)
 #endif
 
 #if defined(SYS_mq_timedreceive)
-static void syscall_mq_timedreceive_ret(syscall_t *sc, syscall_info_t *s)
+static void syscall_mq_timedreceive_ret(const syscall_t *sc, const syscall_info_t *s)
 {
 	(void)sc;
 	(void)s;
@@ -196,7 +196,7 @@ static void syscall_mq_timedreceive_ret(syscall_t *sc, syscall_info_t *s)
 #endif
 
 #if defined(SYS_mq_timedsend)
-static void syscall_mq_timedsend_ret(syscall_t *sc, syscall_info_t *s)
+static void syscall_mq_timedsend_ret(const syscall_t *sc, const syscall_info_t *s)
 {
 	(void)sc;
 	(void)s;
@@ -358,7 +358,7 @@ static unsigned long hash_syscall(const pid_t pid, const int syscall)
  *  syscall_count_cmp()
  *	syscall usage count sort comparitor
  */
-static int syscall_count_cmp(void *data1, void *data2)
+static int syscall_count_cmp(const void *data1, const void *data2)
 {
 	syscall_info_t *s1 = (syscall_info_t *)data1;
 	syscall_info_t *s2 = (syscall_info_t *)data2;
@@ -487,7 +487,7 @@ static void syscall_get_arg_data(
  *	keep tally of timespec timeouts
  */
 static void syscall_timespec_timeout(
-	syscall_t *sc,
+	const syscall_t *sc,
 	syscall_info_t *s,
 	const pid_t pid,
 	const double threshold,
@@ -512,7 +512,7 @@ static void syscall_timespec_timeout(
  *	keep tally of integer millisecond timeouts
  */
 static void syscall_timeout_millisec(
-	syscall_t *sc,
+	const syscall_t *sc,
 	syscall_info_t *s,
 	const pid_t pid,
 	const double threshold,

@@ -51,7 +51,7 @@ static const char *cpustat_loading(const double cpu_percent)
 	return "very light load";
 }
 
-static int cpustat_cmp(void *data1, void *data2)
+static int cpustat_cmp(const void *data1, const void *data2)
 {
 	cpustat_info_t	*cpustat1 = (cpustat_info_t *)data1;
 	cpustat_info_t	*cpustat2 = (cpustat_info_t *)data2;
@@ -61,8 +61,8 @@ static int cpustat_cmp(void *data1, void *data2)
 
 void cpustat_dump_diff(
 	const double duration,
-	list_t *cpustat_old,
-	list_t *cpustat_new)
+	const list_t *cpustat_old,
+	const list_t *cpustat_new)
 {
 	double nr_ticks =
 		/* (double)sysconf(_SC_NPROCESSORS_CONF) * */
@@ -140,7 +140,7 @@ void cpustat_dump_diff(
  *  cpustat_get()
  *
  */
-int cpustat_get(list_t *pids, list_t *cpustat)
+int cpustat_get(const list_t *pids, list_t *cpustat)
 {
 	char filename[PATH_MAX];
 	FILE *fp;

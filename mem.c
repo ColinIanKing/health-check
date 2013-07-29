@@ -33,7 +33,7 @@
  *  mem_cmp()
  *	compare event info for sorting
  */
-static int mem_cmp(void *data1, void *data2)
+static int mem_cmp(const void *data1, const void *data2)
 {
 	mem_info_t *m1 = (mem_info_t *)data1;
 	mem_info_t *m2 = (mem_info_t *)data2;
@@ -51,9 +51,9 @@ static int mem_cmp(void *data1, void *data2)
  *	add memory stats
  */
 static void mem_add(
-	list_t *mem,			/* memory allocation list */
-	proc_info_t *proc,		/* process info */
-	uint64_t size)			/* total size of heap */
+	list_t *mem,		/* memory allocation list */
+	proc_info_t *proc,	/* process info */
+	const uint64_t size)	/* total size of heap */
 {
 	mem_info_t *m;
 
@@ -72,7 +72,7 @@ static void mem_add(
  *  mem_get()
  *	scan mem and get mmap and heap info
  */
-void mem_get(list_t *pids, list_t *mem)
+void mem_get(const list_t *pids, list_t *mem)
 {
 	link_t *l;
 
@@ -110,7 +110,7 @@ void mem_get(list_t *pids, list_t *mem)
  *  mem_delta()
  *	find mem old mem info and compare to new
  */
-static int64_t mem_delta(mem_info_t *mem_info_new, list_t *mem_old)
+static int64_t mem_delta(const mem_info_t *mem_info_new, const list_t *mem_old)
 {
 	link_t *l;
 
@@ -164,8 +164,8 @@ static const char *mem_loading(const double mem_rate)
  */
 void mem_dump_diff(
 	const double duration,
-	list_t *mem_old,
-	list_t *mem_new)
+	const list_t *mem_old,
+	const list_t *mem_new)
 {
 	link_t *l;
 

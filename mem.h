@@ -32,7 +32,7 @@ typedef struct {
 	uint64_t	size;
 } mem_info_t;
 
-void mem_get(list_t *pids, list_t *mem);
-void mem_dump_diff(const double duration, list_t *mem_old, list_t *mem_new);
+void mem_get(const list_t *pids, list_t *mem);
+void mem_dump_diff(const double duration, const list_t *mem_old, const list_t *mem_new);
 
 #endif

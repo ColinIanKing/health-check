@@ -95,7 +95,7 @@ void fnotify_event_free(void *data)
 }
 
 void fnotify_event_add(
-	list_t *pids,
+	const list_t *pids,
 	const struct fanotify_event_metadata *metadata,
 	list_t *fnotify_files)
 {
@@ -158,7 +158,7 @@ void fnotify_event_add(
 	close(metadata->fd);
 }
 
-static int fnotify_event_cmp_count(void *data1, void *data2)
+static int fnotify_event_cmp_count(const void *data1, const void *data2)
 {
 	fnotify_fileinfo_t *info1 = (fnotify_fileinfo_t *)data1;
 	fnotify_fileinfo_t *info2 = (fnotify_fileinfo_t *)data2;
@@ -166,7 +166,7 @@ static int fnotify_event_cmp_count(void *data1, void *data2)
 	return info2->count - info1->count;
 }
 
-static int fnotify_event_cmp_io_ops(void *data1, void *data2)
+static int fnotify_event_cmp_io_ops(const void *data1, const void *data2)
 {
 	io_ops_t *io_ops1 = (io_ops_t *)data1;
 	io_ops_t *io_ops2 = (io_ops_t *)data2;
@@ -176,8 +176,8 @@ static int fnotify_event_cmp_io_ops(void *data1, void *data2)
 
 void fnotify_dump_events(
 	const double duration,
-	list_t *pids,
-	list_t *fnotify_files)
+	const list_t *pids,
+	const list_t *fnotify_files)
 {
 	link_t 	*l;
 	link_t  *lp;
