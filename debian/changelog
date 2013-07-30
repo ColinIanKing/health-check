@@ -1,3 +1,10 @@
+health-check (0.01.09) saucy; urgency=low
+
+  * Makefile: bump version
+  * debian: add libjson0-dev into control file
+
+ -- Colin King <colin.king@canonical.com>  Tue, 30 Jul 2013 10:13:43 +0100
+
 health-check (0.01.08) saucy; urgency=low
 
   * Makefile: bump version
