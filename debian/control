@@ -3,7 +3,7 @@ Section: admin
 Priority: optional
 Maintainer: Colin King <colin.king@canonical.com>
 Standards-Version: 3.9.4
-Build-Depends: debhelper (>= 7)
+Build-Depends: debhelper (>= 7), libjson0-dev (>= 0.9)
 
 Package: health-check
 Architecture: linux-any
