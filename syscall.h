@@ -23,6 +23,7 @@
 
 #include "proc.h"
 #include "list.h"
+#include "json.h"
 
 #define MAX_BUCKET			(9)
 #define BUCKET_START			(0.00001)
@@ -78,7 +79,7 @@ extern syscall_t syscalls[];
 extern size_t syscalls_len;
 
 extern void *syscall_trace(void *arg);
-extern void syscall_dump_hashtable(const double duration);
-extern void syscall_dump_pollers(const double duration);
+extern void syscall_dump_hashtable(json_object *j_tests, const double duration);
+extern void syscall_dump_pollers(json_object *j_tests, const double duration);
 
 #endif

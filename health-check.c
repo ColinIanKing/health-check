@@ -28,6 +28,7 @@
 #include <ctype.h>
 #include <errno.h>
 #include <sys/fanotify.h>
+#include <json/json.h>
 
 #include "list.h"
 #include "pid.h"
@@ -85,6 +86,7 @@ static void show_usage(void)
 	printf("  -h            show this help\n");
 	printf("  -p pid[,pid]  specify process id(s) or process name(s)\n");
 	printf("  -m max	specify maximum number of system calls to trace\n");
+	printf("  -o file	output results to a json data file\n");
 	health_check_exit(EXIT_SUCCESS);
 }
 
@@ -113,6 +115,34 @@ static int parse_pid_list(char *arg, list_t *pids)
 	return 0;
 }
 
+static int json_write(json_object *obj, const char *filename)
+{
+	const char *str;
+	FILE *fp;
+
+	if (obj == NULL) {
+		fprintf(stderr, "Cannot create JSON log, no JSON data\n");
+		return -1;
+	}
+
+	str = json_object_to_json_string_ext(
+		obj, JSON_C_TO_STRING_PRETTY);
+	if (str == NULL) {
+		fprintf(stderr, "Cannot turn JSON object to text for JSON output.\n");
+		return -1;
+	}
+	if ((fp = fopen(filename, "w")) == NULL) {
+		fprintf(stderr, "Cannot create JSON log file %s\n", filename);
+		return -1;
+	}
+
+	fprintf(fp, "%s", str);
+	fclose(fp);
+	json_object_put(obj);
+
+	return 0;
+}
+
 int main(int argc, char **argv)
 {
 	double opt_duration_secs = 60.0;
@@ -126,6 +156,8 @@ int main(int argc, char **argv)
 	link_t		*l;
 	int fan_fd = 0;
 	void *buffer;
+	char *opt_json_file = NULL;
+	json_object *json_obj = NULL, *json_tests = NULL;
 
 	list_init(&event_info_old);
 	list_init(&event_info_new);
@@ -144,7 +176,7 @@ int main(int argc, char **argv)
 #endif
 
 	for (;;) {
-		int c = getopt(argc, argv, "bcd:hp:m:");
+		int c = getopt(argc, argv, "bcd:hp:m:o:");
 		if (c == -1)
 			break;
 		switch (c) {
@@ -167,9 +199,11 @@ int main(int argc, char **argv)
 		case 'm':
 			opt_max_syscalls = atoi(optarg);
 			break;
+		case 'o':
+			opt_json_file = optarg;
+			break;
 		}
 	}
-
 	if (geteuid() != 0) {
 		fprintf(stderr, "%s requires root privileges to write to %s\n",
 			APP_NAME, TIMER_STATS);
@@ -193,6 +227,18 @@ int main(int argc, char **argv)
 	if (opt_duration_secs < 0.5) {
 		fprintf(stderr, "Duration must 0.5 or more.\n");
 		health_check_exit(EXIT_FAILURE);
+	}
+
+	if (opt_json_file) {
+		if ((json_obj = json_object_new_object()) == NULL) {
+			fprintf(stderr, "Cannot allocate JSON object\n");
+			health_check_exit(EXIT_FAILURE);
+		}
+		if ((json_tests = json_object_new_object()) == NULL) {
+			fprintf(stderr, "Cannot allocate JSON array\n");
+			health_check_exit(EXIT_FAILURE);
+		}
+		json_object_object_add(json_obj, "health-check", json_tests);
 	}
 
 	if ((fan_fd = fnotify_event_init()) < 0) {
@@ -271,13 +317,17 @@ int main(int argc, char **argv)
 	mem_get(&pids, &mem_info_new);
 	event_deinit();
 
-	cpustat_dump_diff(actual_duration, &cpustat_info_old, &cpustat_info_new);
-	event_dump_diff(actual_duration, &event_info_old, &event_info_new);
-	fnotify_dump_events(actual_duration, &pids, &fnotify_files);
-	syscall_dump_hashtable(actual_duration);
-	syscall_dump_pollers(actual_duration);
-	mem_dump_diff(actual_duration, &mem_info_old, &mem_info_new);
+	cpustat_dump_diff(json_tests, actual_duration,
+		&cpustat_info_old, &cpustat_info_new);
+	event_dump_diff(json_tests, actual_duration, &event_info_old, &event_info_new);
+	fnotify_dump_events(json_tests, actual_duration, &pids, &fnotify_files);
+	syscall_dump_hashtable(json_tests, actual_duration);
+	syscall_dump_pollers(json_tests, actual_duration);
+	mem_dump_diff(json_tests, actual_duration, &mem_info_old, &mem_info_new);
 
+	if (json_obj) {
+		json_write(json_obj, opt_json_file);
+	}
 out:
 	for (l = pids.head; l; l = l->next) {
 		proc_info_t *p = (proc_info_t *)l->data;

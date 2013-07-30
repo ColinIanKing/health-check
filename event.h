@@ -21,6 +21,7 @@
 
 #define _GNU_SOURCE
 
+#include "json.h"
 #include "proc.h"
 #include "list.h"
 
@@ -38,7 +39,7 @@ typedef struct {
 extern void timer_stat_set(const char *str, const bool carp);
 extern void event_free(void *data);
 extern void event_get(const list_t *pids, list_t *events);
-extern void event_dump_diff(const double duration, const list_t *events_old, const list_t *events_new);
+extern void event_dump_diff(json_object *j_tests, const double duration, const list_t *events_old, const list_t *events_new);
 extern void event_init(void);
 extern void event_deinit(void);
 

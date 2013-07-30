@@ -22,6 +22,7 @@
 #define _GNU_SOURCE
 
 #include <stdbool.h>
+#include <json/json.h>
 
 #define	OPT_GET_CHILDREN		0x00000001
 #define OPT_BRIEF			0x00000002
@@ -30,5 +31,6 @@ extern void health_check_exit(const int status) __attribute__ ((noreturn));
 extern volatile bool keep_running;
 extern int opt_max_syscalls;
 extern int opt_flags;
+extern json_object *json_data;
 
 #endif

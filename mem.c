@@ -127,14 +127,14 @@ static int64_t mem_delta(const mem_info_t *mem_info_new, const list_t *mem_old)
  *  mem_loading()
  *	convert heath growth rate into human readable form
  */
-static const char *mem_loading(const double mem_rate)
+static const char *mem_loading(const double mem_rate, bool paren)
 {
 	char *verb, *adverb;
 	static char buffer[64];
 	double rate = mem_rate;
 
 	if (rate == 0.0)
-		return "(no change)";
+		return paren ? "(no change)" : "no change";
 
 	if (rate < 0) {
 		verb = "shrinking";
@@ -153,7 +153,10 @@ static const char *mem_loading(const double mem_rate)
 	else
 		adverb = "";
 
-	sprintf(buffer, "(%s%s)", verb, adverb);
+	if (paren)
+		sprintf(buffer, "(%s%s)", verb, adverb);
+	else
+		sprintf(buffer, "%s%s", verb, adverb);
 
 	return buffer;
 }
@@ -163,6 +166,7 @@ static const char *mem_loading(const double mem_rate)
  *	dump differences between old and new events
  */
 void mem_dump_diff(
+	json_object *j_tests,
 	const double duration,
 	const list_t *mem_old,
 	const list_t *mem_new)
@@ -176,33 +180,65 @@ void mem_dump_diff(
 	}
 
 	int count = 0;
-	double total = 0.0;
+	double total_rate;
+	int64_t total;
 
 	if (opt_flags & OPT_BRIEF) {
-		for (l = mem_new->head; l; l = l->next) {
+		for (total_rate = 0.0, l = mem_new->head; l; l = l->next) {
 			mem_info_t *mem_info_new = (mem_info_t *)l->data;
 			int64_t delta = mem_delta(mem_info_new, mem_old);
 			double mem_rate = (double)delta / duration;
-			total += mem_rate;
+			total_rate += mem_rate;
 		}
 		printf(" Heap growth rate: %.2f K/sec %s\n",
-			total / 1024.0, mem_loading(total));
+			total_rate / 1024.0, mem_loading(total_rate, true));
 	} else {
 		printf("  PID  Process               Heap Change (K/sec)\n");
-		for (l = mem_new->head; l; l = l->next) {
+		for (total_rate = 0.0, l = mem_new->head; l; l = l->next) {
 			mem_info_t *mem_info_new = (mem_info_t *)l->data;
 			int64_t delta = mem_delta(mem_info_new, mem_old);
 			double mem_rate = (double)delta / duration;
 
 			printf(" %5d %-20.20s %9.2f %s\n",
 				mem_info_new->proc->pid, mem_info_new->proc->cmdline,
-				mem_rate / 1024.0, mem_loading(mem_rate));
-			total += mem_rate;
+				mem_rate / 1024.0, mem_loading(mem_rate, true));
+			total_rate += mem_rate;
 			count++;
 		}
 		if (count > 1)
 			printf(" %-27.27s%9.2f %s\n", "Total",
-				total / 1024.0, mem_loading(total));
+				total_rate / 1024.0, mem_loading(total_rate, true));
 		printf("\n");
+	}
+
+	if (j_tests) {
+		json_object *j_mem_test, *j_mem_infos, *j_mem_info;
+
+		j_obj_obj_add(j_tests, "memory-heap-change", (j_mem_test = j_obj_new_obj()));
+		j_obj_obj_add(j_mem_test, "memory-heap-change-per-process", (j_mem_infos = j_obj_new_array()));
+
+		for (total_rate = 0.0, total = 0, l = mem_new->head; l; l = l->next) {
+			mem_info_t *mem_info_new = (mem_info_t *)l->data;
+			int64_t delta = mem_delta(mem_info_new, mem_old);
+			double mem_rate = (double)delta / duration;
+			total_rate += mem_rate;
+			total += delta;
+
+			j_mem_info = j_obj_new_obj();
+			j_obj_new_int32_add(j_mem_info, "pid", mem_info_new->proc->pid);
+			j_obj_new_int32_add(j_mem_info, "ppid", mem_info_new->proc->ppid);
+			j_obj_new_int32_add(j_mem_info, "is-thread", mem_info_new->proc->is_thread);
+			j_obj_new_string_add(j_mem_info, "name", mem_info_new->proc->cmdline);
+			j_obj_new_int64_add(j_mem_info, "heap-change-Kbytes", delta / 1024);
+			j_obj_new_double_add(j_mem_info, "heap-change-Kbytes-rate", mem_rate / 1024.0);
+			j_obj_new_string_add(j_mem_info, "heap-change-hint", mem_loading(mem_rate, false));
+
+			j_obj_array_add(j_mem_infos, j_mem_info);
+		}
+
+		j_obj_obj_add(j_mem_test, "memory-heap-change-total", (j_mem_info = j_obj_new_obj()));
+		j_obj_new_int64_add(j_mem_info, "heap-change-Kbytes-total", total / 1024);
+		j_obj_new_double_add(j_mem_info, "heap-change-Kbytes-rate-total", total_rate / 1024.0);
+		j_obj_new_string_add(j_mem_info, "heap-change-hint-total", mem_loading(total_rate, false));
 	}
 }

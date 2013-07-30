@@ -24,6 +24,7 @@
 #include <unistd.h>
 
 #include "list.h"
+#include "json.h"
 #include "event.h"
 #include "health-check.h"
 
@@ -146,7 +147,6 @@ void event_get(const list_t *pids, list_t *events)
 		char *ptr = buf;
 		unsigned long count = -1;
 		pid_t event_pid = -1;
-		char comm[64];
 		char func[128];
 		char timer[128];
 		link_t *l;
@@ -173,7 +173,8 @@ void event_get(const list_t *pids, list_t *events)
 
 		ptr++;
 		sscanf(buf, "%lu", &count);
-		sscanf(ptr, "%d %s %s (%[^)])", &event_pid, comm, func, timer);
+		sscanf(ptr, "%d", &event_pid);
+		sscanf(ptr + 24, "%s (%[^)])", func, timer);
 
 		for (l = pids->head; l; l = l->next) {
 			proc_info_t *p = (proc_info_t *)l->data;
@@ -235,6 +236,7 @@ static unsigned long event_delta(const event_info_t *event_new, const list_t *ev
  *	dump differences between old and new events
  */
 void event_dump_diff(
+	json_object *j_tests,
 	const double duration,
 	const list_t *events_old,
 	const list_t *events_new)
@@ -242,45 +244,80 @@ void event_dump_diff(
 	link_t *l;
 
 	printf("Wakeups:\n");
-	if (events_new->head == NULL) {
+
+	if (events_new->head) {
+		if (opt_flags & OPT_BRIEF) {
+			double event_rate = 0.0;
+			for (l = events_new->head; l; l = l->next) {
+				event_info_t *event_new = (event_info_t *)l->data;
+				unsigned long delta = event_delta(event_new, events_old);
+				event_rate += (double)delta;
+			}
+			event_rate /= duration;
+			printf(" %.2f wakeups/sec (%s)\n\n",
+				event_rate, event_loading(event_rate));
+			
+		} else {
+			int count = 0;
+			double total = 0.0;
+
+			printf("  PID  Process               Wake/Sec Kernel Functions\n");
+			for (l = events_new->head; l; l = l->next) {
+				event_info_t *event_new = (event_info_t *)l->data;
+				unsigned long delta = event_delta(event_new, events_old);
+				double event_rate = (double)delta / duration;
+	
+				printf(" %5d %-20.20s %9.2f (%s, %s) (%s)\n",
+					event_new->proc->pid, event_new->proc->cmdline,
+					event_rate,
+					event_new->func, event_new->callback,
+					event_loading(event_rate));
+				total += event_rate;
+				count++;
+			}
+			if (count > 1)
+				printf(" %-27.27s%9.2f\n", "Total",
+					total);
+				
+			printf("\n");
+		}
+	} else {
 		printf(" No wakeups detected\n\n");
-		return;
 	}
 
-	if (opt_flags & OPT_BRIEF) {
-		double event_rate = 0.0;
-		for (l = events_new->head; l; l = l->next) {
-			event_info_t *event_new = (event_info_t *)l->data;
-			unsigned long delta = event_delta(event_new, events_old);
-			event_rate += (double)delta;
-		}
-		event_rate /= duration;
-		printf(" %.2f wakeups/sec (%s)\n\n",
-			event_rate, event_loading(event_rate));
-			
-	} else {
-		int count = 0;
-		double total = 0.0;
+	if (j_tests) {
+		json_object *j_event_test, *j_events, *j_event;
+		uint64_t total_delta;
+		double total_event_rate;
 
-		printf("  PID  Process               Wake/Sec Kernel Functions\n");
+		j_obj_obj_add(j_tests, "wakeup-events", (j_event_test = j_obj_new_obj()));
+		j_obj_obj_add(j_event_test, "wakeup-events-per-process", (j_events = j_obj_new_array()));
+
 		for (l = events_new->head; l; l = l->next) {
-			event_info_t *event_new = (event_info_t *)l->data;
-			unsigned long delta = event_delta(event_new, events_old);
+			event_info_t *event = (event_info_t *)l->data;
+			unsigned long delta = event_delta(event, events_old);
 			double event_rate = (double)delta / duration;
-	
-			printf(" %5d %-20.20s %9.2f (%s, %s) (%s)\n",
-				event_new->proc->pid, event_new->proc->cmdline,
-				event_rate,
-				event_new->func, event_new->callback,
-				event_loading(event_rate));
-			total += event_rate;
-			count++;
+			total_delta += delta;
+
+			/* We may as well dump everything */
+			j_event = j_obj_new_obj();
+			j_obj_new_int32_add(j_event, "pid", event->proc->pid);
+			j_obj_new_int32_add(j_event, "ppid", event->proc->ppid);
+			j_obj_new_int32_add(j_event, "is-thread", event->proc->is_thread);
+			j_obj_new_string_add(j_event, "name", event->proc->cmdline);
+			j_obj_new_string_add(j_event, "kernel-timer-func", event->func);
+			j_obj_new_string_add(j_event, "kernel-timer-callback", event->callback);
+			j_obj_new_int64_add(j_event, "wakeups", (uint64_t)delta);
+			j_obj_new_double_add(j_event, "wakeup-rate", event_rate);
+			j_obj_new_string_add(j_event, "load-hint", event_loading(event_rate));
+			j_obj_array_add(j_events, j_event);
 		}
-		if (count > 1)
-			printf(" %-27.27s%9.2f\n", "Total",
-				total);
-			
-		printf("\n");
+
+		total_event_rate = (double)total_delta / duration;
+		j_obj_obj_add(j_event_test, "wakeup-events-total", (j_event = j_obj_new_obj()));
+		j_obj_new_int64_add(j_event, "wakeup-total", total_delta);
+		j_obj_new_double_add(j_event, "wakeup-rate-total", total_event_rate);
+		j_obj_new_string_add(j_event, "load-hint-total", event_loading(total_event_rate));
 	}
 }
 

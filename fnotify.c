@@ -32,6 +32,7 @@
 #include <sys/stat.h>
 
 #include "list.h"
+#include "json.h"
 #include "proc.h"
 #include "fnotify.h"
 #include "health-check.h"
@@ -174,7 +175,88 @@ static int fnotify_event_cmp_io_ops(const void *data1, const void *data2)
 	return io_ops2->total - io_ops1->total;
 }
 
-void fnotify_dump_events(
+static const char *fnotify_mask_to_str(const int mask)
+{
+	static char modes[5];
+	int i = 0;
+
+	if (mask & FAN_OPEN)
+		modes[i++] = 'O';
+	if (mask & (FAN_CLOSE_WRITE | FAN_CLOSE_NOWRITE))
+		modes[i++] = 'C';
+	if (mask & FAN_ACCESS)
+		modes[i++] = 'R';
+	if (mask & (FAN_MODIFY | FAN_CLOSE_WRITE))
+		modes[i++] = 'W';
+	modes[i] = '\0';
+
+	return modes;
+}
+
+static void fnotify_dump_files(
+	json_object *j_tests,
+	const double duration,
+	const list_t *fnotify_files)
+{
+	list_t	sorted;
+	link_t 	*l;
+	int count;
+	unsigned long total;
+
+	list_init(&sorted);
+	for (l = fnotify_files->head; l; l = l->next) {
+		fnotify_fileinfo_t *info = (fnotify_fileinfo_t *)l->data;
+		list_add_ordered(&sorted, info, fnotify_event_cmp_count);
+	}
+
+	if (fnotify_files->head && !(opt_flags & OPT_BRIEF)) {
+		printf("  PID  Process               Count  Op  Filename\n");
+		for (count = 0, total = 0, l = sorted.head; l; l = l->next) {
+			fnotify_fileinfo_t *info = (fnotify_fileinfo_t *)l->data;
+	
+			printf(" %5d %-20.20s %6d %4s %s\n",
+				info->proc->pid, info->proc->cmdline,
+				info->count, 
+				fnotify_mask_to_str(info->mask),
+				info->filename);
+			total += info->count;
+			count++;
+		}
+		if (count > 1)
+			printf(" %-25.25s%8lu\n", "Total", total);
+		printf("\n");
+	}
+
+	if (j_tests) {
+		json_object *j_fnotify_test, *j_accesses, *j_access;
+
+		j_obj_obj_add(j_tests, "file-access", (j_fnotify_test = j_obj_new_obj()));
+		j_obj_obj_add(j_fnotify_test, "file-access-per-process", (j_accesses = j_obj_new_array()));
+
+		for (count = 0, total = 0, l = sorted.head; l; l = l->next) {
+			fnotify_fileinfo_t *info = (fnotify_fileinfo_t *)l->data;
+
+			j_access = j_obj_new_obj();
+                        j_obj_new_int32_add(j_access, "pid", info->proc->pid);
+                        j_obj_new_int32_add(j_access, "ppid", info->proc->ppid);
+                        j_obj_new_int32_add(j_access, "is-thread", info->proc->is_thread);
+                        j_obj_new_string_add(j_access, "name", info->proc->cmdline);
+			j_obj_new_string_add(j_access, "access-mode", fnotify_mask_to_str(info->mask));
+			j_obj_new_string_add(j_access, "filename", info->filename);
+                        j_obj_new_int64_add(j_access, "accesses-count", info->count);
+                        j_obj_new_double_add(j_access, "accesses-count-rate", (double)info->count / duration);
+			j_obj_array_add(j_accesses, j_access);
+			total += info->count;
+		}
+		j_obj_obj_add(j_fnotify_test, "file-access-total", (j_access = j_obj_new_obj()));
+		j_obj_new_int64_add(j_access, "access-count-total", (int64_t)total);
+		j_obj_new_int64_add(j_access, "access-count-rate-total", (double)total / duration);
+	}
+	list_free(&sorted, NULL);
+}
+
+static void fnotify_dump_io_ops(
+	json_object *j_tests,
 	const double duration,
 	const list_t *pids,
 	const list_t *fnotify_files)
@@ -183,49 +265,7 @@ void fnotify_dump_events(
 	link_t  *lp;
 	list_t	sorted;
 	int count;
-	unsigned long total;
 	unsigned long read_total, write_total, open_total, close_total;
-
-	printf("File I/O operations:\n");
-	if (fnotify_files->head == NULL) {
-		printf(" No file I/O operations detected\n\n");
-		return;
-	}
-
-	if (!(opt_flags & OPT_BRIEF)) {
-		list_init(&sorted);
-		for (l = fnotify_files->head; l; l = l->next) {
-			fnotify_fileinfo_t *info = (fnotify_fileinfo_t *)l->data;
-			list_add_ordered(&sorted, info, fnotify_event_cmp_count);
-		}
-		printf("  PID  Process               Count  Op  Filename\n");
-		for (count = 0, total = 0, l = sorted.head; l; l = l->next) {
-			fnotify_fileinfo_t *info = (fnotify_fileinfo_t *)l->data;
-			char modes[5];
-			int i = 0;
-	
-			if (info->mask & FAN_OPEN)
-				modes[i++] = 'O';
-			if (info->mask & (FAN_CLOSE_WRITE | FAN_CLOSE_NOWRITE))
-				modes[i++] = 'C';
-			if (info->mask & FAN_ACCESS)
-				modes[i++] = 'R';
-			if (info->mask & (FAN_MODIFY | FAN_CLOSE_WRITE))
-				modes[i++] = 'W';
-			modes[i] = '\0';
-	
-			printf(" %5d %-20.20s %6d %4s %s\n",
-				info->proc->pid, info->proc->cmdline,
-				info->count, modes, info->filename);
-	
-			total += info->count;
-			count++;
-		}
-		if (count > 1)
-			printf(" %-25.25s%8lu\n", "Total", total);
-		printf("\n");
-		list_free(&sorted, NULL);
-	}
 
 	list_init(&sorted);
 	for (lp = pids->head; lp; lp = lp->next) {
@@ -243,7 +283,6 @@ void fnotify_dump_events(
 
 			if (info->proc->pid != p->pid)
 				continue;
-
 			if (info->mask & FAN_OPEN)
 				io_ops->open_total += info->count;
 			if (info->mask & (FAN_CLOSE_WRITE | FAN_CLOSE_NOWRITE))
@@ -261,47 +300,105 @@ void fnotify_dump_events(
 	}
 
 	open_total = close_total = read_total = write_total = 0;
-	if (opt_flags & OPT_BRIEF) {
-		for (l = sorted.head; l; l = l->next) {
-			io_ops_t *io_ops = (io_ops_t *)l->data;
-			open_total  += io_ops->open_total;
-			close_total += io_ops->close_total;
-			read_total  += io_ops->read_total;
-			write_total += io_ops->write_total;
-		}
-		printf("  I/O Operations per second: %.2f open, %.2f close, %.2f read, %.2f write\n",
-			(double)open_total / duration,
-			(double)close_total / duration,
-			(double)read_total / duration,
-			(double)write_total / duration);
-	} else {
-		printf("File I/O Operations per second:\n");
-		printf("  PID  Process                 Open   Close    Read   Write\n");
-		for (count = 0, l = sorted.head; l; l = l->next) {
-			io_ops_t *io_ops = (io_ops_t *)l->data;
-
-			printf(" %5d %-20.20s %7.2f %7.2f %7.2f %7.2f\n",
-				io_ops->proc->pid, io_ops->proc->cmdline,
-				(double)io_ops->open_total / duration,
-				(double)io_ops->close_total / duration,
-				(double)io_ops->read_total / duration,
-				(double)io_ops->write_total / duration);
-
-			open_total  += io_ops->open_total;
-			close_total += io_ops->close_total;
-			read_total  += io_ops->read_total;
-			write_total += io_ops->write_total;
-			count++;
-		}
-		if (count > 1) {
-			printf(" %-27.27s%7.2f %7.2f %7.2f %7.2f\n",
-				"Total",
+	if (fnotify_files->head) {
+		if (opt_flags & OPT_BRIEF) {
+			for (l = sorted.head; l; l = l->next) {
+				io_ops_t *io_ops = (io_ops_t *)l->data;
+				open_total  += io_ops->open_total;
+				close_total += io_ops->close_total;
+				read_total  += io_ops->read_total;
+				write_total += io_ops->write_total;
+			}
+			printf("  I/O Operations per second: %.2f open, %.2f close, %.2f read, %.2f write\n",
 				(double)open_total / duration,
 				(double)close_total / duration,
 				(double)read_total / duration,
 				(double)write_total / duration);
+			printf("\n");
+		} else {
+			printf("File I/O Operations per second:\n");
+			printf("  PID  Process                 Open   Close    Read   Write\n");
+			for (count = 0, l = sorted.head; l; l = l->next) {
+				io_ops_t *io_ops = (io_ops_t *)l->data;
+	
+				printf(" %5d %-20.20s %7.2f %7.2f %7.2f %7.2f\n",
+					io_ops->proc->pid, io_ops->proc->cmdline,
+					(double)io_ops->open_total / duration,
+					(double)io_ops->close_total / duration,
+					(double)io_ops->read_total / duration,
+					(double)io_ops->write_total / duration);
+	
+				open_total  += io_ops->open_total;
+				close_total += io_ops->close_total;
+				read_total  += io_ops->read_total;
+				write_total += io_ops->write_total;
+				count++;
+			}
+			if (count > 1) {
+				printf(" %-27.27s%7.2f %7.2f %7.2f %7.2f\n",
+					"Total",
+					(double)open_total / duration,
+					(double)close_total / duration,
+					(double)read_total / duration,
+					(double)write_total / duration);
+			}
+			printf("\n");
 		}
 	}
-	printf("\n");
+
+	/* And dump JSON */
+	if (j_tests) {
+		json_object *j_fnotify_test, *j_io_ops, *j_io_op;
+
+		j_obj_obj_add(j_tests, "file-io-operations", (j_fnotify_test = j_obj_new_obj()));
+		j_obj_obj_add(j_fnotify_test, "file-io-operations-per-process", (j_io_ops = j_obj_new_array()));
+
+		for (count = 0, l = sorted.head; l; l = l->next) {
+			io_ops_t *io_ops = (io_ops_t *)l->data;
+
+			j_io_op = j_obj_new_obj();
+                        j_obj_new_int32_add(j_io_op, "pid", io_ops->proc->pid);
+                        j_obj_new_int32_add(j_io_op, "ppid", io_ops->proc->ppid);
+                        j_obj_new_int32_add(j_io_op, "is-thread", io_ops->proc->is_thread);
+                        j_obj_new_string_add(j_io_op, "name", io_ops->proc->cmdline);
+			j_obj_new_int64_add(j_io_op, "open-call-count", io_ops->open_total);
+			j_obj_new_int64_add(j_io_op, "close-call-count", io_ops->close_total);
+			j_obj_new_int64_add(j_io_op, "read-call-count", io_ops->read_total);
+			j_obj_new_int64_add(j_io_op, "write-call-count", io_ops->write_total);
+			j_obj_new_int64_add(j_io_op, "open-call-rate",
+				(double)io_ops->open_total / duration);
+			j_obj_new_int64_add(j_io_op, "close-call-rate",
+				(double)io_ops->close_total / duration);
+			j_obj_new_int64_add(j_io_op, "read-call-rate",
+				(double)io_ops->read_total / duration);
+			j_obj_new_int64_add(j_io_op, "write-call-rate",
+				(double)io_ops->write_total / duration);
+			j_obj_array_add(j_io_ops, j_io_op);
+		}
+		j_obj_obj_add(j_fnotify_test, "file-io-operations-total", (j_io_op = j_obj_new_obj()));
+		j_obj_new_double_add(j_io_op, "open-call-rate-total",
+			(double)open_total / duration);
+		j_obj_new_double_add(j_io_op, "close-call-rate-total",
+			(double)close_total / duration);
+		j_obj_new_double_add(j_io_op, "read-call-rate-total",
+			(double)read_total / duration);
+		j_obj_new_double_add(j_io_op, "write-call-rate-total",
+			(double)write_total / duration);
+	}
 	list_free(&sorted, free);
+}
+
+void fnotify_dump_events(
+	json_object *j_tests,
+	const double duration,
+	const list_t *pids,
+	const list_t *fnotify_files)
+{
+	printf("File I/O operations:\n");
+	if (!fnotify_files->head)
+		printf(" No file I/O operations detected\n\n");
+
+	fnotify_dump_files(j_tests, duration, fnotify_files);
+	fnotify_dump_io_ops(j_tests, duration, pids, fnotify_files);
+
 }

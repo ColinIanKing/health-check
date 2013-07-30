@@ -34,6 +34,7 @@
 
 #include "syscall.h"
 #include "proc.h"
+#include "json.h"
 #include "health-check.h"
 
 #define HASH_TABLE_SIZE	(1997)		/* Must be prime */
@@ -370,13 +371,13 @@ static int syscall_count_cmp(const void *data1, const void *data2)
  *  syscall_dump_hashtable
  *	dump syscall hashtable stats
  */
-void syscall_dump_hashtable(const double duration)
+void syscall_dump_hashtable(json_object *j_tests, const double duration)
 {
 	list_t sorted;
 	link_t *l;
 	int i;
 	int count = 0;
-	unsigned long total = 0;
+	unsigned long total;
 
 	if (opt_flags & OPT_BRIEF)
 		return;
@@ -392,11 +393,11 @@ void syscall_dump_hashtable(const double duration)
 
 	printf("System calls traced:\n");
 	printf("  PID  Process              Syscall               Count    Rate/Sec\n");
-	for (l = sorted.head; l; l = l->next) {
+	for (total = 0, l = sorted.head; l; l = l->next) {
 		char name[64];
 		syscall_info_t *s = (syscall_info_t *)l->data;
-		syscall_name(s->syscall, name, sizeof(name));
 
+		syscall_name(s->syscall, name, sizeof(name));
 		printf(" %5i %-20.20s %-20.20s %6lu %12.4f\n",
 			s->proc->pid, s->proc->cmdline, name, s->count, (double)s->count / duration);
 		count++;
@@ -407,6 +408,34 @@ void syscall_dump_hashtable(const double duration)
 			total, (double)total / duration);
 	}
 	printf("\n");
+
+	if (j_tests) {
+		json_object *j_syscall, *j_syscall_infos, *j_syscall_info;
+
+		j_obj_obj_add(j_tests, "system-calls", (j_syscall = j_obj_new_obj()));
+                j_obj_obj_add(j_syscall, "system-calls-per-process", (j_syscall_infos = j_obj_new_array()));
+		for (total = 0, l = sorted.head; l; l = l->next) {
+			char name[64];
+			syscall_info_t *s = (syscall_info_t *)l->data;
+
+			syscall_name(s->syscall, name, sizeof(name));
+			j_syscall_info = j_obj_new_obj();
+			j_obj_new_int32_add(j_syscall_info, "pid", s->proc->pid);
+			j_obj_new_int32_add(j_syscall_info, "ppid", s->proc->ppid);
+			j_obj_new_int32_add(j_syscall_info, "is-thread", s->proc->is_thread);
+			j_obj_new_string_add(j_syscall_info, "name", s->proc->cmdline);
+			j_obj_new_string_add(j_syscall_info, "system-call", name);
+			j_obj_new_int64_add(j_syscall_info, "system-call-count", (int64_t)s->count);
+			j_obj_new_double_add(j_syscall_info, "system-call-rate", 
+				(double)s->count / duration);
+			j_obj_array_add(j_syscall_infos, j_syscall_info);
+			total += s->count;
+		}
+		j_obj_obj_add(j_syscall, "system-calls-total", (j_syscall_info = j_obj_new_obj()));
+		j_obj_new_int64_add(j_syscall_info, "system-call-count-total", (int64_t)total);
+		j_obj_new_double_add(j_syscall_info, "system-call-count-rate-total", 
+			(double)total / duration);
+	}
 
 	list_free(&sorted, NULL);
 }
@@ -557,7 +586,7 @@ static char *syscall_timeout_to_human_time(
  *  syscall_dump_pollers()
  *	dump polling syscall abusers
  */
-void syscall_dump_pollers(const double duration)
+void syscall_dump_pollers(json_object *j_tests, const double duration)
 {
 	int i;
 	list_t sorted;
@@ -588,10 +617,9 @@ void syscall_dump_pollers(const double duration)
 			printf("  PID  Process              Syscall             Rate/Sec   Infinite   Zero     Minimum    Maximum    Average\n");
 			printf("                                                           Timeouts Timeouts   Timeout    Timeout    Timeout\n");
 			for (l = sorted.head; l; l = l->next) {
-				double rate;
 				syscall_info_t *s = (syscall_info_t *)l->data;
 				syscall_name(s->syscall, tmp, sizeof(tmp));
-				rate = (double)s->count / duration;
+				double rate = (double)s->count / duration;
 
 				printf(" %5i %-20.20s %-17.17s %12.4f %8lu %8lu",
 					s->proc->pid, s->proc->cmdline, tmp, rate,
@@ -620,6 +648,40 @@ void syscall_dump_pollers(const double duration)
 			if (count > 1)
 				printf(" %-45.45s%12.4f %8lu %8lu\n", "Total",
 					total_rate, poll_infinite, poll_zero);
+
+			if (j_tests) {
+				json_object *j_syscall, *j_syscall_infos, *j_syscall_info;
+
+				j_obj_obj_add(j_tests, "polling-system-calls", (j_syscall = j_obj_new_obj()));
+                		j_obj_obj_add(j_syscall, "polling-system-calls-per-process", (j_syscall_infos = j_obj_new_array()));
+				for (count = 0, l = sorted.head; l; l = l->next) {
+					syscall_info_t *s = (syscall_info_t *)l->data;
+					syscall_name(s->syscall, tmp, sizeof(tmp));
+					double rate = (double)s->count / duration;
+					count += s->count;
+
+					j_syscall_info = j_obj_new_obj();
+					j_obj_new_int32_add(j_syscall_info, "pid", s->proc->pid);
+					j_obj_new_int32_add(j_syscall_info, "ppid", s->proc->ppid);
+					j_obj_new_int32_add(j_syscall_info, "is_thread", s->proc->is_thread);
+					j_obj_new_string_add(j_syscall_info, "name", s->proc->cmdline);
+					j_obj_new_string_add(j_syscall_info, "system-call", tmp);
+					j_obj_new_int64_add(j_syscall_info, "system-call-count", (int64_t)s->count);
+					j_obj_new_double_add(j_syscall_info, "system-call-rate", rate);
+					j_obj_new_int64_add(j_syscall_info, "poll-count-infinite-timeout", (int64_t)s->poll_infinite);
+					j_obj_new_int64_add(j_syscall_info, "poll-count-zero-timeout", (int64_t)s->poll_zero);
+					j_obj_new_double_add(j_syscall_info, "poll-minimum-timeout-millisecs", s->poll_min < 0.0 ? 0.0 : s->poll_min);
+					j_obj_new_double_add(j_syscall_info, "poll-maximum-timeout-millisecs", s->poll_max < 0.0 ? 0.0 : s->poll_max);
+					j_obj_new_double_add(j_syscall_info, "poll-average-timeout-millisecs", s->poll_total / (double)s->count);
+					j_obj_array_add(j_syscall_infos, j_syscall_info);
+				}
+
+				j_obj_obj_add(j_syscall, "polling-system-calls-total", (j_syscall_info = j_obj_new_obj()));
+				j_obj_new_int64_add(j_syscall_info, "system-call-count-total", (int64_t)count);
+				j_obj_new_double_add(j_syscall_info, "system-call-rate-total", (double)count / duration);
+				j_obj_new_int64_add(j_syscall_info, "poll-count-infinite-total", (int64_t)poll_infinite);
+				j_obj_new_int64_add(j_syscall_info, "poll-count-zero-total", (int64_t)poll_zero);
+			}
 
 			printf("\nDistribution of poll timeout times:\n");
 
@@ -798,7 +860,6 @@ static bool syscall_wait(const pid_t pid)
 			return true;
 	}
 }
-
 
 /*
  *  syscall_trace()

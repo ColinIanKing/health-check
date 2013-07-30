@@ -23,6 +23,7 @@
 
 #include "proc.h"
 #include "list.h"
+#include "json.h"
 
 #include <stdint.h>
 
@@ -33,6 +34,6 @@ typedef struct {
 } mem_info_t;
 
 void mem_get(const list_t *pids, list_t *mem);
-void mem_dump_diff(const double duration, const list_t *mem_old, const list_t *mem_new);
+void mem_dump_diff(json_object *j_tests, const double duration, const list_t *mem_old, const list_t *mem_new);
 
 #endif

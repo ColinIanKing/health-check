@@ -22,6 +22,7 @@
 #define _GNU_SOURCE
 
 #include "list.h"
+#include "json.h"
 
 /* fnotify file information per process */
 typedef struct {
@@ -44,6 +45,6 @@ typedef struct {
 extern int fnotify_event_init(void);
 extern void fnotify_event_free(void *data);
 extern void fnotify_event_add(const list_t *pids, const struct fanotify_event_metadata *metadata, list_t *fnotify_files);
-extern void fnotify_dump_events(const double duration, const list_t *pids, const list_t *fnotify_files);
+extern void fnotify_dump_events(json_object *j_tests, const double duration, const list_t *pids, const list_t *fnotify_files);
 
 #endif

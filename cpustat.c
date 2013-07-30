@@ -24,6 +24,7 @@
 #include <limits.h>
 
 #include "list.h"
+#include "json.h"
 #include "cpustat.h"
 #include "health-check.h"
 
@@ -60,6 +61,7 @@ static int cpustat_cmp(const void *data1, const void *data2)
 }
 
 void cpustat_dump_diff(
+	json_object *j_tests,
 	const double duration,
 	const list_t *cpustat_old,
 	const list_t *cpustat_new)
@@ -129,6 +131,43 @@ void cpustat_dump_diff(
 				100.0 * (double)stime_total / (double)nr_ticks,
 				100.0 * (double)ttime_total / (double)nr_ticks,
 				cpustat_loading(100.0 * (double)ttime_total / (double)nr_ticks));
+	}
+
+	if (j_tests) {
+		json_object *j_cpustat, *j_cpuload, *j_cpu;
+
+		j_obj_obj_add(j_tests, "cpu-load", (j_cpustat = j_obj_new_obj()));
+		j_obj_obj_add(j_cpustat, "cpu-load-per-process", (j_cpuload = j_obj_new_array()));
+		
+		for (ln = sorted.head; ln; ln = ln->next) {
+			cin = (cpustat_info_t*)ln->data;
+
+			j_cpu = j_obj_new_obj();
+			j_obj_new_int32_add(j_cpu, "pid", cin->proc->pid);
+			j_obj_new_int32_add(j_cpu, "ppid", cin->proc->ppid);
+			j_obj_new_int32_add(j_cpu, "is-thread", cin->proc->is_thread);
+			j_obj_new_string_add(j_cpu, "name", cin->proc->cmdline);
+			j_obj_new_int64_add(j_cpu, "user-cpu-ticks", cin->utime);
+			j_obj_new_int64_add(j_cpu, "system-cpu-ticks", cin->stime);
+			j_obj_new_int64_add(j_cpu, "total-cpu-ticks", cin->ttime);
+			j_obj_new_double_add(j_cpu, "user-cpu-percent",
+				100.0 * (double)cin->utime / (double)nr_ticks);
+			j_obj_new_double_add(j_cpu, "system-cpu-percent", 
+				100.0 * (double)cin->stime / (double)nr_ticks);
+			j_obj_new_double_add(j_cpu, "total-cpu-percent",
+				100.0 * (double)cin->ttime / (double)nr_ticks);
+			j_obj_new_string_add(j_cpu, "load-hint",
+				cpustat_loading(100.0 * (double)cin->ttime / (double)nr_ticks));
+			j_obj_array_add(j_cpuload, j_cpu);
+		}
+
+		j_obj_obj_add(j_cpustat, "cpu-load-total", (j_cpu = j_obj_new_obj()));
+		j_obj_new_double_add(j_cpu, "cpu-load-total",
+			100.0 * (double)utime_total / (double)nr_ticks);
+		j_obj_new_double_add(j_cpu, "user-cpu-percent",
+			100.0 * (double)stime_total / (double)nr_ticks);
+		j_obj_new_double_add(j_cpu, "system-cpu-percent",
+			100.0 * (double)ttime_total / (double)nr_ticks);
 	}
 
 	list_free(&sorted, free);

@@ -1,12 +1,12 @@
 VERSION=0.01.07
 
 CFLAGS += -Wall -Wextra -DVERSION='"$(VERSION)"'
-LDFLAGS += -lpthread
+LDFLAGS += -lpthread -ljson
 
 BINDIR=/usr/bin
 MANDIR=/usr/share/man/man8
 
-OBJS = list.o pid.o proc.o syscall.o timeval.o fnotify.o event.o cpustat.o mem.o health-check.o
+OBJS = list.o json.o pid.o proc.o syscall.o timeval.o fnotify.o event.o cpustat.o mem.o health-check.o
 
 health-check: $(OBJS)
 	$(CC) $(CFLAGS) $(OBJS) -o $@ $(LDFLAGS)
@@ -14,6 +14,8 @@ health-check: $(OBJS)
 health-check.8.gz: health-check.8
 	gzip -c $< > $@
 
+
+json.o: json.c json.h health-check.h
 
 cpustat.o: cpustat.c list.h cpustat.h health-check.h
 

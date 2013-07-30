@@ -21,6 +21,8 @@
 
 #define _GNU_SOURCE
 
+#include <json/json.h>
+
 #include "list.h"
 #include "proc.h"
 
@@ -32,7 +34,7 @@ typedef struct {
 	unsigned long	ttime;		/* Total time */
 } cpustat_info_t;
 
-void cpustat_dump_diff(const double duration, const list_t *cpustat_old, const list_t *cpustat_new);
+void cpustat_dump_diff(json_object *json_obj, const double duration, const list_t *cpustat_old, const list_t *cpustat_new);
 int cpustat_get(const list_t *pids, list_t *cpustat);
 
 #endif
