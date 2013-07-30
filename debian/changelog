@@ -1,3 +1,15 @@
+health-check (0.01.08) saucy; urgency=low
+
+  * Makefile: bump version
+  * Tidy up system call error return
+  * Add more json logging on syscall returns
+  * Use uint64_t for accounting
+  * Add JSON output
+  * Remove const in list data
+  * Makefile: add in obj dependencies
+
+ -- Colin King <colin.king@canonical.com>  Tue, 30 Jul 2013 20:30:01 +0100
+
 health-check (0.01.07) saucy; urgency=low
 
   * Makefile: bump version
