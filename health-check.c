@@ -171,9 +171,6 @@ int main(int argc, char **argv)
 
 	proc_cache_get();
 	proc_cache_get_pthreads();
-#if DUMP_PROC_CACHE
-	proc_cache_dump();
-#endif
 
 	for (;;) {
 		int c = getopt(argc, argv, "bcd:hp:m:o:");

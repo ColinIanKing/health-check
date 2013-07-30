@@ -194,19 +194,6 @@ void proc_cache_info_free(void *data)
 	free(p);
 }
 
-#if DUMP_PROC_CACHE
-void proc_cache_dump(void)
-{
-	link_t *l;
-
-	for (l = proc_cache.head; l; l = l->next) {
-		proc_info_t *p = (proc_info_t*)l->data;
-		printf("%i %i %d (%s) (%s)\n",
-			p->pid, p->ppid, p->thread, p->comm, p->cmdline);
-	}
-}
-#endif
-
 /*
  *  proc_cache_find_by_procname()
  *	find process by process name (in cmdline)
