@@ -87,6 +87,7 @@ static void show_usage(void)
 	printf("  -p pid[,pid]  specify process id(s) or process name(s)\n");
 	printf("  -m max	specify maximum number of system calls to trace\n");
 	printf("  -o file	output results to a json data file\n");
+
 	health_check_exit(EXIT_SUCCESS);
 }
 
@@ -145,16 +146,14 @@ static int json_write(json_object *obj, const char *filename)
 
 int main(int argc, char **argv)
 {
-	double opt_duration_secs = 60.0;
+	double actual_duration, opt_duration_secs = 60.0;
 	struct timeval tv_start, tv_end, tv_now, duration;
-	double actual_duration;
-	int ret, rc = EXIT_SUCCESS;
-	list_t		event_info_old, event_info_new;
-	list_t		fnotify_files, pids;
-	list_t		cpustat_info_old, cpustat_info_new;
-	list_t		mem_info_old, mem_info_new;
-	link_t		*l;
-	int fan_fd = 0;
+	int ret, rc = EXIT_SUCCESS, fan_fd = 0;
+	list_t event_info_old, event_info_new;
+	list_t fnotify_files, pids;
+	list_t cpustat_info_old, cpustat_info_new;
+	list_t mem_info_old, mem_info_new;
+	link_t *l;
 	void *buffer;
 	char *opt_json_file = NULL;
 	json_object *json_obj = NULL, *json_tests = NULL;
@@ -201,12 +200,12 @@ int main(int argc, char **argv)
 			break;
 		}
 	}
+
 	if (geteuid() != 0) {
 		fprintf(stderr, "%s requires root privileges to write to %s\n",
 			APP_NAME, TIMER_STATS);
 		health_check_exit(EXIT_FAILURE);
 	}
-
 	if (pids.head == NULL) {
 		fprintf(stderr, "Must provide one or more valid process IDs or name\n");
 		health_check_exit(EXIT_FAILURE);
@@ -225,7 +224,6 @@ int main(int argc, char **argv)
 		fprintf(stderr, "Duration must 0.5 or more.\n");
 		health_check_exit(EXIT_FAILURE);
 	}
-
 	if (opt_json_file) {
 		if ((json_obj = json_object_new_object()) == NULL) {
 			fprintf(stderr, "Cannot allocate JSON object\n");
@@ -237,10 +235,8 @@ int main(int argc, char **argv)
 		}
 		json_object_object_add(json_obj, "health-check", json_tests);
 	}
-
-	if ((fan_fd = fnotify_event_init()) < 0) {
+	if ((fan_fd = fnotify_event_init()) < 0)
 		health_check_exit(EXIT_FAILURE);
-	}
 
 	ret = posix_memalign(&buffer, 4096, 4096);
 	if (ret != 0 || buffer == NULL) {
@@ -314,17 +310,15 @@ int main(int argc, char **argv)
 	mem_get(&pids, &mem_info_new);
 	event_deinit();
 
-	cpustat_dump_diff(json_tests, actual_duration,
-		&cpustat_info_old, &cpustat_info_new);
+	cpustat_dump_diff(json_tests, actual_duration, &cpustat_info_old, &cpustat_info_new);
 	event_dump_diff(json_tests, actual_duration, &event_info_old, &event_info_new);
 	fnotify_dump_events(json_tests, actual_duration, &pids, &fnotify_files);
 	syscall_dump_hashtable(json_tests, actual_duration);
 	syscall_dump_pollers(json_tests, actual_duration);
 	mem_dump_diff(json_tests, actual_duration, &mem_info_old, &mem_info_new);
 
-	if (json_obj) {
+	if (json_obj)
 		json_write(json_obj, opt_json_file);
-	}
 out:
 	for (l = pids.head; l; l = l->next) {
 		proc_info_t *p = (proc_info_t *)l->data;
