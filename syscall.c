@@ -102,11 +102,11 @@ static bool syscall_valid(const int syscall)
 }
 
 #if defined(SYS_clock_nanosleep) || defined(SYS_nanosleep)
-static void syscall_nanosleep_generic_ret(const syscall_t *sc, const syscall_info_t *s)
+static void syscall_nanosleep_generic_ret(json_object *j_obj, const syscall_t *sc, const syscall_info_t *s)
 {
 	link_t *l;
 
-	unsigned long ret_error = 0;
+	uint64_t ret_error = 0;
 
 	for (l = s->return_history.head; l; l = l->next) {
 		syscall_return_info_t *ret = (syscall_return_info_t *)l->data;
@@ -115,9 +115,22 @@ static void syscall_nanosleep_generic_ret(const syscall_t *sc, const syscall_inf
 	}
 
 	if (ret_error) {
-		printf("%-15.15s %6i %lu errors\n",
+		printf("%-15.15s %6i %" PRIu64 " errors\n",
 			sc->name, s->proc->pid, ret_error);
 		info_emit = true;
+
+		if (j_obj) {
+			json_object *j_nanosleep_error, *j_error;
+
+			j_obj_array_add(j_obj, (j_nanosleep_error= j_obj_new_obj()));
+			j_obj_obj_add(j_nanosleep_error, "nanosleep-error", (j_error = j_obj_new_obj()));
+			j_obj_new_int32_add(j_error, "pid", s->proc->pid);
+			j_obj_new_int32_add(j_error, "ppid", s->proc->ppid);
+			j_obj_new_int32_add(j_error, "is-thread", s->proc->is_thread);
+			j_obj_new_string_add(j_error, "name", s->proc->cmdline);
+			j_obj_new_string_add(j_error, "system-call", sc->name);
+			j_obj_new_int64_add(j_error, "error-count", ret_error);
+		}
 	}
 }
 #endif
@@ -126,7 +139,7 @@ static void syscall_nanosleep_generic_ret(const syscall_t *sc, const syscall_inf
     defined(SYS_poll) || defined(SYS_ppol) || \
     defined(SYS_pselect6) || defined(SYS_rt_sigtimedwait) || \
     defined(SYS_select)
-static void syscall_poll_generic_ret(const syscall_t *sc, const syscall_info_t *s)
+static void syscall_poll_generic_ret(json_object *j_obj, const syscall_t *sc, const syscall_info_t *s)
 {
 	link_t *l;
 	int prev_ret = -1;
@@ -175,12 +188,29 @@ static void syscall_poll_generic_ret(const syscall_t *sc, const syscall_info_t *
 			printf("   %8lu system call errors\n", ret_error);
 		info_emit = true;
 	}
+
+	if (j_obj) {
+		json_object *j_timeout, *j_poll;
+
+		j_obj_array_add(j_obj, (j_timeout = j_obj_new_obj()));
+		j_obj_obj_add(j_timeout, "polling-timeout", (j_poll = j_obj_new_obj()));
+
+		j_obj_new_int32_add(j_poll, "pid", s->proc->pid);
+		j_obj_new_int32_add(j_poll, "ppid", s->proc->ppid);
+		j_obj_new_int32_add(j_poll, "is-thread", s->proc->is_thread);
+		j_obj_new_string_add(j_poll, "name", s->proc->cmdline);
+		j_obj_new_string_add(j_poll, "system-call", sc->name);
+		j_obj_new_int64_add(j_poll, "zero-timeouts", zero_timeouts);
+		j_obj_new_int64_add(j_poll, "repeat-timeouts", timeout_repeats);
+		j_obj_new_int64_add(j_poll, "repeat-zero-timeouts", zero_timeout_repeats);
+	}
 }
 #endif
 
 #if defined(SYS_semtimedop)
-static void syscall_semtimedop_ret(const syscall_t *sc, const syscall_info_t *s)
+static void syscall_semtimedop_ret(json_object *j_obj, const syscall_t *sc, const syscall_info_t *s)
 {
+	(void)j_obj,
 	(void)sc;
 	(void)s;
 	/* No-op for now, need to examine errno */
@@ -188,8 +218,9 @@ static void syscall_semtimedop_ret(const syscall_t *sc, const syscall_info_t *s)
 #endif
 
 #if defined(SYS_mq_timedreceive)
-static void syscall_mq_timedreceive_ret(const syscall_t *sc, const syscall_info_t *s)
+static void syscall_mq_timedreceive_ret(json_object *j_obj, const syscall_t *sc, const syscall_info_t *s)
 {
+	(void)j_obj,
 	(void)sc;
 	(void)s;
 	/* No-op for now, need to examine errno */
@@ -197,8 +228,9 @@ static void syscall_mq_timedreceive_ret(const syscall_t *sc, const syscall_info_
 #endif
 
 #if defined(SYS_mq_timedsend)
-static void syscall_mq_timedsend_ret(const syscall_t *sc, const syscall_info_t *s)
+static void syscall_mq_timedsend_ret(json_object *j_obj, const syscall_t *sc, const syscall_info_t *s)
 {
+	(void)j_obj,
 	(void)sc;
 	(void)s;
 	/* No-op for now, need to examine errno */
@@ -606,6 +638,8 @@ void syscall_dump_pollers(json_object *j_tests, const double duration)
 	}
 
 	if (sorted.head) {
+		json_object *j_poll_test, *j_pollers;
+
 		if (!(opt_flags & OPT_BRIEF)) {
 			double prev, bucket;
 			char tmp[64], *units;
@@ -674,7 +708,6 @@ void syscall_dump_pollers(json_object *j_tests, const double duration)
 					j_obj_new_double_add(j_syscall_info, "poll-average-timeout-millisecs", s->poll_total / (double)s->count);
 					j_obj_array_add(j_syscall_infos, j_syscall_info);
 				}
-
 				j_obj_obj_add(j_syscall, "polling-system-calls-total", (j_syscall_info = j_obj_new_obj()));
 				j_obj_new_int64_add(j_syscall_info, "system-call-count-total", count);
 				j_obj_new_double_add(j_syscall_info, "system-call-rate-total", (double)count / duration);
@@ -732,13 +765,20 @@ void syscall_dump_pollers(json_object *j_tests, const double duration)
 			printf("\n");
 		}
 
+		if (j_tests) {
+			j_obj_obj_add(j_tests, "polling-system-call-returns", (j_poll_test = j_obj_new_obj()));
+                	j_obj_obj_add(j_poll_test, "polling-system-call-returns-per-process", (j_pollers = j_obj_new_array()));
+		} else {
+			j_pollers = NULL;
+		}
+
 		printf("Polling system call analysis:\n");
 		for (l = sorted.head; l; l = l->next) {
 			syscall_info_t *s = (syscall_info_t *)l->data;
 			if (syscall_valid(s->syscall)) {
 				syscall_t *sc = &syscalls[s->syscall];
 				if (sc->check_ret)
-					sc->check_ret(sc, s);
+					sc->check_ret(j_pollers, sc, s);
 			}
 		}
 		if (!info_emit)

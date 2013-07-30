@@ -63,7 +63,7 @@ typedef struct syscall_info {
 typedef struct syscall syscall_t;
 
 typedef void (*check_timeout_func_t)(const syscall_t *sc, syscall_info_t *s, const pid_t pid, const double threshold, double *timeout);
-typedef void (*check_return_func_t)(const syscall_t *sc, const syscall_info_t *s);
+typedef void (*check_return_func_t)(json_object *j_tests, const syscall_t *sc, const syscall_info_t *s);
 
 /* syscall specific information */
 typedef struct syscall {
