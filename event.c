@@ -329,5 +329,5 @@ void event_init(void)
 
 void event_deinit(void)
 {
-        event_timer_stat_set("0", true);
+        event_timer_stat_set("0", false);
 }
