@@ -106,7 +106,7 @@ static void syscall_nanosleep_generic_ret(json_object *j_obj, const syscall_t *s
 {
 	link_t *l;
 
-	uint64_t ret_error = 0;
+	uint64_t ret_error = 99;
 
 	for (l = s->return_history.head; l; l = l->next) {
 		syscall_return_info_t *ret = (syscall_return_info_t *)l->data;
@@ -115,8 +115,9 @@ static void syscall_nanosleep_generic_ret(json_object *j_obj, const syscall_t *s
 	}
 
 	if (ret_error) {
-		printf("%-15.15s %6i %" PRIu64 " errors\n",
-			sc->name, s->proc->pid, ret_error);
+		printf(" %s (%i), %s:\n",
+			s->proc->cmdline, s->proc->pid, sc->name);
+		printf("   %8" PRIu64 " %s system call errors\n", ret_error, sc->name);
 		info_emit = true;
 
 		if (j_obj) {
@@ -144,10 +145,10 @@ static void syscall_poll_generic_ret(json_object *j_obj, const syscall_t *sc, co
 	link_t *l;
 	int prev_ret = -1;
 	double prev_timeout = -1.0;
-	unsigned long zero_timeout_repeats = 0;
-	unsigned long zero_timeouts = 0;
-	unsigned long timeout_repeats = 0;
-	unsigned long ret_error = 0;
+	uint64_t zero_timeout_repeats = 0;
+	uint64_t zero_timeouts = 0;
+	uint64_t timeout_repeats = 0;
+	uint64_t ret_error = 0;
 
 	for (l = s->return_history.head; l; l = l->next) {
 		syscall_return_info_t *ret = (syscall_return_info_t *)l->data;
@@ -179,13 +180,13 @@ static void syscall_poll_generic_ret(json_object *j_obj, const syscall_t *sc, co
 		printf(" %s (%i), %s:\n",
 			s->proc->cmdline, s->proc->pid, sc->name);
 		if (zero_timeouts)
-			printf("   %8lu immediate timed out calls with zero timeout (non-blocking peeks)\n", zero_timeouts);
+			printf("   %8" PRIu64 " immediate timed out calls with zero timeout (non-blocking peeks)\n", zero_timeouts);
 		if (timeout_repeats)
-			printf("   %8lu repeated timed out polled calls with non-zero timeouts (light polling)\n", timeout_repeats);
+			printf("   %8" PRIu64 " repeated timed out polled calls with non-zero timeouts (light polling)\n", timeout_repeats);
 		if (zero_timeout_repeats)
-			printf("   %8lu repeated immediate timed out polled calls with zero timeouts (heavy polling peeks)\n", zero_timeout_repeats);
+			printf("   %8" PRIu64 " repeated immediate timed out polled calls with zero timeouts (heavy polling peeks)\n", zero_timeout_repeats);
 		if (ret_error)
-			printf("   %8lu system call errors\n", ret_error);
+			printf("   %8" PRIu64 " system call errors\n", ret_error);
 		info_emit = true;
 	}
 
@@ -203,6 +204,7 @@ static void syscall_poll_generic_ret(json_object *j_obj, const syscall_t *sc, co
 		j_obj_new_int64_add(j_poll, "zero-timeouts", zero_timeouts);
 		j_obj_new_int64_add(j_poll, "repeat-timeouts", timeout_repeats);
 		j_obj_new_int64_add(j_poll, "repeat-zero-timeouts", zero_timeout_repeats);
+		j_obj_new_int64_add(j_poll, "error-count", ret_error);
 	}
 }
 #endif
@@ -355,7 +357,7 @@ static int syscall_get_args(
 
 	for (i = 0; i <= n_args; i++)
 		args[i] = 0;
-	
+
 	fprintf(stderr, "Unknown arch\n");
 	return -1;
 #endif
@@ -657,7 +659,7 @@ void syscall_dump_pollers(json_object *j_tests, const double duration)
 				printf(" %5i %-20.20s %-17.17s %12.4f %8" PRIu64 " %8" PRIu64,
 					s->proc->pid, s->proc->cmdline, tmp, rate,
 					s->poll_infinite, s->poll_zero);
-				if (s->poll_count) {	
+				if (s->poll_count) {
 					char min_timeout[64], max_timeout[64], avg_timeout[64];
 
 					units = syscall_timeout_to_human_time(s->poll_min < 0.0 ? 0.0 : s->poll_min, false, tmp, sizeof(tmp));
@@ -666,7 +668,7 @@ void syscall_dump_pollers(json_object *j_tests, const double duration)
 					snprintf(max_timeout, sizeof(max_timeout), "%s %-4s", tmp, units);
 					units = syscall_timeout_to_human_time(s->poll_total / (double)s->count, false, tmp, sizeof(tmp));
 					snprintf(avg_timeout, sizeof(avg_timeout), "%s %-4s", tmp, units);
-	
+
 					printf(" %10s %10s %10s", min_timeout, max_timeout, avg_timeout);
 				} else {
 					printf("       n/a            n/a            n/a        n/a");
@@ -747,7 +749,6 @@ void syscall_dump_pollers(json_object *j_tests, const double duration)
 				printf(" %6s", units);
 			}
 			printf("   Wait\n");
-	
 			for (l = sorted.head; l; l = l->next) {
 				syscall_info_t *s = (syscall_info_t *)l->data;
 
