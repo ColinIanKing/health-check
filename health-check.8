@@ -53,6 +53,10 @@ Specify maximum number of timeout blocking system calls are logged
 before completing. This is useful with very busy processes that can
 generate tens of thousands of ptrace events that have to be logged by
 health-check. The default is 1 million.
+.TP
+.B \-o logfile
+Specify output log file to export JSON formatted results.  The resulting
+data can be then easily imported and analysed using JSON parsing tools.
 .SH AUTHOR
 health-check was written by Colin King <colin.king@canonical.com>
 .PP
