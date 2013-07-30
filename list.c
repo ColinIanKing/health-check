@@ -37,7 +37,7 @@ void list_init(list_t *list)
  *  list_append()
  *	add a new item to end of the list
  */
-link_t *list_append(list_t *list, const void *data)
+link_t *list_append(list_t *list, void *data)
 {
 	link_t *link;
 
@@ -64,7 +64,7 @@ link_t *list_append(list_t *list, const void *data)
  */
 link_t *list_add_ordered(
 	list_t *list,
-	const void *new_data,
+	void *new_data,
 	const list_comp_t compare)
 {
 	link_t *link, **l;

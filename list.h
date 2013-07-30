@@ -23,7 +23,7 @@
 
 /* single link and pointer to data item for a generic linked list */
 typedef struct link {
-	const void *data;		/* Data in list */
+	void *data;			/* Data in list */
 	struct link *next;		/* Next item in list */
 } link_t;
 
@@ -38,8 +38,8 @@ typedef void (*list_link_free_t)(void *);
 typedef int  (*list_comp_t)(const void *, const void *);
 
 extern void list_init(list_t *list);
-extern link_t *list_append(list_t *list, const void *data);
-extern link_t *list_add_ordered(list_t *list, const void *new_data, const list_comp_t compare);
+extern link_t *list_append(list_t *list, void *data);
+extern link_t *list_add_ordered(list_t *list, void *new_data, const list_comp_t compare);
 extern void list_free(list_t *list, const list_link_free_t freefunc);
 
 #endif
