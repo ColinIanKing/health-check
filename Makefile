@@ -14,6 +14,28 @@ health-check: $(OBJS)
 health-check.8.gz: health-check.8
 	gzip -c $< > $@
 
+
+cpustat.o: cpustat.c list.h cpustat.h health-check.h
+
+event.o: event.c list.h event.h health-check.h
+
+fnotify.o: fnotify.c fnotify.h list.h proc.h health-check.h
+
+health-check.o: health-check.c list.h pid.h proc.h syscall.h timeval.h \
+	fnotify.h event.h cpustat.h mem.h
+
+list.o: list.c list.h
+
+mem.o: mem.c mem.h list.h health-check.h
+
+pid.o: pid.c pid.h list.h proc.h
+
+proc.o: proc.c list.h pid.h proc.h health-check.h
+
+syscall.o: syscall.c syscall.h proc.h health-check.h
+
+timeval.o: timeval.c
+
 dist:
 	git archive --format=tar --prefix="health-check-$(VERSION)/" V$(VERSION) | \
 		gzip > health-check-$(VERSION).tar.gz
