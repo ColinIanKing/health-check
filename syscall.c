@@ -377,7 +377,7 @@ void syscall_dump_hashtable(json_object *j_tests, const double duration)
 	link_t *l;
 	int i;
 	int count = 0;
-	unsigned long total;
+	uint64_t total;
 
 	if (opt_flags & OPT_BRIEF)
 		return;
@@ -398,13 +398,13 @@ void syscall_dump_hashtable(json_object *j_tests, const double duration)
 		syscall_info_t *s = (syscall_info_t *)l->data;
 
 		syscall_name(s->syscall, name, sizeof(name));
-		printf(" %5i %-20.20s %-20.20s %6lu %12.4f\n",
+		printf(" %5i %-20.20s %-20.20s %6" PRIu64 " %12.4f\n",
 			s->proc->pid, s->proc->cmdline, name, s->count, (double)s->count / duration);
 		count++;
 		total += s->count;
 	}
 	if (count > 1) {
-		printf(" %-46.46s%8lu %12.4f\n", "Total",
+		printf(" %-46.46s%8" PRIu64 " %12.4f\n", "Total",
 			total, (double)total / duration);
 	}
 	printf("\n");
@@ -425,14 +425,14 @@ void syscall_dump_hashtable(json_object *j_tests, const double duration)
 			j_obj_new_int32_add(j_syscall_info, "is-thread", s->proc->is_thread);
 			j_obj_new_string_add(j_syscall_info, "name", s->proc->cmdline);
 			j_obj_new_string_add(j_syscall_info, "system-call", name);
-			j_obj_new_int64_add(j_syscall_info, "system-call-count", (int64_t)s->count);
+			j_obj_new_int64_add(j_syscall_info, "system-call-count", s->count);
 			j_obj_new_double_add(j_syscall_info, "system-call-rate", 
 				(double)s->count / duration);
 			j_obj_array_add(j_syscall_infos, j_syscall_info);
 			total += s->count;
 		}
 		j_obj_obj_add(j_syscall, "system-calls-total", (j_syscall_info = j_obj_new_obj()));
-		j_obj_new_int64_add(j_syscall_info, "system-call-count-total", (int64_t)total);
+		j_obj_new_int64_add(j_syscall_info, "system-call-count-total", total);
 		j_obj_new_double_add(j_syscall_info, "system-call-count-rate-total", 
 			(double)total / duration);
 	}
@@ -610,8 +610,7 @@ void syscall_dump_pollers(json_object *j_tests, const double duration)
 			double prev, bucket;
 			char tmp[64], *units;
 			double total_rate = 0.0;
-			unsigned long poll_infinite = 0, poll_zero = 0;
-			int count = 0;
+			uint64_t poll_infinite = 0, poll_zero = 0, count = 0;
 
 			printf("Top polling system calls:\n");
 			printf("  PID  Process              Syscall             Rate/Sec   Infinite   Zero     Minimum    Maximum    Average\n");
@@ -621,7 +620,7 @@ void syscall_dump_pollers(json_object *j_tests, const double duration)
 				syscall_name(s->syscall, tmp, sizeof(tmp));
 				double rate = (double)s->count / duration;
 
-				printf(" %5i %-20.20s %-17.17s %12.4f %8lu %8lu",
+				printf(" %5i %-20.20s %-17.17s %12.4f %8" PRIu64 " %8" PRIu64,
 					s->proc->pid, s->proc->cmdline, tmp, rate,
 					s->poll_infinite, s->poll_zero);
 				if (s->poll_count) {	
@@ -646,7 +645,7 @@ void syscall_dump_pollers(json_object *j_tests, const double duration)
 				count++;
 			}
 			if (count > 1)
-				printf(" %-45.45s%12.4f %8lu %8lu\n", "Total",
+				printf(" %-45.45s%12.4f %8" PRIu64 " %8" PRIu64 "\n", "Total",
 					total_rate, poll_infinite, poll_zero);
 
 			if (j_tests) {
@@ -666,10 +665,10 @@ void syscall_dump_pollers(json_object *j_tests, const double duration)
 					j_obj_new_int32_add(j_syscall_info, "is_thread", s->proc->is_thread);
 					j_obj_new_string_add(j_syscall_info, "name", s->proc->cmdline);
 					j_obj_new_string_add(j_syscall_info, "system-call", tmp);
-					j_obj_new_int64_add(j_syscall_info, "system-call-count", (int64_t)s->count);
+					j_obj_new_int64_add(j_syscall_info, "system-call-count", s->count);
 					j_obj_new_double_add(j_syscall_info, "system-call-rate", rate);
-					j_obj_new_int64_add(j_syscall_info, "poll-count-infinite-timeout", (int64_t)s->poll_infinite);
-					j_obj_new_int64_add(j_syscall_info, "poll-count-zero-timeout", (int64_t)s->poll_zero);
+					j_obj_new_int64_add(j_syscall_info, "poll-count-infinite-timeout", s->poll_infinite);
+					j_obj_new_int64_add(j_syscall_info, "poll-count-zero-timeout", s->poll_zero);
 					j_obj_new_double_add(j_syscall_info, "poll-minimum-timeout-millisecs", s->poll_min < 0.0 ? 0.0 : s->poll_min);
 					j_obj_new_double_add(j_syscall_info, "poll-maximum-timeout-millisecs", s->poll_max < 0.0 ? 0.0 : s->poll_max);
 					j_obj_new_double_add(j_syscall_info, "poll-average-timeout-millisecs", s->poll_total / (double)s->count);
@@ -677,10 +676,10 @@ void syscall_dump_pollers(json_object *j_tests, const double duration)
 				}
 
 				j_obj_obj_add(j_syscall, "polling-system-calls-total", (j_syscall_info = j_obj_new_obj()));
-				j_obj_new_int64_add(j_syscall_info, "system-call-count-total", (int64_t)count);
+				j_obj_new_int64_add(j_syscall_info, "system-call-count-total", count);
 				j_obj_new_double_add(j_syscall_info, "system-call-rate-total", (double)count / duration);
 				j_obj_new_int64_add(j_syscall_info, "poll-count-infinite-total", (int64_t)poll_infinite);
-				j_obj_new_int64_add(j_syscall_info, "poll-count-zero-total", (int64_t)poll_zero);
+				j_obj_new_int64_add(j_syscall_info, "poll-count-zero-total", poll_zero);
 			}
 
 			printf("\nDistribution of poll timeout times:\n");
@@ -720,14 +719,14 @@ void syscall_dump_pollers(json_object *j_tests, const double duration)
 				syscall_info_t *s = (syscall_info_t *)l->data;
 
 				syscall_name(s->syscall, tmp, sizeof(tmp));
-				printf(" %5u %-20.20s %-15.15s %6lu", s->proc->pid, s->proc->cmdline, tmp, s->poll_zero);
+				printf(" %5u %-20.20s %-15.15s %6" PRIu64, s->proc->pid, s->proc->cmdline, tmp, s->poll_zero);
 				for (i = 0; i < MAX_BUCKET; i++) {
 					if (s->bucket[i])
-						printf(" %6lu", s->bucket[i]);
+						printf(" %6" PRIu64, s->bucket[i]);
 					else
 						printf("     - ");
 				}
-				printf(" %6lu", s->poll_infinite);
+				printf(" %6" PRIu64, s->poll_infinite);
 				printf("\n");
 			}
 			printf("\n");

@@ -33,7 +33,7 @@ typedef struct {
 	char		*func;		/* Kernel waiting func */
 	char		*callback;	/* Kernel timer callback func */
 	char		*ident;		/* Unique identity */
-	unsigned long	count;		/* Number of events */
+	uint64_t	count;		/* Number of events */
 } event_info_t;
 
 extern void timer_stat_set(const char *str, const bool carp);

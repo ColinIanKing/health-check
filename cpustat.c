@@ -20,6 +20,8 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdint.h>
+#include <inttypes.h>
 #include <unistd.h>
 #include <limits.h>
 
@@ -70,7 +72,7 @@ void cpustat_dump_diff(
 		/* (double)sysconf(_SC_NPROCESSORS_CONF) * */
 		(double)sysconf(_SC_CLK_TCK) *
 		duration;
-	unsigned long utime_total = 0, stime_total = 0, ttime_total = 0;
+	uint64_t utime_total = 0, stime_total = 0, ttime_total = 0;
 	int count = 0;
 	link_t *lo, *ln;
 	list_t	sorted;
@@ -194,11 +196,11 @@ int cpustat_get(const list_t *pids, list_t *cpustat)
 		snprintf(filename, sizeof(filename), "/proc/%d/stat", p->pid);
 		if ((fp = fopen(filename, "r")) != NULL) {
 			char comm[20];
-			unsigned long utime, stime;
+			uint64_t utime, stime;
 			pid_t pid;
 
 			/* 3173 (a.out) R 3093 3173 3093 34818 3173 4202496 165 0 0 0 3194 0 */
-			if (fscanf(fp, "%d (%[^)]) %*c %*d %*d %*d %*d %*d %*u %*u %*u %*u %*u %lu %lu",
+			if (fscanf(fp, "%d (%[^)]) %*c %*d %*d %*d %*d %*d %*u %*u %*u %*u %*u %" SCNu64 " %" SCNu64,
 				&pid, comm, &utime, &stime) == 4) {
 				cpustat_info_t *info;
 

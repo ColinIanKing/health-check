@@ -201,7 +201,7 @@ static void fnotify_dump_files(
 	list_t	sorted;
 	link_t 	*l;
 	int count;
-	unsigned long total;
+	uint64_t total;
 
 	list_init(&sorted);
 	for (l = fnotify_files->head; l; l = l->next) {
@@ -214,7 +214,7 @@ static void fnotify_dump_files(
 		for (count = 0, total = 0, l = sorted.head; l; l = l->next) {
 			fnotify_fileinfo_t *info = (fnotify_fileinfo_t *)l->data;
 	
-			printf(" %5d %-20.20s %6d %4s %s\n",
+			printf(" %5d %-20.20s %6" PRIu64 " %4s %s\n",
 				info->proc->pid, info->proc->cmdline,
 				info->count, 
 				fnotify_mask_to_str(info->mask),
@@ -223,7 +223,7 @@ static void fnotify_dump_files(
 			count++;
 		}
 		if (count > 1)
-			printf(" %-25.25s%8lu\n", "Total", total);
+			printf(" %-25.25s%8" PRIu64 "\n", "Total", total);
 		printf("\n");
 	}
 
@@ -249,7 +249,7 @@ static void fnotify_dump_files(
 			total += info->count;
 		}
 		j_obj_obj_add(j_fnotify_test, "file-access-total", (j_access = j_obj_new_obj()));
-		j_obj_new_int64_add(j_access, "access-count-total", (int64_t)total);
+		j_obj_new_int64_add(j_access, "access-count-total", total);
 		j_obj_new_int64_add(j_access, "access-count-rate-total", (double)total / duration);
 	}
 	list_free(&sorted, NULL);
@@ -265,7 +265,7 @@ static void fnotify_dump_io_ops(
 	link_t  *lp;
 	list_t	sorted;
 	int count;
-	unsigned long read_total, write_total, open_total, close_total;
+	uint64_t read_total, write_total, open_total, close_total;
 
 	list_init(&sorted);
 	for (lp = pids->head; lp; lp = lp->next) {

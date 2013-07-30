@@ -29,16 +29,16 @@ typedef struct {
 	proc_info_t	*proc;		/* Proc specific info */
 	char		*filename;	/* Name of device or filename being accessed */
 	int		mask;		/* fnotify access mask */
-	unsigned 	count;		/* Count of accesses */
+	uint64_t	count;		/* Count of accesses */
 } fnotify_fileinfo_t;
 
 /* fnotify I/O operations counts per process */
 typedef struct {
-	unsigned long 	open_total;	/* open() count */
-	unsigned long 	close_total;	/* close() count */
-	unsigned long 	read_total;	/* read() count */
-	unsigned long 	write_total;	/* write() count */
-	unsigned long 	total;		/* total count */
+	uint64_t	open_total;	/* open() count */
+	uint64_t	close_total;	/* close() count */
+	uint64_t	read_total;	/* read() count */
+	uint64_t	write_total;	/* write() count */
+	uint64_t	total;		/* total count */
 	proc_info_t   	*proc;		/* process information */
 } io_ops_t;
 

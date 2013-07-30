@@ -22,6 +22,7 @@
 #define _GNU_SOURCE
 
 #include <json/json.h>
+#include <stdint.h>
 
 #include "list.h"
 #include "proc.h"
@@ -29,9 +30,9 @@
 /* cpu usage information per process */
 typedef struct {
 	proc_info_t	*proc;		/* Proc specific info */
-	unsigned long	utime;		/* User time quantum */
-	unsigned long	stime;		/* System time quantum */
-	unsigned long	ttime;		/* Total time */
+	uint64_t	utime;		/* User time quantum */
+	uint64_t	stime;		/* System time quantum */
+	uint64_t	ttime;		/* Total time */
 } cpustat_info_t;
 
 void cpustat_dump_diff(json_object *json_obj, const double duration, const list_t *cpustat_old, const list_t *cpustat_new);

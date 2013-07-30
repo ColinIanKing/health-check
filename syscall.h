@@ -47,15 +47,15 @@ typedef struct {
 typedef struct syscall_info {
 	proc_info_t	*proc;		/* process info */
 	int 		syscall;	/* system call number */
-	unsigned long	count;		/* number times call has been made */
+	uint64_t	count;		/* number times call has been made */
 	double 		poll_min;	/* minimum poll time */
 	double		poll_max;	/* maximum poll time */
 	double		poll_total;	/* sum of non zero or negative poll times */
-	unsigned long	poll_count;	/* number of polls */
-	unsigned long	poll_too_low;	/* number of poll times below a threshold */
-	unsigned long	poll_infinite;	/* number of -ve (infinite) poll times */
-	unsigned long	poll_zero;	/* number of zero poll times */
-	unsigned long 	bucket[MAX_BUCKET]; /* bucket count of poll times */
+	uint64_t	poll_count;	/* number of polls */
+	uint64_t	poll_too_low;	/* number of poll times below a threshold */
+	uint64_t	poll_infinite;	/* number of -ve (infinite) poll times */
+	uint64_t	poll_zero;	/* number of zero poll times */
+	uint64_t	bucket[MAX_BUCKET]; /* bucket count of poll times */
 	list_t		return_history;	/* history system call returns */
 	struct syscall_info *next;
 } syscall_info_t;

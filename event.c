@@ -80,7 +80,7 @@ static int event_cmp(const void *data1, const void *data2)
  */
 static void event_add(
 	list_t *events,			/* event list */
-	const unsigned long count,	/* event count */
+	const uint64_t count,		/* event count */
 	const pid_t pid,		/* PID of task */
 	const char *func,		/* Kernel function */
 	const char *callback)		/* Kernel timer callback */
@@ -145,7 +145,7 @@ void event_get(const list_t *pids, list_t *events)
 
 	while (!feof(fp)) {
 		char *ptr = buf;
-		unsigned long count = -1;
+		uint64_t count = 0;
 		pid_t event_pid = -1;
 		char func[128];
 		char timer[128];
@@ -172,7 +172,7 @@ void event_get(const list_t *pids, list_t *events)
 			continue;	/* Deferred event, skip */
 
 		ptr++;
-		sscanf(buf, "%lu", &count);
+		sscanf(buf, "%" SCNu64, &count);
 		sscanf(ptr, "%d", &event_pid);
 		sscanf(ptr + 24, "%s (%[^)])", func, timer);
 
@@ -218,7 +218,7 @@ static const char *event_loading(const double wakeup_rate)
  *	find delta in events between old, new. 
  *	if no old then delta is the new.
  */
-static unsigned long event_delta(const event_info_t *event_new, const list_t *events_old)
+static uint64_t event_delta(const event_info_t *event_new, const list_t *events_old)
 {
 	link_t *l;
 
@@ -250,7 +250,7 @@ void event_dump_diff(
 			double event_rate = 0.0;
 			for (l = events_new->head; l; l = l->next) {
 				event_info_t *event_new = (event_info_t *)l->data;
-				unsigned long delta = event_delta(event_new, events_old);
+				uint64_t delta = event_delta(event_new, events_old);
 				event_rate += (double)delta;
 			}
 			event_rate /= duration;
@@ -264,7 +264,7 @@ void event_dump_diff(
 			printf("  PID  Process               Wake/Sec Kernel Functions\n");
 			for (l = events_new->head; l; l = l->next) {
 				event_info_t *event_new = (event_info_t *)l->data;
-				unsigned long delta = event_delta(event_new, events_old);
+				uint64_t delta = event_delta(event_new, events_old);
 				double event_rate = (double)delta / duration;
 	
 				printf(" %5d %-20.20s %9.2f (%s, %s) (%s)\n",
@@ -295,7 +295,7 @@ void event_dump_diff(
 
 		for (l = events_new->head; l; l = l->next) {
 			event_info_t *event = (event_info_t *)l->data;
-			unsigned long delta = event_delta(event, events_old);
+			uint64_t delta = event_delta(event, events_old);
 			double event_rate = (double)delta / duration;
 			total_delta += delta;
 
@@ -307,7 +307,7 @@ void event_dump_diff(
 			j_obj_new_string_add(j_event, "name", event->proc->cmdline);
 			j_obj_new_string_add(j_event, "kernel-timer-func", event->func);
 			j_obj_new_string_add(j_event, "kernel-timer-callback", event->callback);
-			j_obj_new_int64_add(j_event, "wakeups", (uint64_t)delta);
+			j_obj_new_int64_add(j_event, "wakeups", delta);
 			j_obj_new_double_add(j_event, "wakeup-rate", event_rate);
 			j_obj_new_string_add(j_event, "load-hint", event_loading(event_rate));
 			j_obj_array_add(j_events, j_event);
