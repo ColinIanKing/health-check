@@ -91,6 +91,11 @@ static void show_usage(void)
 	health_check_exit(EXIT_SUCCESS);
 }
 
+/*
+ *  parse_pid_list()
+ *	parse list of process IDs or process names,
+ *	collect process info in pids list
+ */
 static int parse_pid_list(char *arg, list_t *pids)
 {
 	char *str, *token, *saveptr = NULL;
@@ -116,6 +121,10 @@ static int parse_pid_list(char *arg, list_t *pids)
 	return 0;
 }
 
+/*
+ *  json_write()
+ *	dump out collected JSON data
+ */
 static int json_write(json_object *obj, const char *filename)
 {
 	const char *str;
