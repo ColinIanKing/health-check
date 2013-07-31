@@ -287,7 +287,7 @@ void event_dump_diff(
 
 	if (j_tests) {
 		json_object *j_event_test, *j_events, *j_event;
-		uint64_t total_delta;
+		uint64_t total_delta = 0;
 		double total_event_rate;
 
 		j_obj_obj_add(j_tests, "wakeup-events", (j_event_test = j_obj_new_obj()));
