@@ -1,3 +1,14 @@
+health-check (0.01.10) saucy; urgency=low
+
+  * Makefile: bump version
+  * syscall is valid if it is zero or more.
+  * Don't carp if we can't write to timer stats on exit
+  * Tidy up main variables, cosmetic source changes only
+  * Remove proc_cache_dump, it's not required anymore
+  * Add -o option to manual
+
+ -- Colin King <colin.king@canonical.com>  Wed, 31 Jul 2013 01:17:11 +0100
+
 health-check (0.01.09) saucy; urgency=low
 
   * Makefile: bump version
