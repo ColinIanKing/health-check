@@ -1,3 +1,13 @@
+health-check (0.01.11) saucy; urgency=low
+
+  * Makefile: update version
+  * Add more comments to syscalls
+  * Add more comments to health-check
+  * Add more comments to fnotify. minor code reformatting
+  * Need to set total_delta to zero
+
+ -- Colin King <colin.king@canonical.com>  Wed, 31 Jul 2013 01:44:45 +0100
+
 health-check (0.01.10) saucy; urgency=low
 
   * Makefile: bump version
