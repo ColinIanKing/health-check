@@ -101,6 +101,10 @@ static bool syscall_valid(const int syscall)
 	       (syscall <= (int)syscalls_len);
 }
 
+/*
+ *  syscall_nanosleep_generic_ret()
+ *	handle nanosecond syscall returns
+ */
 #if defined(SYS_clock_nanosleep) || defined(SYS_nanosleep)
 static void syscall_nanosleep_generic_ret(json_object *j_obj, const syscall_t *sc, const syscall_info_t *s)
 {
@@ -140,6 +144,10 @@ static void syscall_nanosleep_generic_ret(json_object *j_obj, const syscall_t *s
     defined(SYS_poll) || defined(SYS_ppol) || \
     defined(SYS_pselect6) || defined(SYS_rt_sigtimedwait) || \
     defined(SYS_select)
+/*
+ *  syscall_poll_generic_ret()
+ *	handle generic poll returns
+ */
 static void syscall_poll_generic_ret(json_object *j_obj, const syscall_t *sc, const syscall_info_t *s)
 {
 	link_t *l;
@@ -284,6 +292,10 @@ static int syscall_get_call(const pid_t pid)
 #endif
 }
 
+/*
+ *  syscall_get_return()
+ *	get syscall return code
+ */
 static int syscall_get_return(const pid_t pid)
 {
 #if defined (__x86_64__)
