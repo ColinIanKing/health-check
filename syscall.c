@@ -97,7 +97,7 @@ static syscall_info_t *syscall_info[HASH_TABLE_SIZE];
  */
 static bool syscall_valid(const int syscall)
 {
-	return (syscall > 0) &&
+	return (syscall >= 0) &&
 	       (syscall <= (int)syscalls_len);
 }
 
