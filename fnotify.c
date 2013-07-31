@@ -87,6 +87,10 @@ int fnotify_event_init(void)
 	return fan_fd;
 }
 
+/*
+ *  fnotify_event_free()
+ *	free event info
+ */
 void fnotify_event_free(void *data)
 {
 	fnotify_fileinfo_t *fileinfo = (fnotify_fileinfo_t *)data;
@@ -95,6 +99,10 @@ void fnotify_event_free(void *data)
 	free(fileinfo);
 }
 
+/*
+ *  fnotify_event_add()
+ *	add a new fnotify event
+ */
 void fnotify_event_add(
 	const list_t *pids,
 	const struct fanotify_event_metadata *metadata,
@@ -148,17 +156,20 @@ void fnotify_event_add(
 					}
 				}
 
-				if (found) {
+				if (found)
 					fnotify_event_free(fileinfo);
-				} else {
+				else
 					list_append(fnotify_files, fileinfo);
-				}
 			}
 		}
 	}
 	close(metadata->fd);
 }
 
+/*
+ *  fnotify_event_cmp_count()
+ *	for list sorting, compare counts
+ */
 static int fnotify_event_cmp_count(const void *data1, const void *data2)
 {
 	fnotify_fileinfo_t *info1 = (fnotify_fileinfo_t *)data1;
@@ -167,6 +178,10 @@ static int fnotify_event_cmp_count(const void *data1, const void *data2)
 	return info2->count - info1->count;
 }
 
+/*
+ *  fnotify_event_cmp_io_ops()
+ *	for list sorting, compare io op totals
+ */
 static int fnotify_event_cmp_io_ops(const void *data1, const void *data2)
 {
 	io_ops_t *io_ops1 = (io_ops_t *)data1;
@@ -175,6 +190,10 @@ static int fnotify_event_cmp_io_ops(const void *data1, const void *data2)
 	return io_ops2->total - io_ops1->total;
 }
 
+/*
+ *  fnotify_mask_to_str()
+ *	convert fnotify mask to readable string
+ */
 static const char *fnotify_mask_to_str(const int mask)
 {
 	static char modes[5];
@@ -193,6 +212,10 @@ static const char *fnotify_mask_to_str(const int mask)
 	return modes;
 }
 
+/*
+ *  fnotify_dump_files()
+ *	dump out fnotify file access stats
+ */
 static void fnotify_dump_files(
 	json_object *j_tests,
 	const double duration,
@@ -255,6 +278,10 @@ static void fnotify_dump_files(
 	list_free(&sorted, NULL);
 }
 
+/*
+ *  fnotify_dump_io_ops()
+ *	dump out fnotify I/O operations
+ */
 static void fnotify_dump_io_ops(
 	json_object *j_tests,
 	const double duration,
@@ -388,6 +415,10 @@ static void fnotify_dump_io_ops(
 	list_free(&sorted, free);
 }
 
+/*
+ *  fnotify_dump_events()
+ *	dump out fnotify file access events
+ */
 void fnotify_dump_events(
 	json_object *j_tests,
 	const double duration,
@@ -400,5 +431,4 @@ void fnotify_dump_events(
 
 	fnotify_dump_files(j_tests, duration, fnotify_files);
 	fnotify_dump_io_ops(j_tests, duration, pids, fnotify_files);
-
 }
