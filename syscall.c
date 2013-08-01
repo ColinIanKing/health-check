@@ -30,7 +30,6 @@
 #endif
 #include <sys/user.h>
 #include <errno.h>
-#include <linux/ptrace.h>
 
 #include "syscall.h"
 #include "proc.h"
