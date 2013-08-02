@@ -236,7 +236,7 @@ static void fnotify_dump_files(
 		printf("  PID  Process               Count  Op  Filename\n");
 		for (count = 0, total = 0, l = sorted.head; l; l = l->next) {
 			fnotify_fileinfo_t *info = (fnotify_fileinfo_t *)l->data;
-	
+
 			printf(" %5d %-20.20s %6" PRIu64 " %4s %s\n",
 				info->proc->pid, info->proc->cmdline,
 				info->count, 
@@ -297,13 +297,10 @@ static void fnotify_dump_io_ops(
 	list_init(&sorted);
 	for (lp = pids->head; lp; lp = lp->next) {
 		proc_info_t *p = (proc_info_t*)lp->data;
-		io_ops_t *io_ops;
+		io_ops_t io_ops;
 
-		if ((io_ops = calloc(1, sizeof(*io_ops))) == NULL) {
-			fprintf(stderr, "Out of memory\n");
-			health_check_exit(EXIT_FAILURE);
-		}
-		io_ops->proc = p;
+		memset(&io_ops, 0, sizeof(io_ops));
+		io_ops.proc = p;
 
 		for (l = fnotify_files->head; l; l = l->next) {
 			fnotify_fileinfo_t *info = (fnotify_fileinfo_t *)l->data;
@@ -311,19 +308,27 @@ static void fnotify_dump_io_ops(
 			if (info->proc->pid != p->pid)
 				continue;
 			if (info->mask & FAN_OPEN)
-				io_ops->open_total += info->count;
+				io_ops.open_total += info->count;
 			if (info->mask & (FAN_CLOSE_WRITE | FAN_CLOSE_NOWRITE))
-				io_ops->close_total += info->count;
+				io_ops.close_total += info->count;
 			if (info->mask & FAN_ACCESS)
-				io_ops->read_total += info->count;
+				io_ops.read_total += info->count;
 			if (info->mask & (FAN_MODIFY | FAN_CLOSE_WRITE))
-				io_ops->write_total += info->count;
+				io_ops.write_total += info->count;
 		}
-		io_ops->total = io_ops->open_total + io_ops->close_total +
-				io_ops->read_total + io_ops->write_total;
+		io_ops.total = io_ops.open_total + io_ops.close_total +
+			       io_ops.read_total + io_ops.write_total;
 
-		if (io_ops->total)
-			list_add_ordered(&sorted, io_ops, fnotify_event_cmp_io_ops);
+		if (io_ops.total) {
+			io_ops_t *new_io_ops;
+
+			if ((new_io_ops = calloc(1, sizeof(*new_io_ops))) == NULL) {
+				fprintf(stderr, "Out of memory\n");
+				health_check_exit(EXIT_FAILURE);
+			}
+			*new_io_ops = io_ops;
+			list_add_ordered(&sorted, new_io_ops, fnotify_event_cmp_io_ops);
+		}
 	}
 
 	open_total = close_total = read_total = write_total = 0;
@@ -347,14 +352,14 @@ static void fnotify_dump_io_ops(
 			printf("  PID  Process                 Open   Close    Read   Write\n");
 			for (count = 0, l = sorted.head; l; l = l->next) {
 				io_ops_t *io_ops = (io_ops_t *)l->data;
-	
+
 				printf(" %5d %-20.20s %7.2f %7.2f %7.2f %7.2f\n",
 					io_ops->proc->pid, io_ops->proc->cmdline,
 					(double)io_ops->open_total / duration,
 					(double)io_ops->close_total / duration,
 					(double)io_ops->read_total / duration,
 					(double)io_ops->write_total / duration);
-	
+
 				open_total  += io_ops->open_total;
 				close_total += io_ops->close_total;
 				read_total  += io_ops->read_total;
