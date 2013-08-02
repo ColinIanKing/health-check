@@ -121,53 +121,59 @@ void fnotify_event_add(
 			char path[PATH_MAX];
 			ssize_t len;
 			fnotify_fileinfo_t *fileinfo;
+			link_t	*l;
+			bool	found = false;
 
-			if ((fileinfo = calloc(1, sizeof(*fileinfo))) != NULL) {
-				link_t	*l;
-				bool	found = false;
-
-				snprintf(buf, sizeof(buf), "/proc/self/fd/%d", metadata->fd);
-				len = readlink(buf, path, sizeof(path));
-				if (len < 0) {
-					struct stat statbuf;
-					if (fstat(metadata->fd, &statbuf) < 0)
-						fileinfo->filename = NULL;
-					else {
-						snprintf(buf, sizeof(buf), "dev: %i:%i inode %ld",
-							major(statbuf.st_dev), minor(statbuf.st_dev), statbuf.st_ino);
-						fileinfo->filename = strdup(buf);
-					}
-				} else {
-					/*
-					 *  In an ideal world we should allocate the path
-					 *  based on a lstat'd size, but because this can be
-					 *  racey on has to re-check, which involves
-					 *  re-allocing the buffer.  Since we need to be
-					 *  fast let's just fetch upto PATH_MAX-1 of data.
-					 */
-					path[len >= PATH_MAX ? PATH_MAX - 1 : len] = '\0';
-					fileinfo->filename = strdup(path);
-				}
-				fileinfo->mask = metadata->mask;
-				fileinfo->proc = p;
-				fileinfo->count = 1;
-
-				for (l = fnotify_files->head; l; l = l->next) {
-					fnotify_fileinfo_t *fi = (fnotify_fileinfo_t *)l->data;
-
-					if ((fileinfo->mask == fi->mask) &&
-				    	(strcmp(fileinfo->filename, fi->filename) == 0)) {
-						found = true;
-						fi->count++;
-						break;
-					}
-				}
-
-				if (found)
-					fnotify_event_free(fileinfo);
-				else
-					list_append(fnotify_files, fileinfo);
+			if ((fileinfo = calloc(1, sizeof(*fileinfo))) == NULL) {
+				fprintf(stderr, "Out of memory\n");
+				health_check_exit(EXIT_FAILURE);
 			}
+
+			snprintf(buf, sizeof(buf), "/proc/self/fd/%d", metadata->fd);
+			len = readlink(buf, path, sizeof(path));
+			if (len < 0) {
+				struct stat statbuf;
+				if (fstat(metadata->fd, &statbuf) < 0)
+					fileinfo->filename = strdup("(unknown)");
+				else {
+					snprintf(buf, sizeof(buf), "dev: %i:%i inode %ld",
+						major(statbuf.st_dev), minor(statbuf.st_dev), statbuf.st_ino);
+					fileinfo->filename = strdup(buf);
+				}
+			} else {
+				/*
+				 *  In an ideal world we should allocate the path
+				 *  based on a lstat'd size, but because this can be
+				 *  racey on has to re-check, which involves
+				 *  re-allocing the buffer.  Since we need to be
+				 *  fast let's just fetch upto PATH_MAX-1 of data.
+				 */
+				path[len >= PATH_MAX ? PATH_MAX - 1 : len] = '\0';
+				fileinfo->filename = strdup(path);
+			}
+			if (fileinfo->filename == NULL) {
+				fprintf(stderr, "Out of memory\n");
+				health_check_exit(EXIT_FAILURE);
+			}
+			fileinfo->mask = metadata->mask;
+			fileinfo->proc = p;
+			fileinfo->count = 1;
+
+			for (l = fnotify_files->head; l; l = l->next) {
+				fnotify_fileinfo_t *fi = (fnotify_fileinfo_t *)l->data;
+
+				if ((fileinfo->mask == fi->mask) &&
+				    (strcmp(fileinfo->filename, fi->filename) == 0)) {
+					found = true;
+					fi->count++;
+					break;
+				}
+			}
+
+			if (found)
+				fnotify_event_free(fileinfo);
+			else
+				list_append(fnotify_files, fileinfo);
 		}
 	}
 	close(metadata->fd);
