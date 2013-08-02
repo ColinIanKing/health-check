@@ -138,7 +138,14 @@ void fnotify_event_add(
 						fileinfo->filename = strdup(buf);
 					}
 				} else {
-					path[len] = '\0';
+					/*
+					 *  In an ideal world we should allocate the path
+					 *  based on a lstat'd size, but because this can be
+					 *  racey on has to re-check, which involves
+					 *  re-allocing the buffer.  Since we need to be
+					 *  fast let's just fetch upto PATH_MAX-1 of data.
+					 */
+					path[len >= PATH_MAX ? PATH_MAX - 1 : len] = '\0';
 					fileinfo->filename = strdup(path);
 				}
 				fileinfo->mask = metadata->mask;
