@@ -80,7 +80,7 @@ char *get_pid_cmdline(const pid_t pid)
 	}
 	close(fd);
 
-	if (ret >= sizeof(buffer))
+	if (ret >= (ssize_t)sizeof(buffer))
 		ret = sizeof(buffer) - 1;
 	buffer[ret] = '\0';
 
