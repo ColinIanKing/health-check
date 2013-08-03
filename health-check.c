@@ -256,11 +256,9 @@ int main(int argc, char **argv)
 	signal(SIGINT, &handle_sigint);
 	for (l = pids.head; l; l = l->next) {
 		proc_info_t *p = (proc_info_t *)l->data;
-		if (!p->is_thread) {
-			if (pthread_create(&p->pthread, NULL, syscall_trace, &p->pid) < 0) {
-				fprintf(stderr, "Failed to create tracing thread for pid %i\n", p->pid);
-				goto out;
-			}
+		if (pthread_create(&p->pthread, NULL, syscall_trace, &p->pid) < 0) {
+			fprintf(stderr, "Failed to create tracing thread for pid %i\n", p->pid);
+			goto out;
 		}
 	}
 
@@ -331,7 +329,7 @@ int main(int argc, char **argv)
 out:
 	for (l = pids.head; l; l = l->next) {
 		proc_info_t *p = (proc_info_t *)l->data;
-		if (!p->is_thread && p->pthread) {
+		if (p->pthread) {
 			pthread_cancel(p->pthread);
 			pthread_join(p->pthread, NULL);
 		}

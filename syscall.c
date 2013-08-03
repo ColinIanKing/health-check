@@ -993,7 +993,7 @@ static bool syscall_wait(const pid_t pid)
 	for (;;) {
 		int status;
 		ptrace(PTRACE_SYSCALL, pid, 0, 0);
-		waitpid(pid, &status, 0);
+		waitpid(pid, &status, __WALL);
 		if (WIFSTOPPED(status) &&
 		    WSTOPSIG(status) & 0x80)
 			return false;
