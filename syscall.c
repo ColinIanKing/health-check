@@ -838,7 +838,7 @@ void syscall_dump_pollers(json_object *j_tests, const double duration)
 
 			printf("%46.46sZero", "");
 			for (bucket = BUCKET_START, i = 0; i < MAX_BUCKET; i++, bucket *= 10.0) {
-				units = syscall_timeout_to_human_time(bucket, true, tmp, sizeof(tmp));
+				(void)syscall_timeout_to_human_time(bucket, true, tmp, sizeof(tmp));
 				printf(" %6s", i == (MAX_BUCKET-1) ? "" : tmp);
 			}
 			printf(" Infinite\n");
