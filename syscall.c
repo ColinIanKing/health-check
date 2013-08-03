@@ -819,7 +819,7 @@ void syscall_dump_pollers(json_object *j_tests, const double duration)
 
 			printf("%50.50s", "");
 			for (prev = 0.0, bucket = BUCKET_START, i = 0; i < MAX_BUCKET; i++, bucket *= 10.0) {
-				units = syscall_timeout_to_human_time(prev, false, tmp, sizeof(tmp));
+				(void)syscall_timeout_to_human_time(prev, false, tmp, sizeof(tmp));
 				printf(" %6s", i == 0 ? "" : tmp);
 				prev = bucket;
 			}
