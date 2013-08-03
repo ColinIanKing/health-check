@@ -250,44 +250,86 @@ static void syscall_mq_timedsend_ret(json_object *j_obj, const syscall_t *sc, co
  *  syscall_get_call()
  *	get syscall number
  */
-static int syscall_get_call(const pid_t pid)
+static int syscall_get_call(const pid_t pid, int *syscall)
 {
 #if defined(__x86_64__)
-	return ptrace(PTRACE_PEEKUSER, pid, 8 * ORIG_RAX, NULL);
+	errno = 0;
+	if (ptrace(PTRACE_PEEKUSER, pid, 8 * RAX, NULL) != -ENOSYS) {
+		*syscall = -1;
+		return -1;	/* Not in syscall entry */
+	}
+	if (errno) {
+		*syscall = -1;
+		return -1;
+	}
+	errno = 0;
+	*syscall = ptrace(PTRACE_PEEKUSER, pid, 8 * ORIG_RAX, NULL);
+	if (errno) {
+		*syscall = -1;
+		return -1;
+	}
+	return 0;
 #elif defined(__i386__)
-	return ptrace(PTRACE_PEEKUSER, pid, 4 * ORIG_EAX, NULL);
+	errno = 0;
+	if (ptrace(PTRACE_PEEKUSER, pid, 8 * EAX, NULL) != -ENOSYS) {
+		*syscall = -1;
+		return -1;
+	}
+	if (errno) {
+		*syscall = -1;
+		return -1;
+	}
+	errno = 0;
+	*syscall = ptrace(PTRACE_PEEKUSER, pid, 4 * ORIG_EAX, NULL);
+	if (errno) {
+		*syscall = -1;
+		return -1;
+	}
+	return 0;
 #elif defined(__arm__)
 	struct pt_regs regs;
-	unsigned long syscall;
-
-	if (ptrace(PTRACE_GETREGS, pid, NULL, (void *)&regs) < 0)
-		return -1;
-
-	/* Thumb mode */
-	if (regs.ARM_cpsr & 0x20)
-		return regs.ARM_r7;
+	unsigned long sc;
 
 	errno = 0;
-	syscall = ptrace(PTRACE_PEEKTEXT, pid, (void *)(regs.ARM_pc - 4), NULL);
-	if (errno)
+	ptrace(PTRACE_GETREGS, pid, NULL, (void *)&regs);
+	if (errno) {
+		*syscall = -1;
 		return -1;
-
-	if (syscall == 0xef000000)
-		syscall = regs.ARM_r7;
-	else {
-		if ((syscall & 0x0ff00000) != 0x0f900000) {
-			fprintf(stderr, "bad syscall trap 0x%lx\n", syscall);
-			return -1;
-		}
-		syscall &= 0xfffff;
 	}
 
-	if (syscall & 0x0f0000)
-		syscall &= 0xffff;
+	/* Thumb mode */
+	if (regs.ARM_cpsr & 0x20) {
+		*syscal = regs.ARM_r7;
+		return 0;
+	}
 
-	return syscall;
+	errno = 0;
+	sc = ptrace(PTRACE_PEEKTEXT, pid, (void *)(regs.ARM_pc - 4), NULL);
+	if (errno) {
+		*syscall = -1;
+		return -1;
+	}
+
+	if (sc == 0xef000000)
+		sc = regs.ARM_r7;
+	else {
+		if ((sc & 0x0ff00000) != 0x0f900000) {
+			fprintf(stderr, "bad syscall trap 0x%lx\n", syscall);
+			*syscall = -1;
+			return -1;
+		}
+		sc &= 0xfffff;
+	}
+
+	if (sc & 0x0f0000)
+		sc &= 0xffff;
+
+	*syscall = sc;
+	return 0;
 #else
 #error Only currently implemented for x86 and ARM
+	*syscall = -1;
+	return -1
 #endif
 }
 
@@ -295,18 +337,38 @@ static int syscall_get_call(const pid_t pid)
  *  syscall_get_return()
  *	get syscall return code
  */
-static int syscall_get_return(const pid_t pid)
+static int syscall_get_return(const pid_t pid, int *rc)
 {
 #if defined (__x86_64__)
-	return ptrace(PTRACE_PEEKUSER, pid, sizeof(long) * RAX, NULL);
+	errno = 0;
+	*rc = ptrace(PTRACE_PEEKUSER, pid, sizeof(long) * RAX, NULL);
+	if (errno)
+		return -1;
+	if (*rc == -ENOSYS) {
+		printf("got unexpected SYSCALL entry\n");
+		return -1;	/* Not in syscall entry */
+	}
+	return 0;
 #elif defined (__i386__)
-	return ptrace(PTRACE_PEEKUSER, pid, sizeof(long) * EAX, NULL);
+	errno = 0;
+	*rc = ptrace(PTRACE_PEEKUSER, pid, sizeof(long) * EAX, NULL);
+	if (errno)
+		return -1;
+	if (*rc == -ENOSYS) {
+		printf("got unexpected SYSCALL entry\n");
+		return -1;	/* Not in syscall entry */
+	}
+	return 0;
 #elif defined (__arm__)
 	struct pt_regs regs;
-	if (ptrace(PTRACE_GETREGS, pid, NULL, (void *)&regs) < 0)
+
+	errno = 0;
+	ptrace(PTRACE_GETREGS, pid, NULL, (void *)&regs);
+	if (errno)
 		return -1;
 
-	return regs.ARM_r0;
+	*rc = regs.ARM_r0;
+	return 0;
 #else
 	fprintf(stderr, "Unknown arch\n");
 	return -1;
@@ -842,7 +904,10 @@ static void syscall_account_return(
 		syscall_t *sc = &syscalls[syscall];
 		if (sc->check_ret) {
 			syscall_return_info_t *info;
-			int ret = syscall_get_return(pid);
+			int ret;
+			
+			if (syscall_get_return(pid, &ret) < 0)
+				return;
 
 			if ((info = (syscall_return_info_t *)calloc(1, sizeof(*info))) == NULL) {
 				fprintf(stderr, "Out of memory\n");
@@ -957,7 +1022,8 @@ void *syscall_trace(void *arg)
 		double timeout;
 		if (syscall_wait(pid))
 			break;
-		syscall = syscall_get_call(pid);
+		if (syscall_get_call(pid, &syscall) < 0)
+			continue;
 		s = syscall_count_usage(pid, syscall, &timeout);
 		if (syscall_wait(pid))
 			break;
