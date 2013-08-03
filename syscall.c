@@ -384,11 +384,10 @@ static int syscall_get_args(
 	const int arg,
 	unsigned long args[])
 {
-	int n_args = arg > 6 ? 6 : arg;
 #if defined (__i386__)
 	int i;
 
-	for (i = 0; i <= n_args; i++)
+	for (i = 0; i <= arg; i++)
 		args[i] = ptrace(PTRACE_PEEKUSER, pid, i * 4, &args);
 	return 0;
 #elif defined (__x86_64__)
@@ -411,7 +410,7 @@ static int syscall_get_args(
 		return -1;
 	}
 
-	for (i = 0; i <= n_args; i++)
+	for (i = 0; i <= arg; i++)
 		args[i] = ptrace(PTRACE_PEEKUSER, pid, regs[i] * 8, NULL);
 	return 0;
 #elif defined (__arm__)
@@ -421,14 +420,14 @@ static int syscall_get_args(
 	if (ptrace(PTRACE_GETREGS, pid, NULL, (void *)&regs) < 0)
 		return -1;
 
-	for (i = 0; i <= n_args; i++)
+	for (i = 0; i <= arg; i++)
 		args[i] = regs.uregs[i];
 
 	return 0;
 #else
 	int i;
 
-	for (i = 0; i <= n_args; i++)
+	for (i = 0; i <= arg; i++)
 		args[i] = 0;
 
 	fprintf(stderr, "Unknown arch\n");
