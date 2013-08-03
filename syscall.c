@@ -582,6 +582,32 @@ static void syscall_timespec_timeout(
 }
 
 /*
+ *  syscall_timeval_timeout()
+ *     keep tally of timeval timeouts
+ */
+static void syscall_timeval_timeout(
+	const syscall_t *sc,
+	syscall_info_t *s,
+	const pid_t pid,
+	const double threshold,
+	double *ret_timeout)
+{
+	unsigned long args[sc->arg + 1];
+	struct timeval timeout;
+
+	syscall_get_args(pid, sc->arg, args);
+	if (args[sc->arg] == 0) {
+	*ret_timeout = -1.0;    /* block indefinitely, flagged with -ve timeout */
+	} else {
+		syscall_get_arg_data(args[sc->arg], pid, &timeout, sizeof(timeout));
+		*ret_timeout = timeout.tv_sec + (timeout.tv_usec / 1000000.0);
+	}
+
+	syscall_count_timeout(s, *ret_timeout, threshold);
+}
+
+
+/*
  *  syscall_timeout_millisec()
  *	keep tally of integer millisecond timeouts
  */
@@ -1518,7 +1544,7 @@ syscall_t syscalls[] = {
 	SYSCALL(newfstatat),
 #endif
 #ifdef SYS__newselect
-	SYSCALL_TIMEOUT(_newselect, 4, syscall_timespec_timeout, syscall_poll_generic_ret),
+	SYSCALL_TIMEOUT(_newselect, 4, syscall_timeval_timeout, syscall_poll_generic_ret),
 #endif
 #ifdef SYS_nfsservctl
 	SYSCALL(nfsservctl),
@@ -1728,7 +1754,7 @@ syscall_t syscalls[] = {
 	SYSCALL(security),
 #endif
 #ifdef SYS_select
-	SYSCALL_TIMEOUT(select, 4, syscall_timespec_timeout, syscall_poll_generic_ret),
+	SYSCALL_TIMEOUT(select, 4, syscall_timeval_timeout, syscall_poll_generic_ret),
 #endif
 #ifdef SYS_semctl
 	SYSCALL(semctl),
