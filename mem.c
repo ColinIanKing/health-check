@@ -238,10 +238,11 @@ void mem_dump_diff(
 {
 	list_t sorted, sorted_delta;
 	link_t *l;
+	bool deltas = false;
 
 	if (mem_new_list->head == NULL) {
 		printf("Memory:\n");
-		printf(" No memory detected\n\n");
+		printf(" No memory detected.\n\n");
 		return;
 	}
 
@@ -280,13 +281,16 @@ void mem_dump_diff(
 	}
 
 	printf("Change in memory (K/second):\n");
-	printf("  PID  Process              Type        Size       RSS       PSS\n");
 	for (l = sorted_delta.head; l; l = l->next) {
 		mem_info_t *delta = (mem_info_t *)l->data;
 		mem_type_t type;
 
 		for (type = MEM_STACK; type < MEM_MAX; type++) {
-			if (delta->total[type])
+			if (delta->total[type]) {
+				if (!deltas) {
+					printf("  PID  Process              Type        Size       RSS       PSS\n");
+					deltas = true;
+				}
 				printf(" %5d %-20.20s %-6.6s %9.2f %9.2f %9.2f (%s)\n",
 					delta->proc->pid, delta->proc->cmdline,
 					mem_types[type],
@@ -294,8 +298,11 @@ void mem_dump_diff(
 					(double)(delta->rss[type] / 1024.0) / duration,
 					(double)(delta->pss[type] / 1024.0) / duration,
 					mem_loading((double)(delta->total[type] / duration)));
+			}
 		}
 	}
+	if (!deltas)
+		printf(" No changes found.\n");
 	printf("\n");
 
 	if (j_tests) {
