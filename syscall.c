@@ -30,6 +30,7 @@
 #endif
 #include <sys/user.h>
 #include <errno.h>
+#include <linux/ptrace.h>
 
 #include "syscall.h"
 #include "proc.h"
@@ -299,7 +300,7 @@ static int syscall_get_call(const pid_t pid, int *syscall)
 
 	/* Thumb mode */
 	if (regs.ARM_cpsr & 0x20) {
-		*syscal = regs.ARM_r7;
+		*syscall = regs.ARM_r7;
 		return 0;
 	}
 
@@ -314,7 +315,7 @@ static int syscall_get_call(const pid_t pid, int *syscall)
 		sc = regs.ARM_r7;
 	else {
 		if ((sc & 0x0ff00000) != 0x0f900000) {
-			fprintf(stderr, "bad syscall trap 0x%lx\n", syscall);
+			fprintf(stderr, "bad syscall trap 0x%lx\n", sc);
 			*syscall = -1;
 			return -1;
 		}
