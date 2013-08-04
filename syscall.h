@@ -81,5 +81,6 @@ extern size_t syscalls_len;
 extern void *syscall_trace(void *arg);
 extern void syscall_dump_hashtable(json_object *j_tests, const double duration);
 extern void syscall_dump_pollers(json_object *j_tests, const double duration);
+extern void syscall_cleanup(list_t *pids);
 
 #endif

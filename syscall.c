@@ -990,16 +990,24 @@ static syscall_info_t *syscall_count_usage(
  */
 static bool syscall_wait(const pid_t pid)
 {
-	for (;;) {
+	while (keep_running) {
 		int status;
+		pid_t wpid;
 		ptrace(PTRACE_SYSCALL, pid, 0, 0);
-		waitpid(pid, &status, __WALL);
+		wpid = waitpid(pid, &status, __WALL /*| WNOHANG */);
+		if (wpid <= 0) {
+			printf("GOT %d\n", wpid);
+		}
 		if (WIFSTOPPED(status) &&
-		    WSTOPSIG(status) & 0x80)
+		    WSTOPSIG(status) & 0x80) {
+			if (pid != wpid)
+				printf("Waited for %d, got %d\n", pid, wpid);
 			return false;
+		}
 		if (WIFEXITED(status))
 			return true;
 	}
+	return true;
 }
 
 /*
@@ -1031,6 +1039,21 @@ void *syscall_trace(void *arg)
 
 	ptrace(PTRACE_DETACH, pid, 0, 0);
 	pthread_exit(0);
+}
+
+void syscall_cleanup(list_t *pids)
+{
+	link_t *l;
+
+	for (l = pids->head; l; l = l->next) {
+		proc_info_t *p = (proc_info_t *)l->data;
+		if (p->pthread) {
+			ptrace(PTRACE_CONT, p->pid, 0, 0);
+			ptrace(PTRACE_DETACH, p->pid, 0, 0);
+			pthread_cancel(p->pthread);
+			pthread_join(p->pthread, NULL);
+		}
+	}
 }
 
 /* system call table */

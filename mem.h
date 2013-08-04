@@ -27,10 +27,22 @@
 
 #include <stdint.h>
 
+
+typedef enum {
+	MEM_STACK = 0,
+	MEM_HEAP,
+	MEM_MAPPED,
+	MEM_MAX,
+} mem_type_t;
+
+
 /* wakeup event information per process */
-typedef struct {
+typedef struct mem_info_t {
 	proc_info_t	*proc;		/* Proc specific info */
-	uint64_t	size;
+	int64_t		size[MEM_MAX];
+	int64_t		rss[MEM_MAX];
+	int64_t		pss[MEM_MAX];
+	int64_t		total[MEM_MAX];
 } mem_info_t;
 
 void mem_get(const list_t *pids, list_t *mem);

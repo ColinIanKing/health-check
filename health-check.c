@@ -29,6 +29,8 @@
 #include <errno.h>
 #include <sys/fanotify.h>
 #include <json/json.h>
+#include <sys/ptrace.h>
+
 
 #include "list.h"
 #include "pid.h"
@@ -327,14 +329,7 @@ int main(int argc, char **argv)
 	if (json_obj)
 		json_write(json_obj, opt_json_file);
 out:
-	for (l = pids.head; l; l = l->next) {
-		proc_info_t *p = (proc_info_t *)l->data;
-		if (p->pthread) {
-			pthread_cancel(p->pthread);
-			pthread_join(p->pthread, NULL);
-		}
-	}
-
+	syscall_cleanup(&pids);
 	free(buffer);
 	list_free(&pids, NULL);
 	list_free(&event_info_old, event_free);
