@@ -49,7 +49,7 @@ static int mem_cmp(const void *data1, const void *data2)
 		return 0;
 }
 
-int mem_get_size(FILE *fp, char *field, uint64_t *size)
+static int mem_get_size(FILE *fp, char *field, uint64_t *size)
 {
 	char tmp[4096];
 	uint64_t size_k;
@@ -68,7 +68,7 @@ int mem_get_size(FILE *fp, char *field, uint64_t *size)
 	return -1;
 }
 
-int mem_get_entry(FILE *fp, mem_info_t *mem)
+static int mem_get_entry(FILE *fp, mem_info_t *mem)
 {
 	uint64_t addr_start, addr_end, addr_offset;
 	int major, minor;
@@ -195,7 +195,7 @@ static const char *mem_loading(const double mem_rate)
 /*
  *
  */
-mem_info_t *mem_delta(mem_info_t *mem_new, const list_t *mem_old_list)
+static mem_info_t *mem_delta(mem_info_t *mem_new, const list_t *mem_old_list)
 {
 	link_t *l;
 	int i;
