@@ -1,3 +1,23 @@
+health-check (0.01.12) saucy; urgency=low
+
+  * Makefile: bump version
+  * mem.c make funcs static
+  * Rework ptrace and mem logging
+  * Enable per thread syscall tracing
+  * syscall.c: remove another unused units assignment
+  * syscall.c remove n_args check, it is an unused overhead
+  * syscall.c: remove unused units assignment
+  * syscall.c: be smarter about detecting syscall entry/exit
+  * syscall.c: need timeval timeout for select
+  * pid.c: fix ssize_t warning
+  * fnotify.c: handle out of memory on strdup and calloc
+  * pid.c: avoid buffer overflow
+  * fnotify.c: ensure we don't fall off end of path
+  * fnotify.c: only alloc io_ops if we need to add it to the list (mem leak fix)
+  * syscall.c: remove duplicate #include <linux/ptrace.h>
+
+ -- Colin King <colin.king@canonical.com>  Sun, 4 Aug 2013 13:25:23 +0100
+
 health-check (0.01.11) saucy; urgency=low
 
   * Makefile: update version
