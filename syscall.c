@@ -102,6 +102,7 @@ static bool syscall_valid(const int syscall)
 	       (syscall <= (int)syscalls_len);
 }
 
+#ifdef SYS_connect
 /*
  *  syscall_connect()
  *	stub for connect syscalls.
@@ -137,6 +138,7 @@ static void syscall_connect_ret(json_object *j_obj, const syscall_t *sc, const s
 
 	net_connection_pid(s->proc->pid);
 }
+#endif
 
 /*
  *  syscall_nanosleep_generic_ret()
