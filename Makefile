@@ -1,4 +1,4 @@
-VERSION=0.01.14
+VERSION=0.01.15
 
 CFLAGS += -Wall -Wextra -DVERSION='"$(VERSION)"'
 LDFLAGS += -lpthread -ljson
