@@ -300,7 +300,7 @@ void net_connection_dump(json_object *j_tests)
 {
 	link_t *l;
 	char buf[4096];
-	json_object *j_net_test, *j_net_infos, *j_net_info;
+	json_object *j_net_test, *j_net_infos = NULL, *j_net_info;
 
 	printf("Open Network Connections:\n");
 	if (!net_cached_addrs.head) {
