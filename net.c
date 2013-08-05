@@ -31,6 +31,7 @@
 
 #include "list.h"
 #include "proc.h"
+#include "json.h"
 #include "health-check.h"
 
 #ifndef LINE_MAX
@@ -295,16 +296,23 @@ static void net_addr_add(net_addr_info_t *addr)
  *  net_connection_dump()
  *	dump out network connections
  */
-void net_connection_dump(void)
+void net_connection_dump(json_object *j_tests)
 {
 	link_t *l;
 	char buf[4096];
+	json_object *j_net_test, *j_net_infos, *j_net_info;
 
 	printf("Open Network Connections:\n");
 	if (!net_cached_addrs.head) {
 		printf(" None.\n");
 		return;
 	}
+
+	if (j_tests) {
+		j_obj_obj_add(j_tests, "network-connections", (j_net_test = j_obj_new_obj()));
+		j_obj_obj_add(j_net_test, "network-connections-per-process", (j_net_infos = j_obj_new_array()));
+	}
+
 	printf("  PID  Process             Proto  Address:Port\n");
 	for (l = net_cached_addrs.head; l; l = l->next) {
 		net_addr_info_t *addr_info = (net_addr_info_t *)l->data;
@@ -326,6 +334,18 @@ void net_connection_dump(void)
 		printf("%6u %-20.20s %s   %s:%d\n", 
 			addr_info->proc->pid, addr_info->proc->cmdline,
 			net_types[addr_info->type], buf, port);
+
+		if (j_tests) {
+			j_net_info = j_obj_new_obj();
+			j_obj_new_int32_add(j_net_info, "pid", addr_info->proc->pid);
+			j_obj_new_int32_add(j_net_info, "ppid", addr_info->proc->ppid);
+			j_obj_new_int32_add(j_net_info, "is-thread", addr_info->proc->is_thread);
+			j_obj_new_string_add(j_net_info, "name", addr_info->proc->cmdline);
+			j_obj_new_string_add(j_net_info, "protocol", net_types[addr_info->type]);
+			j_obj_new_string_add(j_net_info, "address", buf);
+			j_obj_new_int32_add(j_net_info, "port", (int32_t)port);
+			j_obj_array_add(j_net_infos, j_net_info);
+		}
 	}
 }
 

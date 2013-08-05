@@ -333,7 +333,7 @@ int main(int argc, char **argv)
 	syscall_dump_hashtable(json_tests, actual_duration);
 	syscall_dump_pollers(json_tests, actual_duration);
 	mem_dump_diff(json_tests, actual_duration, &mem_info_old, &mem_info_new);
-	net_connection_dump();
+	net_connection_dump(json_tests);
 
 	if (json_obj)
 		json_write(json_obj, opt_json_file);

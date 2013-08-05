@@ -25,7 +25,7 @@ event.o: event.c list.h event.h health-check.h
 fnotify.o: fnotify.c fnotify.h list.h proc.h health-check.h
 
 health-check.o: health-check.c list.h pid.h proc.h syscall.h timeval.h \
-	fnotify.h event.h cpustat.h mem.h
+	fnotify.h event.h cpustat.h mem.h net.h
 
 list.o: list.c list.h
 
