@@ -46,5 +46,6 @@ extern int proc_cache_get_pthreads(void);
 extern void proc_cache_info_free(void *data);
 extern void proc_cache_dump(void);
 extern int proc_cache_find_by_procname(list_t *pids, const char *procname);
+void proc_pids_add_proc(list_t *pids, proc_info_t *p);
 
 #endif

@@ -114,7 +114,7 @@ static int parse_pid_list(char *arg, list_t *pids)
 				fprintf(stderr, "Cannot find process with PID %i\n", pid);
 				return -1;
 			}
-			list_append(pids, p);
+			proc_pids_add_proc(pids, p);
 		} else {
 			if (proc_cache_find_by_procname(pids, token) < 0) {
 				return -1;

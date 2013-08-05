@@ -196,6 +196,23 @@ void proc_cache_info_free(void *data)
 }
 
 /*
+ *  proc_pids_add_proc()
+ *	add a process to pid list if it is sensible
+ */
+void proc_pids_add_proc(list_t *pids, proc_info_t *p)
+{
+	if (p->pid == 1) {
+		fprintf(stderr, "Cannot run health-check on init. Aborting.\n");
+		health_check_exit(EXIT_FAILURE);
+	}
+	if (p->pid == getpid()) {
+		fprintf(stderr, "Cannot run health-check on itself. Aborting.\n");
+		health_check_exit(EXIT_FAILURE);
+	}
+	list_append(pids, p);
+}
+
+/*
  *  proc_cache_find_by_procname()
  *	find process by process name (in cmdline)
  */
@@ -210,7 +227,7 @@ int proc_cache_find_by_procname(
 		proc_info_t *p = (proc_info_t *)l->data;
 
 		if (p->cmdline && strcmp(p->cmdline, procname) == 0) {
-			list_append(pids, p);
+			proc_pids_add_proc(pids, p);
 			found = true;
 		}
 	}
