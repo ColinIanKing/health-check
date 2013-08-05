@@ -327,6 +327,8 @@ int main(int argc, char **argv)
 	mem_get(&pids, &mem_info_new);
 	event_deinit();
 
+	signal(SIGINT, SIG_DFL);
+
 	cpustat_dump_diff(json_tests, actual_duration, &cpustat_info_old, &cpustat_info_new);
 	event_dump_diff(json_tests, actual_duration, &event_info_old, &event_info_new);
 	fnotify_dump_events(json_tests, actual_duration, &pids, &fnotify_files);
