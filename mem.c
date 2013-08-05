@@ -36,6 +36,10 @@ static const char *mem_types[] = {
 	"Mapped",
 };
 
+/*
+ *  mem_cmp()
+ *	list sorting based on total memory used
+ */
 static int mem_cmp(const void *data1, const void *data2)
 {
 	mem_info_t *m1 = (mem_info_t *)data1;
@@ -49,6 +53,10 @@ static int mem_cmp(const void *data1, const void *data2)
 		return 0;
 }
 
+/*
+ *  mem_get_size()
+ *	parse proc sizes in K bytes
+ */
 static int mem_get_size(FILE *fp, char *field, uint64_t *size)
 {
 	char tmp[4096];
@@ -59,7 +67,6 @@ static int mem_get_size(FILE *fp, char *field, uint64_t *size)
 	while (!feof(fp)) {
 		if (fscanf(fp, "%[^:]: %" SCNi64 "%*[^\n]%*c", tmp, &size_k) == 2) {
 			if (strcmp(tmp, field) == 0) {
-				// printf("%s: %" PRIi64 "\n", field, size_k);
 				*size = size_k * 1024;
 				return 0;
 			}
@@ -68,6 +75,10 @@ static int mem_get_size(FILE *fp, char *field, uint64_t *size)
 	return -1;
 }
 
+/*
+ *  mem_get_entry()
+ *	parse a single memory mapping entry
+ */
 static int mem_get_entry(FILE *fp, mem_info_t *mem)
 {
 	uint64_t addr_start, addr_end, addr_offset;
@@ -193,7 +204,8 @@ static const char *mem_loading(const double mem_rate)
 }
 
 /*
- *
+ *  mem_delta()
+ *	compute memory size change
  */
 static mem_info_t *mem_delta(mem_info_t *mem_new, const list_t *mem_old_list)
 {
