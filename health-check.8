@@ -48,6 +48,10 @@ Specify analysis duration in seconds. Default is 60 seconds.
 .B \-p pid[,pid]
 Specify which processes to analyse. Can be process ID or process name.
 .TP
+.B \-r
+Resolve IP addresses, this can take some time, hence it is an opt-in
+feature.
+.TP
 .B \-m max
 Specify maximum number of timeout blocking system calls are logged
 before completing. This is useful with very busy processes that can
