@@ -30,6 +30,10 @@
 #include "cpustat.h"
 #include "health-check.h"
 
+/*
+ *  cpustat_loading()
+ *	map CPU loading to some human understandable form
+ */
 static const char *cpustat_loading(const double cpu_percent)
 {
 	if (cpu_percent == 0.0)
@@ -54,6 +58,10 @@ static const char *cpustat_loading(const double cpu_percent)
 	return "very light load";
 }
 
+/*
+ *  cpustat_cmp()
+ *	cpu total time list sort comparitor
+ */
 static int cpustat_cmp(const void *data1, const void *data2)
 {
 	cpustat_info_t	*cpustat1 = (cpustat_info_t *)data1;
@@ -62,6 +70,10 @@ static int cpustat_cmp(const void *data1, const void *data2)
 	return cpustat2->ttime - cpustat1->ttime;
 }
 
+/*
+ *  cpustat_dump_diff()
+ *	dump difference in CPU loading between two snapshots in time
+ */
 void cpustat_dump_diff(
 	json_object *j_tests,
 	const double duration,
