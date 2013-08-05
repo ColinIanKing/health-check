@@ -6,7 +6,7 @@ LDFLAGS += -lpthread -ljson
 BINDIR=/usr/bin
 MANDIR=/usr/share/man/man8
 
-OBJS = list.o json.o pid.o proc.o syscall.o timeval.o fnotify.o event.o cpustat.o mem.o health-check.o
+OBJS = list.o json.o pid.o proc.o net.o syscall.o timeval.o fnotify.o event.o cpustat.o mem.o health-check.o
 
 health-check: $(OBJS)
 	$(CC) $(CFLAGS) $(OBJS) -o $@ $(LDFLAGS)
@@ -14,6 +14,7 @@ health-check: $(OBJS)
 health-check.8.gz: health-check.8
 	gzip -c $< > $@
 
+net.o: net.c net.h
 
 json.o: json.c json.h health-check.h
 

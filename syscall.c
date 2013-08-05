@@ -35,6 +35,7 @@
 #include "syscall.h"
 #include "proc.h"
 #include "json.h"
+#include "net.h"
 #include "health-check.h"
 
 #define HASH_TABLE_SIZE	(1997)		/* Must be prime */
@@ -99,6 +100,42 @@ static bool syscall_valid(const int syscall)
 {
 	return (syscall >= 0) &&
 	       (syscall <= (int)syscalls_len);
+}
+
+/*
+ *  syscall_connect()
+ *	stub for connect syscalls.
+ *	A smart approach is to inspect the connect and
+ *	see what address is being connected to for the net_*
+ *	connections.
+ */
+static void syscall_connect(
+	const syscall_t *sc,
+	syscall_info_t *s,
+	const pid_t pid,
+	const double threshold,
+	double *ret_timeout)
+{
+	(void)sc;
+	(void)s;
+	(void)pid;
+	(void)threshold;
+	(void)ret_timeout;
+
+	/* Inspect connect address, update network stats */
+}
+
+/*
+ *  syscall_connect_ret()
+ *	trigger a network connection update once a
+ *	connect syscall has occurred.
+ */
+static void syscall_connect_ret(json_object *j_obj, const syscall_t *sc, const syscall_info_t *s)
+{
+	(void)j_obj;
+	(void)sc;
+
+	net_connection_pid(s->proc->pid);
 }
 
 /*
@@ -996,9 +1033,8 @@ static bool syscall_wait(const pid_t pid)
 		pid_t wpid;
 		ptrace(PTRACE_SYSCALL, pid, 0, 0);
 		wpid = waitpid(pid, &status, __WALL /*| WNOHANG */);
-		if (wpid <= 0) {
-			printf("GOT %d\n", wpid);
-		}
+		if (wpid <= 0)
+			continue;
 		if (WIFSTOPPED(status) &&
 		    WSTOPSIG(status) & 0x80) {
 			if (pid != wpid)
@@ -1144,7 +1180,7 @@ syscall_t syscalls[] = {
 	SYSCALL(close),
 #endif
 #ifdef SYS_connect
-	SYSCALL(connect),
+	SYSCALL_TIMEOUT(connect, 0, syscall_connect, syscall_connect_ret),
 #endif
 #ifdef SYS_creat
 	SYSCALL(creat),

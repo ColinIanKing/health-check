@@ -41,6 +41,7 @@
 #include "event.h"
 #include "cpustat.h"
 #include "mem.h"
+#include "net.h"
 #include "health-check.h"
 
 #define APP_NAME			"health-check"
@@ -89,6 +90,7 @@ static void show_usage(void)
 	printf("  -p pid[,pid]  specify process id(s) or process name(s)\n");
 	printf("  -m max	specify maximum number of system calls to trace\n");
 	printf("  -o file	output results to a json data file\n");
+	printf("  -r		resolve IP addresses\n");
 
 	health_check_exit(EXIT_SUCCESS);
 }
@@ -179,11 +181,12 @@ int main(int argc, char **argv)
 	list_init(&pids);
 	list_init(&proc_cache);
 
+	net_connection_init();
 	proc_cache_get();
 	proc_cache_get_pthreads();
 
 	for (;;) {
-		int c = getopt(argc, argv, "bcd:hp:m:o:");
+		int c = getopt(argc, argv, "bcd:hp:m:o:r");
 		if (c == -1)
 			break;
 		switch (c) {
@@ -208,6 +211,9 @@ int main(int argc, char **argv)
 			break;
 		case 'o':
 			opt_json_file = optarg;
+			break;
+		case 'r':
+			opt_flags |= OPT_ADDR_RESOLVE;
 			break;
 		}
 	}
@@ -235,6 +241,8 @@ int main(int argc, char **argv)
 		fprintf(stderr, "Duration must 0.5 or more.\n");
 		health_check_exit(EXIT_FAILURE);
 	}
+
+	net_connection_pids(&pids);
 	if (opt_json_file) {
 		if ((json_obj = json_object_new_object()) == NULL) {
 			fprintf(stderr, "Cannot allocate JSON object\n");
@@ -325,10 +333,12 @@ int main(int argc, char **argv)
 	syscall_dump_hashtable(json_tests, actual_duration);
 	syscall_dump_pollers(json_tests, actual_duration);
 	mem_dump_diff(json_tests, actual_duration, &mem_info_old, &mem_info_new);
+	net_connection_dump();
 
 	if (json_obj)
 		json_write(json_obj, opt_json_file);
 out:
+	net_connection_cleanup();
 	syscall_cleanup(&pids);
 	free(buffer);
 	list_free(&pids, NULL);

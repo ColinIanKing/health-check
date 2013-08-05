@@ -29,6 +29,7 @@
 #include "list.h"
 #include "pid.h"
 #include "proc.h"
+#include "net.h"
 #include "health-check.h"
 
 list_t	proc_cache;

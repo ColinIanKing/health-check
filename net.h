@@ -16,22 +16,14 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
  *
  */
-#ifndef __HEALTH_CHECK_H__
-#define __HEALTH_CHECK_H__
 
-#define _GNU_SOURCE
+#ifndef __NET_H__
+#define __NET_H__
 
-#include <stdbool.h>
-#include <json/json.h>
-
-#define	OPT_GET_CHILDREN		0x00000001
-#define OPT_BRIEF			0x00000002
-#define OPT_ADDR_RESOLVE		0x00000004
-
-extern void health_check_exit(const int status) __attribute__ ((noreturn));
-extern volatile bool keep_running;
-extern int opt_max_syscalls;
-extern int opt_flags;
-extern json_object *json_data;
+extern int net_connection_pids(list_t *pids);
+extern int net_connection_pid(pid_t);
+extern int net_connection_dump(void);
+extern void net_connection_init(void);
+extern void net_connection_cleanup(void);
 
 #endif
