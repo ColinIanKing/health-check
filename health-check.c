@@ -223,6 +223,8 @@ int main(int argc, char **argv)
 		case 'r':
 			opt_flags |= OPT_ADDR_RESOLVE;
 			break;
+		default:
+			show_usage();
 		}
 	}
 
