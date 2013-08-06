@@ -300,7 +300,11 @@ void net_connection_dump(json_object *j_tests)
 {
 	link_t *l;
 	char buf[4096];
+#ifdef JSON_OUTPUT
 	json_object *j_net_test, *j_net_infos = NULL, *j_net_info;
+#else
+	(void)j_tests;
+#endif
 
 	printf("Open Network Connections:\n");
 	if (!net_cached_addrs.head) {
@@ -308,10 +312,12 @@ void net_connection_dump(json_object *j_tests)
 		return;
 	}
 
+#ifdef JSON_OUTPUT
 	if (j_tests) {
 		j_obj_obj_add(j_tests, "network-connections", (j_net_test = j_obj_new_obj()));
 		j_obj_obj_add(j_net_test, "network-connections-per-process", (j_net_infos = j_obj_new_array()));
 	}
+#endif
 
 	printf("  PID  Process             Proto  Address:Port\n");
 	for (l = net_cached_addrs.head; l; l = l->next) {
@@ -335,6 +341,7 @@ void net_connection_dump(json_object *j_tests)
 			addr_info->proc->pid, addr_info->proc->cmdline,
 			net_types[addr_info->type], buf, port);
 
+#ifdef JSON_OUTPUT
 		if (j_tests) {
 			j_net_info = j_obj_new_obj();
 			j_obj_new_int32_add(j_net_info, "pid", addr_info->proc->pid);
@@ -346,6 +353,7 @@ void net_connection_dump(json_object *j_tests)
 			j_obj_new_int32_add(j_net_info, "port", (int32_t)port);
 			j_obj_array_add(j_net_infos, j_net_info);
 		}
+#endif
 	}
 }
 

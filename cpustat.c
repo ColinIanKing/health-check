@@ -89,6 +89,9 @@ void cpustat_dump_diff(
 	link_t *lo, *ln;
 	list_t	sorted;
 	cpustat_info_t *cio, *cin;
+#ifndef JSON_OUTPUT
+	(void)j_tests;
+#endif
 
 	list_init(&sorted);
 
@@ -147,6 +150,7 @@ void cpustat_dump_diff(
 				cpustat_loading(100.0 * (double)ttime_total / (double)nr_ticks));
 	}
 
+#ifdef JSON_OUTPUT
 	if (j_tests) {
 		json_object *j_cpustat, *j_cpuload, *j_cpu;
 
@@ -183,6 +187,7 @@ void cpustat_dump_diff(
 		j_obj_new_double_add(j_cpu, "system-cpu-percent",
 			100.0 * (double)ttime_total / (double)nr_ticks);
 	}
+#endif
 
 	list_free(&sorted, free);
 

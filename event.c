@@ -20,6 +20,8 @@
 
 #include <stdlib.h>
 #include <stdio.h>
+#include <stdint.h>
+#include <inttypes.h>
 #include <string.h>
 #include <unistd.h>
 
@@ -242,6 +244,9 @@ void event_dump_diff(
 	const list_t *events_new)
 {
 	link_t *l;
+#ifndef JSON_OUTPUT
+	(void)j_tests;
+#endif
 
 	printf("Wakeups:\n");
 
@@ -285,6 +290,7 @@ void event_dump_diff(
 		printf(" No wakeups detected\n\n");
 	}
 
+#ifdef JSON_OUTPUT
 	if (j_tests) {
 		json_object *j_event_test, *j_events, *j_event;
 		uint64_t total_delta = 0;
@@ -319,6 +325,7 @@ void event_dump_diff(
 		j_obj_new_double_add(j_event, "wakeup-rate-total", total_event_rate);
 		j_obj_new_string_add(j_event, "load-hint-total", event_loading(total_event_rate));
 	}
+#endif
 }
 
 void event_init(void)

@@ -1,12 +1,21 @@
 VERSION=0.01.15
 
+JSON_OUTPUT=y
+
 CFLAGS += -Wall -Wextra -DVERSION='"$(VERSION)"'
-LDFLAGS += -lpthread -ljson
+LDFLAGS += -lpthread
+ifeq ($(JSON_OUTPUT),y)
+	LDFLAGS += -ljson	
+	CFLAGS += -DJSON_OUTPUT
+endif
 
 BINDIR=/usr/bin
 MANDIR=/usr/share/man/man8
 
-OBJS = list.o json.o pid.o proc.o net.o syscall.o timeval.o fnotify.o event.o cpustat.o mem.o health-check.o
+OBJS = list.o pid.o proc.o net.o syscall.o timeval.o fnotify.o event.o cpustat.o mem.o health-check.o
+ifeq ($(JSON_OUTPUT),y)
+	OBJS += json.o
+endif
 
 health-check: $(OBJS)
 	$(CC) $(CFLAGS) $(OBJS) -o $@ $(LDFLAGS)

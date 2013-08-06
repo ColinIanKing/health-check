@@ -27,7 +27,6 @@
 
 #include <stdint.h>
 
-
 typedef enum {
 	MEM_STACK = 0,
 	MEM_HEAP,

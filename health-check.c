@@ -28,11 +28,10 @@
 #include <ctype.h>
 #include <errno.h>
 #include <sys/fanotify.h>
-#include <json/json.h>
 #include <sys/ptrace.h>
 
-
 #include "list.h"
+#include "json.h"
 #include "pid.h"
 #include "proc.h"
 #include "syscall.h"
@@ -89,7 +88,9 @@ static void show_usage(void)
 	printf("  -h            show this help\n");
 	printf("  -p pid[,pid]  specify process id(s) or process name(s)\n");
 	printf("  -m max	specify maximum number of system calls to trace\n");
+#ifdef JSON_OUTPUT
 	printf("  -o file	output results to a json data file\n");
+#endif
 	printf("  -r		resolve IP addresses\n");
 
 	health_check_exit(EXIT_SUCCESS);
@@ -125,6 +126,7 @@ static int parse_pid_list(char *arg, list_t *pids)
 	return 0;
 }
 
+#ifdef JSON_OUTPUT
 /*
  *  json_write()
  *	dump out collected JSON data
@@ -156,6 +158,7 @@ static int json_write(json_object *obj, const char *filename)
 
 	return 0;
 }
+#endif
 
 int main(int argc, char **argv)
 {
@@ -168,8 +171,11 @@ int main(int argc, char **argv)
 	list_t mem_info_old, mem_info_new;
 	link_t *l;
 	void *buffer;
+#ifdef JSON_OUTPUT
 	char *opt_json_file = NULL;
-	json_object *json_obj = NULL, *json_tests = NULL;
+	json_object *json_obj = NULL;
+#endif
+	json_object *json_tests = NULL;
 
 	list_init(&event_info_old);
 	list_init(&event_info_new);
@@ -209,9 +215,11 @@ int main(int argc, char **argv)
 		case 'm':
 			opt_max_syscalls = atoi(optarg);
 			break;
+#ifdef JSON_OUTPUT
 		case 'o':
 			opt_json_file = optarg;
 			break;
+#endif
 		case 'r':
 			opt_flags |= OPT_ADDR_RESOLVE;
 			break;
@@ -243,6 +251,7 @@ int main(int argc, char **argv)
 	}
 
 	net_connection_pids(&pids);
+#ifdef JSON_OUTPUT
 	if (opt_json_file) {
 		if ((json_obj = json_object_new_object()) == NULL) {
 			fprintf(stderr, "Cannot allocate JSON object\n");
@@ -254,6 +263,7 @@ int main(int argc, char **argv)
 		}
 		json_object_object_add(json_obj, "health-check", json_tests);
 	}
+#endif
 	if ((fan_fd = fnotify_event_init()) < 0)
 		health_check_exit(EXIT_FAILURE);
 
@@ -337,8 +347,11 @@ int main(int argc, char **argv)
 	mem_dump_diff(json_tests, actual_duration, &mem_info_old, &mem_info_new);
 	net_connection_dump(json_tests);
 
+#ifdef JSON_OUTPUT
 	if (json_obj)
 		json_write(json_obj, opt_json_file);
+#endif
+
 out:
 	net_connection_cleanup();
 	syscall_cleanup(&pids);

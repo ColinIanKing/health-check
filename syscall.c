@@ -20,6 +20,8 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdint.h>
+#include <inttypes.h>
 #include <string.h>
 #include <unistd.h>
 #include <sys/syscall.h>
@@ -148,6 +150,9 @@ static void syscall_connect_ret(json_object *j_obj, const syscall_t *sc, const s
 static void syscall_nanosleep_generic_ret(json_object *j_obj, const syscall_t *sc, const syscall_info_t *s)
 {
 	link_t *l;
+#ifndef JSON_OUTPUT
+	(void)j_obj;
+#endif
 
 	uint64_t ret_error = 99;
 
@@ -163,6 +168,7 @@ static void syscall_nanosleep_generic_ret(json_object *j_obj, const syscall_t *s
 		printf("   %8" PRIu64 " %s system call errors\n", ret_error, sc->name);
 		info_emit = true;
 
+#ifdef JSON_OUTPUT
 		if (j_obj) {
 			json_object *j_nanosleep_error, *j_error;
 
@@ -175,6 +181,7 @@ static void syscall_nanosleep_generic_ret(json_object *j_obj, const syscall_t *s
 			j_obj_new_string_add(j_error, "system-call", sc->name);
 			j_obj_new_int64_add(j_error, "error-count", ret_error);
 		}
+#endif
 	}
 }
 #endif
@@ -196,6 +203,9 @@ static void syscall_poll_generic_ret(json_object *j_obj, const syscall_t *sc, co
 	uint64_t zero_timeouts = 0;
 	uint64_t timeout_repeats = 0;
 	uint64_t ret_error = 0;
+#ifndef JSON_OUTPUT
+	(void)j_obj;
+#endif
 
 	for (l = s->return_history.head; l; l = l->next) {
 		syscall_return_info_t *ret = (syscall_return_info_t *)l->data;
@@ -237,6 +247,7 @@ static void syscall_poll_generic_ret(json_object *j_obj, const syscall_t *sc, co
 		info_emit = true;
 	}
 
+#ifdef JSON_OUTPUT
 	if (j_obj) {
 		json_object *j_timeout, *j_poll;
 
@@ -253,6 +264,7 @@ static void syscall_poll_generic_ret(json_object *j_obj, const syscall_t *sc, co
 		j_obj_new_int64_add(j_poll, "repeat-zero-timeouts", zero_timeout_repeats);
 		j_obj_new_int64_add(j_poll, "error-count", ret_error);
 	}
+#endif
 }
 #endif
 
@@ -524,6 +536,9 @@ void syscall_dump_hashtable(json_object *j_tests, const double duration)
 	int i;
 	int count = 0;
 	uint64_t total;
+#ifndef JSON_OUTPUT
+	(void)j_tests;
+#endif
 
 	if (opt_flags & OPT_BRIEF)
 		return;
@@ -555,6 +570,7 @@ void syscall_dump_hashtable(json_object *j_tests, const double duration)
 	}
 	printf("\n");
 
+#ifdef JSON_OUTPUT
 	if (j_tests) {
 		json_object *j_syscall, *j_syscall_infos, *j_syscall_info;
 
@@ -582,6 +598,7 @@ void syscall_dump_hashtable(json_object *j_tests, const double duration)
 		j_obj_new_double_add(j_syscall_info, "system-call-count-rate-total", 
 			(double)total / duration);
 	}
+#endif
 
 	list_free(&sorted, NULL);
 }
@@ -763,6 +780,9 @@ void syscall_dump_pollers(json_object *j_tests, const double duration)
 	int i;
 	list_t sorted;
 	link_t *l;
+#ifndef JSON_OUTPUT
+	(void)j_tests;
+#endif
 
 	list_init(&sorted);
 
@@ -778,7 +798,10 @@ void syscall_dump_pollers(json_object *j_tests, const double duration)
 	}
 
 	if (sorted.head) {
-		json_object *j_poll_test, *j_pollers;
+#ifdef JSON_OUTPUT
+		json_object *j_poll_test;
+#endif
+		json_object *j_pollers = NULL;
 
 		if (!(opt_flags & OPT_BRIEF)) {
 			double prev, bucket;
@@ -822,6 +845,7 @@ void syscall_dump_pollers(json_object *j_tests, const double duration)
 				printf(" %-45.45s%12.4f %8" PRIu64 " %8" PRIu64 "\n", "Total",
 					total_rate, poll_infinite, poll_zero);
 
+#ifdef JSON_OUTPUT
 			if (j_tests) {
 				json_object *j_syscall, *j_syscall_infos, *j_syscall_info;
 
@@ -854,6 +878,7 @@ void syscall_dump_pollers(json_object *j_tests, const double duration)
 				j_obj_new_int64_add(j_syscall_info, "poll-count-infinite-total", (int64_t)poll_infinite);
 				j_obj_new_int64_add(j_syscall_info, "poll-count-zero-total", poll_zero);
 			}
+#endif
 
 			printf("\nDistribution of poll timeout times:\n");
 
@@ -904,13 +929,12 @@ void syscall_dump_pollers(json_object *j_tests, const double duration)
 			printf("\n");
 		}
 
+#ifdef JSON_OUTPUT
 		if (j_tests) {
 			j_obj_obj_add(j_tests, "polling-system-call-returns", (j_poll_test = j_obj_new_obj()));
                 	j_obj_obj_add(j_poll_test, "polling-system-call-returns-per-process", (j_pollers = j_obj_new_array()));
-		} else {
-			j_pollers = NULL;
 		}
-
+#endif
 		printf("Polling system call analysis:\n");
 		for (l = sorted.head; l; l = l->next) {
 			syscall_info_t *s = (syscall_info_t *)l->data;

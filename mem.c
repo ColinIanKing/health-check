@@ -252,6 +252,10 @@ void mem_dump_diff(
 	link_t *l;
 	bool deltas = false;
 
+#ifndef JSON_OUTPUT
+	(void)j_tests;
+#endif
+
 	if (mem_new_list->head == NULL) {
 		printf("Memory:\n");
 		printf(" No memory detected.\n\n");
@@ -317,6 +321,7 @@ void mem_dump_diff(
 		printf(" No changes found.\n");
 	printf("\n");
 
+#ifdef JSON_OUTPUT
 	if (j_tests) {
 		json_object *j_mem_test, *j_mem_infos, *j_mem_info;
 		char label[128];
@@ -390,4 +395,5 @@ void mem_dump_diff(
 			}
 		}
 	}
+#endif
 }

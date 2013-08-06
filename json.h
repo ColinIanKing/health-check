@@ -19,6 +19,8 @@
 #ifndef __JSON_SHIM_H__
 #define __JSON_SHIM_H__
 
+#ifdef JSON_OUTPUT
+
 #include <json/json.h>
 
 extern json_object *j_obj_new_array(void);
@@ -57,5 +59,9 @@ static inline void j_obj_new_string_add(json_object *parent, const char *label, 
 {
 	j_obj_obj_add(parent, label, j_obj_new_string(str));
 }
+
+#else
+#define json_object void
+#endif
 
 #endif

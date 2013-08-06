@@ -21,11 +21,11 @@
 
 #define _GNU_SOURCE
 
-#include <json/json.h>
 #include <stdint.h>
 
 #include "list.h"
 #include "proc.h"
+#include "json.h"
 
 /* cpu usage information per process */
 typedef struct {

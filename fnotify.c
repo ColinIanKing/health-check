@@ -20,6 +20,8 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdint.h>
+#include <inttypes.h>
 #include <string.h>
 #include <stdbool.h>
 #include <unistd.h>
@@ -238,6 +240,10 @@ static void fnotify_dump_files(
 	link_t 	*l;
 	int count;
 	uint64_t total;
+#ifndef JSON_OUTPUT
+	(void)j_tests;
+	(void)duration;
+#endif
 
 	list_init(&sorted);
 	for (l = fnotify_files->head; l; l = l->next) {
@@ -263,6 +269,7 @@ static void fnotify_dump_files(
 		printf("\n");
 	}
 
+#ifdef JSON_OUTPUT
 	if (j_tests) {
 		json_object *j_fnotify_test, *j_accesses, *j_access;
 
@@ -288,6 +295,7 @@ static void fnotify_dump_files(
 		j_obj_new_int64_add(j_access, "access-count-total", total);
 		j_obj_new_int64_add(j_access, "access-count-rate-total", (double)total / duration);
 	}
+#endif
 	list_free(&sorted, NULL);
 }
 
@@ -306,6 +314,9 @@ static void fnotify_dump_io_ops(
 	list_t	sorted;
 	int count;
 	uint64_t read_total, write_total, open_total, close_total;
+#ifndef JSON_OUTPUT
+	(void)j_tests;
+#endif
 
 	list_init(&sorted);
 	for (lp = pids->head; lp; lp = lp->next) {
@@ -391,6 +402,7 @@ static void fnotify_dump_io_ops(
 		}
 	}
 
+#ifdef JSON_OUTPUT
 	/* And dump JSON */
 	if (j_tests) {
 		json_object *j_fnotify_test, *j_io_ops, *j_io_op;
@@ -430,6 +442,7 @@ static void fnotify_dump_io_ops(
 		j_obj_new_double_add(j_io_op, "write-call-rate-total",
 			(double)write_total / duration);
 	}
+#endif
 	list_free(&sorted, free);
 }
 
