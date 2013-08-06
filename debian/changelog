@@ -1,3 +1,12 @@
+health-check (0.01.16) saucy; urgency=low
+
+  * Makefile: bump version
+  * health-check.c: cater for incorrect args
+  * Make json optional
+  * Don't allow health-check to run on itself or init
+
+ -- Colin King <colin.king@canonical.com>  Tue, 6 Aug 2013 11:45:01 +0100
+
 health-check (0.01.15) saucy; urgency=low
 
   * Makefile: bump version
