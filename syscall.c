@@ -832,7 +832,7 @@ void syscall_dump_pollers(json_object *j_tests, const double duration)
 
 					printf(" %10s %10s %10s", min_timeout, max_timeout, avg_timeout);
 				} else {
-					printf("       n/a            n/a            n/a        n/a");
+					printf(" %-10s %-10s %-10s", "    n/a", "    n/a", "    n/a");
 				}
 				printf("\n");
 
