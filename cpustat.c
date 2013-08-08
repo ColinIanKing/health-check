@@ -123,33 +123,37 @@ void cpustat_dump_diff(
 	}
 
 	printf("CPU usage:\n");
-	if (opt_flags & OPT_BRIEF) {
-		printf(" User: %6.2f%%, System: %6.2f%%, Total: %6.2f%% (%s)\n",
-			100.0 * (double)utime_total / (double)nr_ticks,
-			100.0 * (double)stime_total / (double)nr_ticks,
-			100.0 * (double)ttime_total / (double)nr_ticks,
-			cpustat_loading(100.0 * (double)ttime_total / (double)nr_ticks));
+	if (sorted.head == NULL) {
+		printf(" Nothing measured.\n");
 	} else {
-		printf("  PID  Process                USR%%   SYS%%  TOTAL%%\n");
-		for (ln = sorted.head; ln; ln = ln->next) {
-			cin = (cpustat_info_t*)ln->data;
-			printf(" %5d %-20.20s %6.2f %6.2f %6.2f (%s)\n",
-				cin->proc->pid,
-				cin->proc->cmdline,
-				100.0 * (double)cin->utime / (double)nr_ticks,
-				100.0 * (double)cin->stime / (double)nr_ticks,
-				100.0 * (double)cin->ttime / (double)nr_ticks,
-				cpustat_loading(100.0 * (double)cin->ttime / (double)nr_ticks));
-		}
-		if (count > 1)
-			printf(" %-26.26s %6.2f %6.2f %6.2f (%s)\n",
-				"Total",
+		if (opt_flags & OPT_BRIEF) {
+			printf(" User: %6.2f%%, System: %6.2f%%, Total: %6.2f%% (%s)\n",
 				100.0 * (double)utime_total / (double)nr_ticks,
 				100.0 * (double)stime_total / (double)nr_ticks,
 				100.0 * (double)ttime_total / (double)nr_ticks,
 				cpustat_loading(100.0 * (double)ttime_total / (double)nr_ticks));
+		} else {
+			printf("  PID  Process                USR%%   SYS%%  TOTAL%%\n");
+			for (ln = sorted.head; ln; ln = ln->next) {
+				cin = (cpustat_info_t*)ln->data;
+				printf(" %5d %-20.20s %6.2f %6.2f %6.2f (%s)\n",
+					cin->proc->pid,
+					cin->proc->cmdline,
+					100.0 * (double)cin->utime / (double)nr_ticks,
+					100.0 * (double)cin->stime / (double)nr_ticks,
+					100.0 * (double)cin->ttime / (double)nr_ticks,
+					cpustat_loading(100.0 * (double)cin->ttime / (double)nr_ticks));
+			}
+			if (count > 1)
+				printf(" %-26.26s %6.2f %6.2f %6.2f (%s)\n",
+					"Total",
+					100.0 * (double)utime_total / (double)nr_ticks,
+					100.0 * (double)stime_total / (double)nr_ticks,
+					100.0 * (double)ttime_total / (double)nr_ticks,
+					cpustat_loading(100.0 * (double)ttime_total / (double)nr_ticks));
+		}
 	}
-
+	
 #ifdef JSON_OUTPUT
 	if (j_tests) {
 		json_object *j_cpustat, *j_cpuload, *j_cpu;
