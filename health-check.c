@@ -41,6 +41,7 @@
 #include "cpustat.h"
 #include "mem.h"
 #include "net.h"
+#include "ctxt-switch.h"
 #include "health-check.h"
 
 #define APP_NAME			"health-check"
@@ -169,6 +170,7 @@ int main(int argc, char **argv)
 	list_t fnotify_files, pids;
 	list_t cpustat_info_old, cpustat_info_new;
 	list_t mem_info_old, mem_info_new;
+	list_t ctxt_switch_info_old, ctxt_switch_info_new;
 	link_t *l;
 	void *buffer;
 #ifdef JSON_OUTPUT
@@ -183,6 +185,8 @@ int main(int argc, char **argv)
 	list_init(&cpustat_info_new);
 	list_init(&mem_info_old);
 	list_init(&mem_info_new);
+	list_init(&ctxt_switch_info_old);
+	list_init(&ctxt_switch_info_new);
 	list_init(&fnotify_files);
 	list_init(&pids);
 	list_init(&proc_cache);
@@ -295,6 +299,7 @@ int main(int argc, char **argv)
 	event_get(&pids, &event_info_old);
 	cpustat_get(&pids, &cpustat_info_old);
 	mem_get(&pids, &mem_info_old);
+	ctxt_switch_get(&pids, &ctxt_switch_info_old);
 
 	gettimeofday(&tv_now, NULL);
 	duration = timeval_sub(&tv_end, &tv_now);
@@ -337,12 +342,14 @@ int main(int argc, char **argv)
 	event_get(&pids, &event_info_new);
 	cpustat_get(&pids, &cpustat_info_new);
 	mem_get(&pids, &mem_info_new);
+	ctxt_switch_get(&pids, &ctxt_switch_info_new);
 	event_deinit();
 
 	signal(SIGINT, SIG_DFL);
 
 	cpustat_dump_diff(json_tests, actual_duration, &cpustat_info_old, &cpustat_info_new);
 	event_dump_diff(json_tests, actual_duration, &event_info_old, &event_info_new);
+	ctxt_switch_dump_diff(json_tests, actual_duration, &ctxt_switch_info_old, &ctxt_switch_info_new);
 	fnotify_dump_events(json_tests, actual_duration, &pids, &fnotify_files);
 	syscall_dump_hashtable(json_tests, actual_duration);
 	syscall_dump_pollers(json_tests, actual_duration);
@@ -365,6 +372,8 @@ out:
 	list_free(&cpustat_info_new, free);
 	list_free(&mem_info_old, free);
 	list_free(&mem_info_new, free);
+	list_free(&ctxt_switch_info_old, free);
+	list_free(&ctxt_switch_info_new, free);
 	list_free(&fnotify_files, fnotify_event_free);
 	list_free(&proc_cache, proc_cache_info_free);
 
