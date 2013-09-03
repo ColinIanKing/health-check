@@ -287,7 +287,7 @@ void event_dump_diff(
 			printf("\n");
 		}
 	} else {
-		printf(" No wakeups detected\n\n");
+		printf(" No wakeups detected.\n\n");
 	}
 
 #ifdef JSON_OUTPUT
