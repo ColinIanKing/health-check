@@ -308,7 +308,7 @@ void net_connection_dump(json_object *j_tests)
 
 	printf("Open Network Connections:\n");
 	if (!net_cached_addrs.head) {
-		printf(" None.\n");
+		printf(" None.\n\n");
 		return;
 	}
 
@@ -355,6 +355,7 @@ void net_connection_dump(json_object *j_tests)
 		}
 #endif
 	}
+	printf("\n");
 }
 
 /*

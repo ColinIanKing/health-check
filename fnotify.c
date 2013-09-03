@@ -84,6 +84,14 @@ int fnotify_event_init(void)
 		}
 	}
 
+	/* Track /sys/power ops for wakealarm analysis */
+	(void)fanotify_mark(fan_fd, FAN_MARK_ADD,
+		FAN_ACCESS | FAN_MODIFY, AT_FDCWD,
+		"/sys/power/wake_lock");
+	(void)fanotify_mark(fan_fd, FAN_MARK_ADD,
+		FAN_ACCESS | FAN_MODIFY, AT_FDCWD,
+		"/sys/power/wake_unlock");
+
 	endmntent (mounts);
 
 	return fan_fd;
@@ -108,7 +116,8 @@ void fnotify_event_free(void *data)
 void fnotify_event_add(
 	const list_t *pids,
 	const struct fanotify_event_metadata *metadata,
-	list_t *fnotify_files)
+	list_t *fnotify_files,
+	list_t *fnotify_wakelocks)
 {
 	link_t *l;
 
@@ -119,28 +128,23 @@ void fnotify_event_add(
 		 proc_info_t *p = (proc_info_t*)l->data;
 
 		if (metadata->pid == p->pid) {
-			char buf[256];
-			char path[PATH_MAX];
+			char 	buf[256];
+			char 	path[PATH_MAX];
 			ssize_t len;
-			fnotify_fileinfo_t *fileinfo;
 			link_t	*l;
 			bool	found = false;
-
-			if ((fileinfo = calloc(1, sizeof(*fileinfo))) == NULL) {
-				fprintf(stderr, "Out of memory\n");
-				health_check_exit(EXIT_FAILURE);
-			}
+			char 	*filename;
 
 			snprintf(buf, sizeof(buf), "/proc/self/fd/%d", metadata->fd);
 			len = readlink(buf, path, sizeof(path));
 			if (len < 0) {
 				struct stat statbuf;
 				if (fstat(metadata->fd, &statbuf) < 0)
-					fileinfo->filename = strdup("(unknown)");
+					filename = strdup("(unknown)");
 				else {
 					snprintf(buf, sizeof(buf), "dev: %i:%i inode %ld",
 						major(statbuf.st_dev), minor(statbuf.st_dev), statbuf.st_ino);
-					fileinfo->filename = strdup(buf);
+					filename = strdup(buf);
 				}
 			} else {
 				/*
@@ -151,31 +155,69 @@ void fnotify_event_add(
 				 *  fast let's just fetch up to PATH_MAX-1 of data.
 				 */
 				path[len >= PATH_MAX ? PATH_MAX - 1 : len] = '\0';
-				fileinfo->filename = strdup(path);
+				filename = strdup(path);
 			}
-			if (fileinfo->filename == NULL) {
+			if (filename == NULL) {
 				fprintf(stderr, "Out of memory\n");
 				health_check_exit(EXIT_FAILURE);
 			}
-			fileinfo->mask = metadata->mask;
-			fileinfo->proc = p;
-			fileinfo->count = 1;
 
-			for (l = fnotify_files->head; l; l = l->next) {
-				fnotify_fileinfo_t *fi = (fnotify_fileinfo_t *)l->data;
+			if ((metadata->mask & (FAN_MODIFY | FAN_CLOSE_WRITE)) &&
+			    (!strcmp(filename, "/sys/power/wake_lock") ||
+			     !strcmp(filename, "/sys/power/wake_unlock"))) {
+				fnotify_wakelock_info_t	*wakelock_info;
 
-				if ((fileinfo->mask == fi->mask) &&
-				    (strcmp(fileinfo->filename, fi->filename) == 0)) {
-					found = true;
-					fi->count++;
-					break;
+				for (l = fnotify_wakelocks->head; l; l = l->next) {
+					wakelock_info = (fnotify_wakelock_info_t *)l->data;
+					if (wakelock_info->proc == p) {
+						found = true;
+						break;
+					}
 				}
-			}
 
-			if (found)
-				fnotify_event_free(fileinfo);
-			else
-				list_append(fnotify_files, fileinfo);
+				if (!found) {
+					if ((wakelock_info = calloc(1, sizeof(*wakelock_info))) == NULL) {
+						fprintf(stderr, "Out of memory\n");
+						health_check_exit(EXIT_FAILURE);
+					}
+					wakelock_info->proc = p;
+					wakelock_info->locked = 0;
+					wakelock_info->unlocked = 0;
+					wakelock_info->total = 0;
+					list_append(fnotify_wakelocks, wakelock_info);
+				}
+
+				if (strcmp(filename, "/sys/power/wake_unlock"))
+					wakelock_info->locked++;
+				else
+					wakelock_info->unlocked++;
+
+				wakelock_info->total++;
+			} else {
+				fnotify_fileinfo_t *fileinfo;
+
+				for (l = fnotify_files->head; l; l = l->next) {
+					fileinfo = (fnotify_fileinfo_t *)l->data;
+					if ((metadata->mask == fileinfo->mask) &&
+					    (!strcmp(fileinfo->filename, fileinfo->filename))) {
+						found = true;
+						break;
+					}
+				}
+
+				if (!found) {
+					if ((fileinfo = calloc(1, sizeof(*fileinfo))) == NULL) {
+						fprintf(stderr, "Out of memory\n");
+						health_check_exit(EXIT_FAILURE);
+					}
+					fileinfo->filename = filename;
+					fileinfo->mask = metadata->mask;
+					fileinfo->proc = p;
+					fileinfo->count = 0;
+					list_append(fnotify_files, fileinfo);
+				}
+				fileinfo->count++;
+			}
 		}
 	}
 	close(metadata->fd);
@@ -206,6 +248,18 @@ static int fnotify_event_cmp_io_ops(const void *data1, const void *data2)
 }
 
 /*
+ *  fnotify_wakelock_cmp_count()
+ *	for list sorting, compare wakelock totals
+ */
+static int fnotify_wakelock_cmp_count(const void *data1, const void *data2)
+{
+	fnotify_wakelock_info_t *w1 = (fnotify_wakelock_info_t *)data1;
+	fnotify_wakelock_info_t *w2 = (fnotify_wakelock_info_t *)data2;
+
+	return w2->total - w1->total;
+}
+
+/*
  *  fnotify_mask_to_str()
  *	convert fnotify mask to readable string
  */
@@ -225,6 +279,11 @@ static const char *fnotify_mask_to_str(const int mask)
 	modes[i] = '\0';
 
 	return modes;
+}
+
+static inline bool fnotify_is_syspower(fnotify_fileinfo_t *info)
+{
+	return !strncmp(info->filename, "/sys/power", 10);
 }
 
 /*
@@ -258,7 +317,7 @@ static void fnotify_dump_files(
 
 			printf(" %5d %-20.20s %6" PRIu64 " %4s %s\n",
 				info->proc->pid, info->proc->cmdline,
-				info->count, 
+				info->count,
 				fnotify_mask_to_str(info->mask),
 				info->filename);
 			total += info->count;
@@ -447,6 +506,50 @@ static void fnotify_dump_io_ops(
 }
 
 /*
+ *  fnotify_dump_wakelocks()
+ *	dump out fnotify wakelock operations
+ */
+void fnotify_dump_wakelocks(
+	json_object *j_tests,
+	const double duration,
+	const list_t *fnotify_wakelocks)
+{
+	list_t	sorted;
+	link_t 	*l;
+
+	(void)j_tests;
+	(void)duration;
+
+	printf("Wakelock operations:\n");
+	if (!fnotify_wakelocks->head) {
+		printf(" None.\n\n");
+		return;
+	}
+
+	list_init(&sorted);
+
+	for (l = fnotify_wakelocks->head; l; l = l->next) {
+		fnotify_wakelock_info_t *info = (fnotify_wakelock_info_t *)l->data;
+		list_add_ordered(&sorted, info, fnotify_wakelock_cmp_count);
+	}
+
+	if (fnotify_wakelocks->head && !(opt_flags & OPT_BRIEF)) {
+		printf("  PID  Process                 Locks  Unlocks\n");
+
+		for (l = sorted.head; l; l = l->next) {
+			fnotify_wakelock_info_t *info = (fnotify_wakelock_info_t *)l->data;
+			printf(" %5d %-20.20s %8" PRIu64 " %8" PRIu64 "\n",
+				info->proc->pid, info->proc->cmdline,
+				info->locked, info->unlocked);
+		}
+	}
+	printf("\n");
+
+	list_free(&sorted, NULL);
+}
+
+
+/*
  *  fnotify_dump_events()
  *	dump out fnotify file access events
  */
@@ -458,8 +561,9 @@ void fnotify_dump_events(
 {
 	printf("File I/O operations:\n");
 	if (!fnotify_files->head)
-		printf(" No file I/O operations detected\n\n");
-
-	fnotify_dump_files(j_tests, duration, fnotify_files);
-	fnotify_dump_io_ops(j_tests, duration, pids, fnotify_files);
+		printf(" No file I/O operations detected.\n\n");
+	else {
+		fnotify_dump_files(j_tests, duration, fnotify_files);
+		fnotify_dump_io_ops(j_tests, duration, pids, fnotify_files);
+	}
 }

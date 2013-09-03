@@ -48,6 +48,8 @@
 
 #define	OPT_GET_CHILDREN		0x00000001
 #define OPT_BRIEF			0x00000002
+#define OPT_WAKELOCKS_LIGHT		0x00000004
+#define OPT_WAKELOCKS_HEAVY		0x00000008
 
 volatile bool keep_running = true;
 int opt_flags;
@@ -93,6 +95,8 @@ static void show_usage(void)
 	printf("  -o file	output results to a json data file\n");
 #endif
 	printf("  -r		resolve IP addresses\n");
+	printf("  -w		monitor wakelock count\n");
+	printf("  -W		monitor wakelock usage (has overhead)\n");
 
 	health_check_exit(EXIT_SUCCESS);
 }
@@ -167,7 +171,7 @@ int main(int argc, char **argv)
 	struct timeval tv_start, tv_end, tv_now, duration;
 	int ret, rc = EXIT_SUCCESS, fan_fd = 0;
 	list_t event_info_old, event_info_new;
-	list_t fnotify_files, pids;
+	list_t fnotify_files, fnotify_wakelocks, pids;
 	list_t cpustat_info_old, cpustat_info_new;
 	list_t mem_info_old, mem_info_new;
 	list_t ctxt_switch_info_old, ctxt_switch_info_new;
@@ -188,6 +192,7 @@ int main(int argc, char **argv)
 	list_init(&ctxt_switch_info_old);
 	list_init(&ctxt_switch_info_new);
 	list_init(&fnotify_files);
+	list_init(&fnotify_wakelocks);
 	list_init(&pids);
 	list_init(&proc_cache);
 
@@ -196,7 +201,7 @@ int main(int argc, char **argv)
 	proc_cache_get_pthreads();
 
 	for (;;) {
-		int c = getopt(argc, argv, "bcd:hp:m:o:r");
+		int c = getopt(argc, argv, "bcd:hp:m:o:rwW");
 		if (c == -1)
 			break;
 		switch (c) {
@@ -226,6 +231,12 @@ int main(int argc, char **argv)
 #endif
 		case 'r':
 			opt_flags |= OPT_ADDR_RESOLVE;
+			break;
+		case 'w':
+			opt_flags |= OPT_WAKELOCKS_LIGHT;
+			break;
+		case 'W':
+			opt_flags |= OPT_WAKELOCKS_HEAVY;
 			break;
 		default:
 			show_usage();
@@ -325,7 +336,7 @@ int main(int argc, char **argv)
 					metadata = (struct fanotify_event_metadata *)buffer;
 
 					while (FAN_EVENT_OK(metadata, len)) {
-						fnotify_event_add(&pids, metadata, &fnotify_files);
+						fnotify_event_add(&pids, metadata, &fnotify_files, &fnotify_wakelocks);
 						metadata = FAN_EVENT_NEXT(metadata, len);
 					}
 				}
@@ -356,6 +367,9 @@ int main(int argc, char **argv)
 	mem_dump_diff(json_tests, actual_duration, &mem_info_old, &mem_info_new);
 	net_connection_dump(json_tests);
 
+	if (opt_flags & OPT_WAKELOCKS_LIGHT)
+		fnotify_dump_wakelocks(json_tests, actual_duration, &fnotify_wakelocks);
+
 #ifdef JSON_OUTPUT
 	if (json_obj)
 		json_write(json_obj, opt_json_file);
@@ -375,6 +389,7 @@ out:
 	list_free(&ctxt_switch_info_old, free);
 	list_free(&ctxt_switch_info_new, free);
 	list_free(&fnotify_files, fnotify_event_free);
+	list_free(&fnotify_wakelocks, free);
 	list_free(&proc_cache, proc_cache_info_free);
 
 	health_check_exit(rc);

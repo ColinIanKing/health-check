@@ -28,9 +28,17 @@
 typedef struct {
 	proc_info_t	*proc;		/* Proc specific info */
 	char		*filename;	/* Name of device or filename being accessed */
-	int		mask;		/* fnotify access mask */
+	unsigned int	mask;		/* fnotify access mask */
 	uint64_t	count;		/* Count of accesses */
 } fnotify_fileinfo_t;
+
+/* fnotify wakelock accounting */
+typedef struct {
+	proc_info_t	*proc;		/* Proc specific info */
+	uint64_t	locked;		/* Count of wake locks */
+	uint64_t	unlocked;	/* Count of wake unlocks */
+	uint64_t	total;		/* Total of wake locks and unlocks */
+} fnotify_wakelock_info_t;
 
 /* fnotify I/O operations counts per process */
 typedef struct {
@@ -44,7 +52,8 @@ typedef struct {
 
 extern int fnotify_event_init(void);
 extern void fnotify_event_free(void *data);
-extern void fnotify_event_add(const list_t *pids, const struct fanotify_event_metadata *metadata, list_t *fnotify_files);
+extern void fnotify_event_add(const list_t *pids, const struct fanotify_event_metadata *metadata, list_t *fnotify_files, list_t *fnofify_wakelocks);
 extern void fnotify_dump_events(json_object *j_tests, const double duration, const list_t *pids, const list_t *fnotify_files);
+extern void fnotify_dump_wakelocks(json_object *j_tests, const double duration, const list_t *fnotify_wakelocks);
 
 #endif
