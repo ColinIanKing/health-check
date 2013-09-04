@@ -1,3 +1,19 @@
+health-check (0.01.18) saucy; urgency=low
+
+  * Makefile: bump version
+  * fnotify.c: fix memory leak on filename
+  * syscall.c: avoid leaking info if s is NULL
+  * syscall.c: avoid division by zero
+  * syscall.c: don't exit, use wrapped exit to tidy
+  * Ensure -v and -b flags cannot be enabled together
+  * fnotify.c: Don't do lightweight wakelock processing if not enabled with -w
+  * Add expensive system call wakelock probing
+  * fnotify: Add helper to find filename from pid and fd
+  * Add wakelock accounting, lightweight fnotifiers
+  * event.c: Add fullstop
+
+ -- Colin King <colin.king@canonical.com>  Wed, 4 Sep 2013 18:26:01 +0100
+
 health-check (0.01.17) saucy; urgency=low
 
   * Makefile: bump version
