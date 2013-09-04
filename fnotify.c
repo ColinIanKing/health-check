@@ -209,6 +209,7 @@ void fnotify_event_add(
 				else
 					wakelock_info->unlocked++;
 
+				free(filename);
 				wakelock_info->total++;
 			} else {
 				fnotify_fileinfo_t *fileinfo;
@@ -234,6 +235,8 @@ void fnotify_event_add(
 					fileinfo->proc = p;
 					fileinfo->count = 0;
 					list_append(fnotify_files, fileinfo);
+				} else {
+					free(filename);
 				}
 				fileinfo->count++;
 			}
