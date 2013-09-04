@@ -1077,14 +1077,14 @@ void syscall_dump_wakelocks(json_object *j_tests, const double duration, list_t 
 			printf(" %5i %-20.20s %-16.16s  %8" PRIu64 " %8" PRIu64 " %8.2f %8.2f %12.5f\n",
 				p->pid, p->cmdline, lockname, locked, unlocked,
 				(double)locked / duration, (double)unlocked / duration,
-				locked_duration / count);
+				count ? locked_duration / count : 0.0);
 		}
 		list_free(&wakelock_names, NULL);
 	}
 	printf(" Total%40s%8" PRIu64 " %8" PRIu64 " %8.2f %8.2f %12.5f\n", "",
 		total_locked, total_unlocked,
 		(double)total_locked / duration, (double)total_unlocked / duration,
-		total_locked_duration / total_count);
+		total_count ? total_locked_duration / total_count : 0.0);
 	printf("\n");
 
 	if (opt_flags & OPT_VERBOSE) {
