@@ -176,7 +176,8 @@ void fnotify_event_add(
 				health_check_exit(EXIT_FAILURE);
 			}
 
-			if ((metadata->mask & (FAN_MODIFY | FAN_CLOSE_WRITE)) &&
+			if ((opt_flags & OPT_WAKELOCKS_LIGHT) &&
+			    (metadata->mask & (FAN_MODIFY | FAN_CLOSE_WRITE)) &&
 			    (!strcmp(filename, "/sys/power/wake_lock") ||
 			     !strcmp(filename, "/sys/power/wake_unlock"))) {
 				fnotify_wakelock_info_t	*wakelock_info;
@@ -537,6 +538,9 @@ void fnotify_dump_wakelocks(
 
 	(void)j_tests;
 	(void)duration;
+
+	if (!(opt_flags & OPT_WAKELOCKS_LIGHT))
+		return;
 
 	printf("Wakelock operations:\n");
 	if (!fnotify_wakelocks->head) {
