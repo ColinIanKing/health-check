@@ -242,6 +242,11 @@ int main(int argc, char **argv)
 		}
 	}
 
+	if ((opt_flags & (OPT_VERBOSE | OPT_BRIEF)) == (OPT_VERBOSE | OPT_BRIEF)) {
+		fprintf(stderr, "Cannot have verbose -v and brief -b flags together.\n");
+		health_check_exit(EXIT_FAILURE);
+	}
+
 	if (geteuid() != 0) {
 		fprintf(stderr, "%s requires root privileges to write to %s\n",
 			APP_NAME, TIMER_STATS);
