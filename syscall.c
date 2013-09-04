@@ -1412,7 +1412,7 @@ static syscall_info_t *syscall_count_usage(
 			 */
 			if ((s = calloc(1, sizeof(*s))) == NULL) {
 				fprintf(stderr, "Cannot allocate syscall hash item\n");
-				exit(EXIT_FAILURE);
+				health_check_exit(EXIT_FAILURE);
 			}
 			s->syscall = syscall;
 			s->proc = proc_cache_find_by_pid(pid);
