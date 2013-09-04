@@ -33,19 +33,24 @@
 #include <sys/user.h>
 #include <errno.h>
 #include <linux/ptrace.h>
+#include <limits.h>
 
 #include "syscall.h"
 #include "proc.h"
 #include "json.h"
 #include "net.h"
+#include "fnotify.h"
 #include "health-check.h"
 
 #define HASH_TABLE_SIZE	(1997)		/* Must be prime */
 #define ARRAY_SIZE(a)	(sizeof(a) / sizeof(a[0]))
 
 static pthread_mutex_t ptrace_mutex = PTHREAD_MUTEX_INITIALIZER;
+static pthread_mutex_t fd_cache_mutex = PTHREAD_MUTEX_INITIALIZER;
 static int syscall_count = 0;
 static int info_emit = false;
+
+static list_t syscall_wakelocks;
 
 /* minimum allowed thresholds for poll'd system calls that have timeouts */
 static double syscall_timeout[] = {
@@ -93,6 +98,9 @@ static double syscall_timeout[] = {
 
 /* hash table for syscalls, hashed on pid and syscall number */
 static syscall_info_t *syscall_info[HASH_TABLE_SIZE];
+
+/* hash table for cached fds, hashed on pid and fd */
+static fd_cache_t *fd_cache[HASH_TABLE_SIZE];
 
 /*
  *  syscall_valid()
@@ -505,11 +513,23 @@ static void syscall_name(const int syscall, char *name, const size_t len)
  *  hash_syscall()
  *	hash syscall and pid
  */
-static unsigned long hash_syscall(const pid_t pid, const int syscall)
+static inline unsigned long hash_syscall(const pid_t pid, const int syscall)
 {
 	unsigned long h;
 
 	h = (pid ^ (pid << 3) ^ syscall) % HASH_TABLE_SIZE;
+	return h;
+}
+
+/*
+ *  hash_fd()
+ *	hash fd and pid
+ */
+static inline unsigned long hash_fd(const pid_t pid, const int fd)
+{
+	unsigned long h;
+
+	h = (pid ^ (pid << 3) ^ fd) % HASH_TABLE_SIZE;
 	return h;
 }
 
@@ -523,6 +543,25 @@ static int syscall_count_cmp(const void *data1, const void *data2)
 	syscall_info_t *s2 = (syscall_info_t *)data2;
 
 	return s2->count - s1->count;
+}
+
+/*
+ *  syscall_hashtable_free()
+ *	free syscall hash table
+ */
+static void syscall_hashtable_free(void)
+{
+	int i;
+
+	for (i = 0; i < HASH_TABLE_SIZE; i++) {
+		syscall_info_t *next, *s = syscall_info[i];
+
+		while (s) {
+			next = s->next;
+			free(s);
+			s = next;
+		}
+	}
 }
 
 /*
@@ -588,14 +627,14 @@ void syscall_dump_hashtable(json_object *j_tests, const double duration)
 			j_obj_new_string_add(j_syscall_info, "name", s->proc->cmdline);
 			j_obj_new_string_add(j_syscall_info, "system-call", name);
 			j_obj_new_int64_add(j_syscall_info, "system-call-count", s->count);
-			j_obj_new_double_add(j_syscall_info, "system-call-rate", 
+			j_obj_new_double_add(j_syscall_info, "system-call-rate",
 				(double)s->count / duration);
 			j_obj_array_add(j_syscall_infos, j_syscall_info);
 			total += s->count;
 		}
 		j_obj_obj_add(j_syscall, "system-calls-total", (j_syscall_info = j_obj_new_obj()));
 		j_obj_new_int64_add(j_syscall_info, "system-call-count-total", total);
-		j_obj_new_double_add(j_syscall_info, "system-call-count-rate-total", 
+		j_obj_new_double_add(j_syscall_info, "system-call-count-rate-total",
 			(double)total / duration);
 	}
 #endif
@@ -669,7 +708,7 @@ static void syscall_get_arg_data(
 	unsigned long tmpdata[n];
 
 	for (i = 0; i < n; i++)
-		tmpdata[i] = ptrace(PTRACE_PEEKDATA, pid, 
+		tmpdata[i] = ptrace(PTRACE_PEEKDATA, pid,
 				addr + (sizeof(unsigned long) * i), NULL);
 	memcpy(data, tmpdata, len);
 }
@@ -741,6 +780,355 @@ static void syscall_timeout_millisec(
 	syscall_get_args(pid, sc->arg, args);
 	*ret_timeout = (double)(int)args[sc->arg] / 1000.0;
 	syscall_count_timeout(s, *ret_timeout, threshold);
+}
+
+/*
+ *  syscall_peek_data()
+ *	peek data
+ */
+#ifdef SYS_write
+static void *syscall_peek_data(const pid_t pid, const unsigned long addr, const size_t len)
+{
+	unsigned *data;
+	size_t i, n = (len + sizeof(unsigned long) - 1) / sizeof(unsigned long);
+
+	if ((data = calloc(sizeof(unsigned long), n + 1)) == NULL) {
+		fprintf(stderr, "Out of memory\n");
+		health_check_exit(EXIT_FAILURE);
+	}
+
+	for (i = 0; i < n; i++)
+		data[i] = ptrace(PTRACE_PEEKDATA, pid,
+				addr + (sizeof(unsigned long) * i), NULL);
+
+	*((char *)data + len) = 0;
+	return (void *)data;
+}
+
+/*
+ *  syscall_wakelock_free()
+ *	free a wakelock info struct from list
+ */
+static void syscall_wakelock_free(void *ptr)
+{
+	syscall_wakelock_info_t *info = (syscall_wakelock_info_t *)ptr;
+
+	free(info->lockname);
+	free(info);
+}
+
+/*
+ *  syscall_wakelock_fd_cache_free()
+ *
+ */
+static void syscall_wakelock_fd_cache_free(void)
+{
+	int i;
+
+	pthread_mutex_lock(&fd_cache_mutex);
+	for (i = 0; i < HASH_TABLE_SIZE; i++) {
+		fd_cache_t *next, *fc = fd_cache[i];
+
+		while (fc) {
+			next = fc->next;
+			free(fc->filename);
+			free(fc);
+			fc = next;
+		}
+	}
+	pthread_mutex_unlock(&fd_cache_mutex);
+}
+
+
+/*
+ *  syscall_close_args()
+ *	keep track of wakelock closes
+ */
+static void syscall_close_args(
+	const syscall_t *sc,
+	syscall_info_t *s,
+	const pid_t pid,
+	const double threshold,
+	double *ret_timeout)
+{
+	unsigned long args[sc->arg + 1];
+	fd_cache_t *fc;
+	unsigned long h;
+	int fd;
+
+	(void)s;
+	(void)threshold;
+	(void)ret_timeout;
+
+	if (!(opt_flags & OPT_WAKELOCKS_HEAVY))
+		return;
+
+	syscall_get_args(pid, sc->arg, args);
+	fd = (int)args[0];
+	h = hash_fd(pid, fd);
+
+	for (fc = fd_cache[h]; fc; fc = fc->next) {
+		if (fc->pid == pid && fc->fd == fd) {
+			pthread_mutex_lock(&fc->mutex);
+			free(fc->filename);
+			fc->filename = NULL;
+			pthread_mutex_unlock(&fc->mutex);
+			return;
+		}
+	}
+}
+
+/*
+ *  syscall_write_args()
+ *	keep track of wakelock writes
+ */
+static void syscall_write_args(
+	const syscall_t *sc,
+	syscall_info_t *s,
+	const pid_t pid,
+	const double threshold,
+	double *ret_timeout)
+{
+	unsigned long args[sc->arg + 1];
+	fd_cache_t *fc;
+	unsigned long h;
+	int fd;
+
+	if (!(opt_flags & OPT_WAKELOCKS_HEAVY))
+		return;
+
+	(void)s;
+	(void)threshold;
+	(void)ret_timeout;
+
+	syscall_get_args(pid, sc->arg, args);
+	fd = (int)args[0];
+	h = hash_fd(pid, fd);
+
+	for (fc = fd_cache[h]; fc; fc = fc->next) {
+		if (fc->pid == pid && fc->fd == fd)
+			break;
+	}
+	if (fc == NULL) {
+		if ((fc = calloc(1, sizeof(*fc))) == NULL) {
+			fprintf(stderr, "Out of memory\n");
+			health_check_exit(EXIT_FAILURE);
+		}
+		fc->pid = pid;
+		fc->fd = fd;
+		fc->filename = fnotify_get_filename(pid, fd);
+		if (fc->filename == NULL) {
+			fprintf(stderr, "Out of memory\n");
+			health_check_exit(EXIT_FAILURE);
+		}
+		pthread_mutex_init(&fc->mutex, NULL);
+
+		pthread_mutex_lock(&fd_cache_mutex);
+		fc->next = fd_cache[h];
+		fd_cache[h] = fc;
+		pthread_mutex_unlock(&fd_cache_mutex);
+	} else {
+		/*
+		 * We've found a cached file, but it may be null if closed
+		 * so check for this and re-refetch name if it was closed
+		 */
+		pthread_mutex_lock(&fc->mutex);
+		if (fc->filename == NULL) {
+			fc->filename = fnotify_get_filename(pid, fd);
+			if (fc->filename == NULL) {
+				pthread_mutex_unlock(&fc->mutex);
+				fprintf(stderr, "Out of memory\n");
+				health_check_exit(EXIT_FAILURE);
+			}
+		}
+		pthread_mutex_unlock(&fc->mutex);
+
+	}
+
+	pthread_mutex_lock(&fc->mutex);
+	if (!strcmp(fc->filename, "/sys/power/wake_lock") ||
+	    !strcmp(fc->filename, "/sys/power/wake_unlock")) {
+		unsigned long addr = args[1];
+		size_t count = (size_t)args[2];
+		char *lockname = syscall_peek_data(pid, addr, count);
+		syscall_wakelock_info_t *info;
+
+		if ((info = calloc(1, sizeof(*info))) == NULL) {
+			pthread_mutex_unlock(&fc->mutex);
+			fprintf(stderr, "Out of memory\n");
+			health_check_exit(EXIT_FAILURE);
+		}
+
+		info->pid = pid;
+		info->lockname = lockname;
+		info->locked = strcmp(fc->filename, "/sys/power/wake_unlock");
+		gettimeofday(&info->tv, NULL);
+
+		list_append(&syscall_wakelocks, info);
+	}
+	pthread_mutex_unlock(&fc->mutex);
+}
+#endif
+
+/*
+ *  syscall_wakelock_cmp()
+ *	sorted wakelock list name compare
+ */
+static int syscall_wakelock_cmp(const void *data1, const void *data2)
+{
+	return strcmp((char *)data1, (char *)data2);
+}
+
+/*
+ *  syscall_timeval_to_double()
+ *	convert timeval time to double
+ */
+static inline double syscall_timeval_to_double(struct timeval *tv)
+{
+	return (double)tv->tv_sec +
+	       ((double)tv->tv_usec) / 1000000.0;
+}
+
+
+void syscall_wakelock_names_by_pid(pid_t pid, list_t *wakelock_names)
+{
+	link_t *l, *ln;
+
+	for (l = syscall_wakelocks.head; l; l = l->next) {
+		syscall_wakelock_info_t *info = (syscall_wakelock_info_t *)l->data;
+		if (info->pid == pid) {
+			bool found = false;
+			for (ln = wakelock_names->head; ln; ln = ln->next) {
+				char *lockname = (char *)ln->data;
+				if (!strcmp(lockname, info->lockname)) {
+					found = true;
+					break;
+				}
+			}
+			if (!found)
+				list_add_ordered(wakelock_names, info->lockname, syscall_wakelock_cmp);
+		}
+	}
+}
+
+/*
+ *  syscall_dump_wakelocks()
+ *	dump wakelock activity
+ */
+void syscall_dump_wakelocks(json_object *j_tests, const double duration, list_t *pids)
+{
+	link_t *lp;
+	uint64_t total_locked = 0, total_unlocked = 0;
+	uint32_t total_count = 0;
+	double total_locked_duration = 0.0;
+
+	(void)j_tests;
+
+	if (!(opt_flags & OPT_WAKELOCKS_HEAVY))
+		return;
+
+	printf("Wakelock operations by wakelock:\n");
+	if (!syscall_wakelocks.head) {
+		printf(" None.\n");
+		return;
+	}
+
+	printf("  PID  Process              Wakelock             Locks  Unlocks  Locks    Unlocks  Lock Duration\n");
+	printf("%65s%s", "", "Per Sec  Per Sec  (Average Sec)\n");
+	for (lp = pids->head; lp; lp = lp->next) {
+		link_t *ln;
+		list_t wakelock_names;
+		proc_info_t *p = (proc_info_t *)lp->data;
+
+		list_init(&wakelock_names);
+
+		syscall_wakelock_names_by_pid(p->pid, &wakelock_names);
+
+		for (ln = wakelock_names.head; ln; ln = ln->next) {
+			char *lockname = (char *)ln->data;
+			uint64_t locked = 0, unlocked = 0;
+			double locked_time = -1.0, unlocked_time;
+			double locked_duration = 0.0;
+			uint32_t count = 0;
+			link_t *ls;
+
+			for (ls = syscall_wakelocks.head; ls; ls = ls->next) {
+				syscall_wakelock_info_t *info = (syscall_wakelock_info_t *)ls->data;
+				if (info->pid == p->pid && !strcmp(lockname, info->lockname)) {
+					if (info->locked) {
+						locked++;
+						locked_time = syscall_timeval_to_double(&info->tv);
+					}
+					else {
+						unlocked++;
+						unlocked_time = syscall_timeval_to_double(&info->tv);
+						if (locked_time >= 0.0) {
+							count++;
+							locked_duration += unlocked_time - locked_time;
+						}
+					}
+				}
+			}
+			total_locked += locked;
+			total_unlocked += unlocked;
+			total_count += count;
+			total_locked_duration += locked_duration;
+
+			printf(" %5i %-20.20s %-16.16s  %8" PRIu64 " %8" PRIu64 " %8.2f %8.2f %12.5f\n",
+				p->pid, p->cmdline, lockname, locked, unlocked,
+				(double)locked / duration, (double)unlocked / duration,
+				locked_duration / count);
+		}
+		list_free(&wakelock_names, NULL);
+	}
+	printf(" Total%40s%8" PRIu64 " %8" PRIu64 " %8.2f %8.2f %12.5f\n", "",
+		total_locked, total_unlocked,
+		(double)total_locked / duration, (double)total_unlocked / duration,
+		total_locked_duration / total_count);
+	printf("\n");
+
+	if (opt_flags & OPT_VERBOSE) {
+		link_t *ls;
+
+		printf("Verbose Dump of Wakelock Actions:\n");
+		printf("  PID  Wakelock         Date     Time            Action   Duration (Secs)\n");
+		for (ls = syscall_wakelocks.head; ls; ls = ls->next) {
+			char buf[64];
+			syscall_wakelock_info_t *info = (syscall_wakelock_info_t *)ls->data;
+			time_t whence_time = (time_t)info->tv.tv_sec;
+			struct tm *whence_tm = localtime(&whence_time);
+
+			strftime(buf, sizeof(buf), "%x %X", whence_tm);
+
+			if (info->locked) {
+				link_t *l;
+
+				for (l = ls; l; l = l->next) {
+					syscall_wakelock_info_t *info2 = (syscall_wakelock_info_t *)l->data;
+
+					if (info->pid == info2->pid &&
+					    !info2->locked &&
+					    !strcmp(info->lockname, info2->lockname)) {
+						info2->paired = info;
+						break;
+					}
+				}
+			}
+
+			if (info->paired) {
+				double locked_time = syscall_timeval_to_double(&info->paired->tv);
+				double unlocked_time = syscall_timeval_to_double(&info->tv);
+				printf(" %5i %-16.16s %s.%06d %-8.8s %f\n",
+					info->pid, info->lockname, buf, (int)info->tv.tv_usec,
+					info->locked ? "Locked" : "Unlocked",
+					unlocked_time - locked_time);
+			} else {
+				printf(" %5i %-16.16s %s.%06d %-8.8s\n",
+					info->pid, info->lockname, buf, (int)info->tv.tv_usec,
+					info->locked ? "Locked" : "Unlocked");
+			}
+		}
+	}
 }
 
 /*
@@ -954,7 +1342,7 @@ void syscall_dump_pollers(json_object *j_tests, const double duration)
 /*
  *  syscall_account_return()
  *	if the system call has return check handler then
- *	fetch return value from syscall and add it to 
+ *	fetch return value from syscall and add it to
  *	list of returns
  */
 static void syscall_account_return(
@@ -968,7 +1356,7 @@ static void syscall_account_return(
 		if (sc->check_ret) {
 			syscall_return_info_t *info;
 			int ret;
-			
+
 			if (syscall_get_return(pid, &ret) < 0)
 				return;
 
@@ -978,9 +1366,11 @@ static void syscall_account_return(
 			}
 			info->timeout = timeout;
 			info->ret = ret;
-			pthread_mutex_lock(&ptrace_mutex);
-			list_append(&s->return_history, info);
-			pthread_mutex_unlock(&ptrace_mutex);
+			if (s) {
+				pthread_mutex_lock(&ptrace_mutex);
+				list_append(&s->return_history, info);
+				pthread_mutex_unlock(&ptrace_mutex);
+			}
 		}
 	}
 }
@@ -995,50 +1385,55 @@ static syscall_info_t *syscall_count_usage(
 	double *timeout)
 {
 	unsigned long h = hash_syscall(pid, syscall);
-	syscall_info_t *s;
+	syscall_info_t *s = NULL;
 	syscall_t *sc;
 	bool found = false;
 	sc = syscall_valid(syscall) ? &syscalls[syscall] : NULL;
 
-	*timeout = -1.0;
-	pthread_mutex_lock(&ptrace_mutex);
-	for (s = syscall_info[h]; s; s = s->next) {
-		if ((s->syscall == syscall) &&
-		    (s->proc->pid == pid)) {
-			s->count++;
-			found = true;
-			break;
-		}
-	}
-	pthread_mutex_unlock(&ptrace_mutex);
+	if (!sc)
+		return NULL;
 
-	if (!found) {
-		/*
-		 *  Doesn't exist, create new one
-		 */
-		if ((s = calloc(1, sizeof(*s))) == NULL) {
-			fprintf(stderr, "Cannot allocate syscall hash item\n");
-			exit(EXIT_FAILURE);
-		}
-		s->syscall = syscall;
-		s->proc = proc_cache_find_by_pid(pid);
-		s->count = 1;
-		s->poll_zero = 0;
-		s->poll_infinite = 0;
-		s->poll_count = 0;
-		s->poll_min = -1.0;
-		s->poll_max = -1.0;
-		s->poll_total = 0;
-		s->poll_too_low = 0;
-		list_init(&s->return_history);
-
+	if (sc->do_accounting) {
+		*timeout = -1.0;
 		pthread_mutex_lock(&ptrace_mutex);
-		s->next = syscall_info[h];
-		syscall_info[h] = s;
+		for (s = syscall_info[h]; s; s = s->next) {
+			if ((s->syscall == syscall) &&
+		    	(s->proc->pid == pid)) {
+				s->count++;
+				found = true;
+				break;
+			}
+		}
 		pthread_mutex_unlock(&ptrace_mutex);
+
+		if (!found) {
+			/*
+			 *  Doesn't exist, create new one
+			 */
+			if ((s = calloc(1, sizeof(*s))) == NULL) {
+				fprintf(stderr, "Cannot allocate syscall hash item\n");
+				exit(EXIT_FAILURE);
+			}
+			s->syscall = syscall;
+			s->proc = proc_cache_find_by_pid(pid);
+			s->count = 1;
+			s->poll_zero = 0;
+			s->poll_infinite = 0;
+			s->poll_count = 0;
+			s->poll_min = -1.0;
+			s->poll_max = -1.0;
+			s->poll_total = 0;
+			s->poll_too_low = 0;
+			list_init(&s->return_history);
+
+			pthread_mutex_lock(&ptrace_mutex);
+			s->next = syscall_info[h];
+			syscall_info[h] = s;
+			pthread_mutex_unlock(&ptrace_mutex);
+		}
 	}
 
-	if (sc && sc->check_func) {
+	if (sc->check_func) {
 		pthread_mutex_lock(&ptrace_mutex);
 		if (++syscall_count >= opt_max_syscalls)
 			keep_running = false;
@@ -1104,6 +1499,11 @@ void *syscall_trace(void *arg)
 	pthread_exit(0);
 }
 
+void syscall_init(void)
+{
+	list_init(&syscall_wakelocks);
+}
+
 void syscall_cleanup(list_t *pids)
 {
 	link_t *l;
@@ -1117,6 +1517,10 @@ void syscall_cleanup(list_t *pids)
 			pthread_join(p->pthread, NULL);
 		}
 	}
+
+	list_free(&syscall_wakelocks, syscall_wakelock_free);
+	syscall_wakelock_fd_cache_free();
+	syscall_hashtable_free();
 }
 
 /* system call table */
@@ -1203,7 +1607,7 @@ syscall_t syscalls[] = {
 	SYSCALL(clone),
 #endif
 #ifdef SYS_close
-	SYSCALL(close),
+	SYSCALL_CHKARGS(close, 0, syscall_close_args, NULL),
 #endif
 #ifdef SYS_connect
 	SYSCALL_TIMEOUT(connect, 0, syscall_connect, syscall_connect_ret),
@@ -2262,7 +2666,7 @@ syscall_t syscalls[] = {
 	SYSCALL(waitpid),
 #endif
 #ifdef SYS_write
-	SYSCALL(write),
+	SYSCALL_CHKARGS(write, 2, syscall_write_args, NULL),
 #endif
 #ifdef SYS_writev
 	SYSCALL(writev),

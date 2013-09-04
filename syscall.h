@@ -21,6 +21,8 @@
 
 #define _GNU_SOURCE
 
+#include <sys/time.h>
+
 #include "proc.h"
 #include "list.h"
 #include "json.h"
@@ -29,10 +31,13 @@
 #define BUCKET_START			(0.00001)
 
 #define SYSCALL(n) \
-	[SYS_ ## n] = { #n, SYS_ ## n, 0, NULL, NULL, NULL }
+	[SYS_ ## n] = { #n, SYS_ ## n, 0, NULL, NULL, NULL, false }
 
 #define SYSCALL_TIMEOUT(n, arg, func_check, func_ret) \
-	[SYS_ ## n] = { #n, SYS_ ## n, arg, &syscall_timeout[SYS_ ## n], func_check, func_ret }
+	[SYS_ ## n] = { #n, SYS_ ## n, arg, &syscall_timeout[SYS_ ## n], func_check, func_ret, true }
+
+#define SYSCALL_CHKARGS(n, arg, func_check, func_ret) \
+	[SYS_ ## n] = { #n, SYS_ ## n, arg, &syscall_timeout[SYS_ ## n], func_check, func_ret, false }
 
 #define TIMEOUT(n, timeout) \
 	[SYS_ ## n] = timeout
@@ -73,7 +78,25 @@ typedef struct syscall {
 	double		*threshold;	/* threshold - points to timeout array items indexed by syscall */
 	check_timeout_func_t check_func;/* timeout checking function, NULL means don't check */
 	check_return_func_t  check_ret; /* return checking function, NULL means don't check */
+	bool		do_accounting;	/* true if we should do accounting stats for this */
 } syscall_t;
+
+/* fd cache */
+typedef struct fd_cache {
+	pid_t		pid;		/* process */
+	int		fd;		/* file descriptor */
+	char		*filename;	/* filename, NULL if closed */
+	pthread_mutex_t	mutex;		/* mutex on filename */
+	struct fd_cache	*next;		/* next one in cache */
+} fd_cache_t;
+
+typedef struct syscall_wakelock_info {
+        pid_t		pid;		/* process */
+	bool		locked;		/* true = lock, false = unlock */
+	struct timeval	tv;		/* when locked/unlocked */
+	char		*lockname;	/* wake lock name */
+	struct syscall_wakelock_info *paired;	/* ptr to lock/unlock pair */
+} syscall_wakelock_info_t;
 
 extern syscall_t syscalls[];
 extern size_t syscalls_len;
@@ -81,6 +104,8 @@ extern size_t syscalls_len;
 extern void *syscall_trace(void *arg);
 extern void syscall_dump_hashtable(json_object *j_tests, const double duration);
 extern void syscall_dump_pollers(json_object *j_tests, const double duration);
+extern void syscall_init(void);
 extern void syscall_cleanup(list_t *pids);
+extern void syscall_dump_wakelocks(json_object *j_tests, const double duration, list_t *pids);
 
 #endif

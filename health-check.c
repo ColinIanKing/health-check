@@ -46,11 +46,6 @@
 
 #define APP_NAME			"health-check"
 
-#define	OPT_GET_CHILDREN		0x00000001
-#define OPT_BRIEF			0x00000002
-#define OPT_WAKELOCKS_LIGHT		0x00000004
-#define OPT_WAKELOCKS_HEAVY		0x00000008
-
 volatile bool keep_running = true;
 int opt_flags;
 int opt_max_syscalls = 1000000;
@@ -95,6 +90,7 @@ static void show_usage(void)
 	printf("  -o file	output results to a json data file\n");
 #endif
 	printf("  -r		resolve IP addresses\n");
+	printf("  -v		verbose output\n");
 	printf("  -w		monitor wakelock count\n");
 	printf("  -W		monitor wakelock usage (has overhead)\n");
 
@@ -201,7 +197,7 @@ int main(int argc, char **argv)
 	proc_cache_get_pthreads();
 
 	for (;;) {
-		int c = getopt(argc, argv, "bcd:hp:m:o:rwW");
+		int c = getopt(argc, argv, "bcd:hp:m:o:rvwW");
 		if (c == -1)
 			break;
 		switch (c) {
@@ -231,6 +227,9 @@ int main(int argc, char **argv)
 #endif
 		case 'r':
 			opt_flags |= OPT_ADDR_RESOLVE;
+			break;
+		case 'v':
+			opt_flags |= OPT_VERBOSE;
 			break;
 		case 'w':
 			opt_flags |= OPT_WAKELOCKS_LIGHT;
@@ -291,6 +290,7 @@ int main(int argc, char **argv)
 	}
 
 	signal(SIGINT, &handle_sigint);
+	syscall_init();
 	for (l = pids.head; l; l = l->next) {
 		proc_info_t *p = (proc_info_t *)l->data;
 		if (pthread_create(&p->pthread, NULL, syscall_trace, &p->pid) < 0) {
@@ -369,6 +369,9 @@ int main(int argc, char **argv)
 
 	if (opt_flags & OPT_WAKELOCKS_LIGHT)
 		fnotify_dump_wakelocks(json_tests, actual_duration, &fnotify_wakelocks);
+
+	if (opt_flags & OPT_WAKELOCKS_HEAVY)
+		syscall_dump_wakelocks(json_tests, actual_duration, &pids);
 
 #ifdef JSON_OUTPUT
 	if (json_obj)

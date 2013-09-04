@@ -21,6 +21,8 @@
 
 #define _GNU_SOURCE
 
+#include <sys/fanotify.h>
+
 #include "list.h"
 #include "json.h"
 

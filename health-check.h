@@ -24,9 +24,12 @@
 #include <stdbool.h>
 #include "json.h"
 
-#define	OPT_GET_CHILDREN		0x00000001
-#define OPT_BRIEF			0x00000002
+#define OPT_GET_CHILDREN                0x00000001
+#define OPT_BRIEF                       0x00000002
 #define OPT_ADDR_RESOLVE		0x00000004
+#define OPT_WAKELOCKS_LIGHT             0x00000008
+#define OPT_WAKELOCKS_HEAVY             0x00000010
+#define OPT_VERBOSE                     0x00000020
 
 extern void health_check_exit(const int status) __attribute__ ((noreturn));
 extern volatile bool keep_running;
