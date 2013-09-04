@@ -1360,13 +1360,14 @@ static void syscall_account_return(
 			if (syscall_get_return(pid, &ret) < 0)
 				return;
 
-			if ((info = (syscall_return_info_t *)calloc(1, sizeof(*info))) == NULL) {
-				fprintf(stderr, "Out of memory\n");
-				health_check_exit(EXIT_FAILURE);
-			}
-			info->timeout = timeout;
-			info->ret = ret;
 			if (s) {
+				if ((info = (syscall_return_info_t *)calloc(1, sizeof(*info))) == NULL) {
+					fprintf(stderr, "Out of memory\n");
+					health_check_exit(EXIT_FAILURE);
+				}
+				info->timeout = timeout;
+				info->ret = ret;
+
 				pthread_mutex_lock(&ptrace_mutex);
 				list_append(&s->return_history, info);
 				pthread_mutex_unlock(&ptrace_mutex);
