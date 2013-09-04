@@ -109,6 +109,47 @@ void fnotify_event_free(void *data)
 	free(fileinfo);
 }
 
+char *fnotify_get_filename(const pid_t pid, const int fd)
+{
+	char 	buf[256];
+	char 	path[PATH_MAX];
+	ssize_t len;
+	char 	*filename;
+
+	/*
+	 * With fnotifies, fd of the file is added to the process
+	 * fd array, so we just pick them up from /proc/self. Use
+	 * a pid of -1 for self
+	 */
+	if (pid == -1)
+		snprintf(buf, sizeof(buf), "/proc/self/fd/%d", fd);
+	else
+		snprintf(buf, sizeof(buf), "/proc/%d/fd/%d", pid, fd);
+
+	len = readlink(buf, path, sizeof(path));
+	if (len < 0) {
+		struct stat statbuf;
+		if (fstat(fd, &statbuf) < 0)
+			filename = strdup("(unknown)");
+		else {
+			snprintf(buf, sizeof(buf), "dev: %i:%i inode %ld",
+				major(statbuf.st_dev), minor(statbuf.st_dev), statbuf.st_ino);
+			filename = strdup(buf);
+		}
+	} else {
+		/*
+		 *  In an ideal world we should allocate the path
+		 *  based on a lstat'd size, but because this can be
+		 *  racey on has to re-check, which involves
+		 *  re-allocing the buffer.  Since we need to be
+		 *  fast let's just fetch up to PATH_MAX-1 of data.
+		 */
+		path[len >= PATH_MAX ? PATH_MAX - 1 : len] = '\0';
+		filename = strdup(path);
+	}
+	return filename;
+}
+
 /*
  *  fnotify_event_add()
  *	add a new fnotify event
@@ -128,35 +169,8 @@ void fnotify_event_add(
 		 proc_info_t *p = (proc_info_t*)l->data;
 
 		if (metadata->pid == p->pid) {
-			char 	buf[256];
-			char 	path[PATH_MAX];
-			ssize_t len;
-			link_t	*l;
-			bool	found = false;
-			char 	*filename;
+			char 	*filename = fnotify_get_filename(-1, metadata->fd);
 
-			snprintf(buf, sizeof(buf), "/proc/self/fd/%d", metadata->fd);
-			len = readlink(buf, path, sizeof(path));
-			if (len < 0) {
-				struct stat statbuf;
-				if (fstat(metadata->fd, &statbuf) < 0)
-					filename = strdup("(unknown)");
-				else {
-					snprintf(buf, sizeof(buf), "dev: %i:%i inode %ld",
-						major(statbuf.st_dev), minor(statbuf.st_dev), statbuf.st_ino);
-					filename = strdup(buf);
-				}
-			} else {
-				/*
-				 *  In an ideal world we should allocate the path
-				 *  based on a lstat'd size, but because this can be
-				 *  racey on has to re-check, which involves
-				 *  re-allocing the buffer.  Since we need to be
-				 *  fast let's just fetch up to PATH_MAX-1 of data.
-				 */
-				path[len >= PATH_MAX ? PATH_MAX - 1 : len] = '\0';
-				filename = strdup(path);
-			}
 			if (filename == NULL) {
 				fprintf(stderr, "Out of memory\n");
 				health_check_exit(EXIT_FAILURE);
@@ -166,6 +180,8 @@ void fnotify_event_add(
 			    (!strcmp(filename, "/sys/power/wake_lock") ||
 			     !strcmp(filename, "/sys/power/wake_unlock"))) {
 				fnotify_wakelock_info_t	*wakelock_info;
+				link_t	*l;
+				bool	found = false;
 
 				for (l = fnotify_wakelocks->head; l; l = l->next) {
 					wakelock_info = (fnotify_wakelock_info_t *)l->data;
@@ -195,6 +211,8 @@ void fnotify_event_add(
 				wakelock_info->total++;
 			} else {
 				fnotify_fileinfo_t *fileinfo;
+				link_t	*l;
+				bool	found = false;
 
 				for (l = fnotify_files->head; l; l = l->next) {
 					fileinfo = (fnotify_fileinfo_t *)l->data;
