@@ -162,7 +162,7 @@ static void syscall_nanosleep_generic_ret(json_object *j_obj, const syscall_t *s
 	(void)j_obj;
 #endif
 
-	uint64_t ret_error = 99;
+	uint64_t ret_error = 0;
 
 	for (l = s->return_history.head; l; l = l->next) {
 		syscall_return_info_t *ret = (syscall_return_info_t *)l->data;
