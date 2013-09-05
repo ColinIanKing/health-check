@@ -1,3 +1,10 @@
+health-check (0.01.19) saucy; urgency=low
+
+  * Makefile: bump version
+  * syscall.c: remove debug return error check
+
+ -- Colin King <colin.king@canonical.com>  Thu, 5 Sep 2013 12:51:32 +0100
+
 health-check (0.01.18) saucy; urgency=low
 
   * Makefile: bump version
