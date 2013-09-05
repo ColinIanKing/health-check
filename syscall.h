@@ -31,7 +31,7 @@
 #define BUCKET_START			(0.00001)
 
 #define SYSCALL(n) \
-	[SYS_ ## n] = { #n, SYS_ ## n, 0, NULL, NULL, NULL, false }
+	[SYS_ ## n] = { #n, SYS_ ## n, 0, NULL, NULL, NULL, true }
 
 #define SYSCALL_TIMEOUT(n, arg, func_check, func_ret) \
 	[SYS_ ## n] = { #n, SYS_ ## n, arg, &syscall_timeout[SYS_ ## n], func_check, func_ret, true }
