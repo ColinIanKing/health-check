@@ -222,9 +222,9 @@ void ctxt_switch_dump_diff(
 			}
 			if (count > 1)
 				printf(" %-27.27s%12.2f %12.2f %12.2f\n", "Total",
-					total_total / duration,
 					total_voluntary / duration,
-					total_involuntary / duration);
+					total_involuntary / duration,
+					total_total / duration);
 			printf("\n");
 		}
 	} else {
