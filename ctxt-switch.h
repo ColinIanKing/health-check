@@ -31,6 +31,7 @@ typedef struct {
 	uint64_t	voluntary;	/* Voluntary context switches */
 	uint64_t	involuntary;	/* Unvoluntary context switches */
 	uint64_t	total;		/* Total context switches */
+	bool		valid;		/* true if valid data */
 } ctxt_switch_info_t;
 
 extern void ctxt_switch_get(const list_t *pids, list_t *ctxt_switches);

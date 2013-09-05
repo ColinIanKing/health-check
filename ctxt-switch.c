@@ -51,6 +51,7 @@ static void ctxt_switch_read(const pid_t pid, ctxt_switch_info_t *info)
 
 	info->voluntary = 0;
 	info->involuntary = 0;
+	info->valid = false;
 
 	snprintf(path, sizeof(path), "/proc/%i/status", pid);
 
@@ -72,6 +73,7 @@ static void ctxt_switch_read(const pid_t pid, ctxt_switch_info_t *info)
 	}
 
 	info->total = info->voluntary + info->involuntary;
+	info->valid = true;
 	fclose(fp);
 }
 
@@ -136,6 +138,8 @@ static void ctxt_switch_delta(
 	for (l = ctxt_switches_old->head; l; l = l->next) {
 		ctxt_switch_info_t *ctxt_switch_old = (ctxt_switch_info_t*)l->data;
 		if (ctxt_switch_new->proc == ctxt_switch_old->proc) {
+			if (!ctxt_switch_old->valid)
+				break;
 			*total = ctxt_switch_new->total - ctxt_switch_old->total;
 			*voluntary = ctxt_switch_new->voluntary - ctxt_switch_old->voluntary;
 			*involuntary = ctxt_switch_new->involuntary -ctxt_switch_old->involuntary;
@@ -170,6 +174,9 @@ void ctxt_switch_dump_diff(
 	list_init(&sorted);
 	for (l = ctxt_switches_new->head; l; l = l->next) {
 		ctxt_switch_info_t *new_info, *info = (ctxt_switch_info_t *)l->data;
+	
+		if (!info->valid)
+			continue;
 
 		new_info = calloc(1, sizeof(*info));
 		if (new_info == NULL) {
