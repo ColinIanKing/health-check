@@ -1,3 +1,12 @@
+health-check (0.01.23) saucy; urgency=low
+
+  * Makefile: bump version
+  * Update manual to add in new options
+  * json.c: cater for older json-c that doesn't have json_object_new_int64
+  * health-check: don't use pretty printing json if it does not exist
+
+ -- Colin King <colin.king@canonical.com>  Fri, 6 Sep 2013 09:23:11 +0100
+
 health-check (0.01.22) saucy; urgency=low
 
   * Makefile: bump version
