@@ -61,6 +61,18 @@ health-check. The default is 1 million.
 .B \-o logfile
 Specify output log file to export JSON formatted results.  The resulting
 data can be then easily imported and analysed using JSON parsing tools.
+.TP
+.B \-v verbose
+Enable verbose mode (currently just for \-W wakelock option). Not compatible
+with the \-b brief option.
+.TP
+.B \-w monitor wakelock count
+This uses fnotify to count the number of wakelock lock/unlocks. Lightweight
+and simple wakelock monitoring.
+.TP
+.B \-W monitor wakelock usage
+This does deeper system call inspection to monitor wakelock usage and uses
+up more run time processing to perform the inspection.
 .SH AUTHOR
 health-check was written by Colin King <colin.king@canonical.com>
 .PP
