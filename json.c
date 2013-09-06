@@ -25,6 +25,11 @@
 #include "json.h"
 #include "health-check.h"
 
+/*
+ *  Older versions json-c don't int64
+ */
+extern json_object *json_object_new_int64(const int64_t) __attribute__((weak));
+
 static void j_obj_is_null(json_object *obj, const char *msg)
 {
 	if (!obj) {
@@ -59,8 +64,14 @@ json_object *j_obj_new_int32(const int32_t i)
 
 json_object *j_obj_new_int64(const int64_t i)
 {
-	json_object *obj = json_object_new_int64(i);
+	json_object *obj = NULL;
 
+	if (json_object_new_int64) {
+		obj = json_object_new_int64(i);
+	} else {
+		/* Older json-c doesn't have int64, so convert to double */
+		obj = json_object_new_double((double)i);
+	}
 	j_obj_is_null(obj, "Cannot allocate JSON integer\n");
 	return obj;
 }
