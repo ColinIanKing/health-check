@@ -142,8 +142,12 @@ static int json_write(json_object *obj, const char *filename)
 		return -1;
 	}
 
+#ifdef JSON_C_TO_STRING_PRETTY
 	str = json_object_to_json_string_ext(
 		obj, JSON_C_TO_STRING_PRETTY);
+#else
+	str = json_object_to_json_string(obj);
+#endif
 	if (str == NULL) {
 		fprintf(stderr, "Cannot turn JSON object to text for JSON output.\n");
 		return -1;
