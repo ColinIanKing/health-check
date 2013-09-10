@@ -83,21 +83,22 @@ void health_check_exit(const int status)
 static void show_usage(void)
 {
 	printf("%s, version %s\n\n", APP_NAME, VERSION);
-	printf("Usage: %s [options]\n", APP_NAME);
+	printf("Usage: %s [options] [command [options]]\n", APP_NAME);
 	printf("Options are:\n");
 	printf("  -b		brief (terse) output\n");
 	printf("  -c            find all child and threads\n");
 	printf("  -d            specify the analysis duration in seconds\n");
 	printf("  -h            show this help\n");
 	printf("  -p pid[,pid]  specify process id(s) or process name(s)\n");
-	printf("  -m max	specify maximum number of system calls to trace\n");
+	printf("  -m max        specify maximum number of system calls to trace\n");
 #ifdef JSON_OUTPUT
-	printf("  -o file	output results to a json data file\n");
+	printf("  -o file       output results to a json data file\n");
 #endif
-	printf("  -r		resolve IP addresses\n");
-	printf("  -v		verbose output\n");
-	printf("  -w		monitor wakelock count\n");
-	printf("  -W		monitor wakelock usage (has overhead)\n");
+	printf("  -r            resolve IP addresses\n");
+	printf("  -u user       run command as a specified user\n");
+	printf("  -v            verbose output\n");
+	printf("  -w            monitor wakelock count\n");
+	printf("  -W            monitor wakelock usage (has overhead)\n");
 
 	health_check_exit(EXIT_SUCCESS);
 }
