@@ -189,7 +189,7 @@ void ctxt_switch_dump_diff(
 		list_add_ordered(&sorted, new_info, ctx_switch_cmp);
 	}
 
-	if (ctxt_switches_new->head) {
+	if (sorted.head) {
 		if (opt_flags & OPT_BRIEF) {
 			double rate = 0.0;
 
@@ -228,7 +228,7 @@ void ctxt_switch_dump_diff(
 			printf("\n");
 		}
 	} else {
-		printf(" No wakeups detected\n\n");
+		printf(" No context switches detected.\n\n");
 	}
 
 #ifdef JSON_OUTPUT
