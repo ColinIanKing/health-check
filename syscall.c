@@ -47,6 +47,8 @@
 
 static pthread_mutex_t ptrace_mutex = PTHREAD_MUTEX_INITIALIZER;
 static pthread_mutex_t fd_cache_mutex = PTHREAD_MUTEX_INITIALIZER;
+static pthread_mutex_t procs_traced_mutex = PTHREAD_MUTEX_INITIALIZER;
+int procs_traced = 0;
 static int syscall_count = 0;
 static int info_emit = false;
 
@@ -1463,8 +1465,13 @@ static bool syscall_wait(const pid_t pid)
 				printf("Waited for %d, got %d\n", pid, wpid);
 			return false;
 		}
-		if (WIFEXITED(status))
+		if (WIFEXITED(status)) {
+			printf("PROC %d exit\n", pid);
+			pthread_mutex_lock(&procs_traced_mutex);
+			procs_traced--;
+			pthread_mutex_unlock(&procs_traced_mutex);
 			return true;
+		}
 	}
 	return true;
 }
@@ -1478,7 +1485,11 @@ void *syscall_trace(void *arg)
 	int status, syscall;
 	pid_t pid = *((pid_t*)arg);
 
-	waitpid(pid, &status, 0);
+	pthread_mutex_lock(&procs_traced_mutex);
+	procs_traced++;
+	pthread_mutex_unlock(&procs_traced_mutex);
+
+	//waitpid(pid, &status, 0);
 	ptrace(PTRACE_ATTACH, pid, 0, 0);
 	waitpid(pid, &status, 0);
 	ptrace(PTRACE_SETOPTIONS, pid, 0, PTRACE_O_TRACESYSGOOD);

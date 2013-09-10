@@ -29,6 +29,11 @@
 #include <errno.h>
 #include <sys/fanotify.h>
 #include <sys/ptrace.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <limits.h>
+#include <grp.h>
+#include <pwd.h>
 
 #include "list.h"
 #include "json.h"
@@ -165,6 +170,147 @@ static int json_write(json_object *obj, const char *filename)
 }
 #endif
 
+/*
+ *  exec_executable()
+ *	exec a program
+ */
+pid_t exec_executable(const char *opt_username, const char *path, char **argv)
+{
+	uid_t uid;
+	gid_t gid;
+	pid_t pid;
+	struct stat buf;
+
+	pid = fork();
+	if (pid < 0) {
+		fprintf(stderr, "Cannot fork to run %s\n", path);
+		exit(EXIT_FAILURE);
+	}
+	if (pid != 0)
+		return pid;	/* We are the tracer, return tracee pid */
+
+	/* Traced process starts here */
+	if (opt_username) {
+		struct passwd *pw;
+		uid_t euid;
+		gid_t egid;
+
+		if ((pw = getpwnam(opt_username)) == NULL) {
+			fprintf(stderr, "Username %s does not exist\n", opt_username);
+			exit(EXIT_FAILURE);
+		}
+		uid = pw->pw_uid;
+		gid = pw->pw_gid;
+
+		if (stat(path, &buf) != 0) {
+			fprintf(stderr, "Cannot stat %s\n", path);
+			health_check_exit(EXIT_FAILURE);
+		}
+		euid = buf.st_mode & S_ISUID ? buf.st_uid : uid;
+		egid = buf.st_mode & S_ISGID ? buf.st_gid : gid;
+
+		if (initgroups(opt_username, gid) < 0) {
+			fprintf(stderr, "initgroups failed user on %s\n", opt_username);
+			exit(EXIT_FAILURE);
+		}
+		if (setregid(gid, egid) < 0) {
+			fprintf(stderr, "setregid failed\n");
+			exit(EXIT_FAILURE);
+		}
+		if (setreuid(uid, euid) < 0) {
+			fprintf(stderr, "setreuid failed\n");
+			exit(EXIT_FAILURE);
+		}
+	} else {
+		if (geteuid() != 0) {
+			uid = getuid();
+			if (setreuid(uid, uid) < 0) {
+				fprintf(stderr, "setreuid failed\n");
+				exit(EXIT_FAILURE);
+			}
+		}
+	}
+
+	/* Suspend ourself waiting for tracer */
+	kill(getpid(), SIGSTOP);
+	execv(path, argv);
+
+	printf("Failed to execv %s\n", path);
+	exit(EXIT_FAILURE);
+}
+
+/*
+ *  is_executable()
+ *	check path to see if it is an executable image
+ */
+inline static int is_executable(const char *path)
+{
+	struct stat buf;
+
+	return ((stat(path, &buf) == 0) &&
+	    (buf.st_mode & (S_IXUSR | S_IXGRP | S_IXOTH)) &&
+	    S_ISREG(buf.st_mode));
+}
+
+/*
+ *  find_executable()
+ *	find executable given a filename
+ */
+static const char *find_executable(const char *filename)
+{
+	static char path[PATH_MAX];
+
+	if (strchr(filename, '/')) {
+		/* Given a full path, try this */
+		if (strlen(filename) > sizeof(path) - 1) {
+			fprintf(stderr, "executable name too long.\n");
+			health_check_exit(EXIT_FAILURE);
+		}
+		strcpy(path, filename);
+		if (is_executable(path))
+			return path;
+	} else {
+		/* Try and find it in $PATH */
+		char *p = getenv("PATH");
+
+		while (p && *p) {
+			size_t len, skiplen, pathlen;
+			char *ptr = strchr(p, ':');
+
+			if (ptr) {
+				len = ptr - p;
+				skiplen = len + 1;
+			} else {
+				skiplen = len = strlen(p);
+			}
+
+			if (len) {
+				if (len > sizeof(path) - 1)
+					continue;	/* Too long */
+				else {
+					pathlen = len;
+					strncpy(path, p, pathlen);
+				}
+			} else {
+				if (getcwd(p, PATH_MAX) == NULL)
+					continue;	/* Silently ignore */
+				pathlen = strlen(p);
+			}
+
+			if ((pathlen > 0) &&
+			    (path[pathlen - 1] != '/'))
+				path[pathlen++] = '/';
+			strcpy(path + pathlen, filename);
+
+			if (is_executable(path))
+				return path;
+
+			p += skiplen;
+		}
+	}
+	return NULL;	/* No hope */
+}
+
 int main(int argc, char **argv)
 {
 	double actual_duration, opt_duration_secs = 60.0;
@@ -177,6 +323,7 @@ int main(int argc, char **argv)
 	list_t ctxt_switch_info_old, ctxt_switch_info_new;
 	link_t *l;
 	void *buffer;
+	char *opt_username = NULL;
 #ifdef JSON_OUTPUT
 	char *opt_json_file = NULL;
 	json_object *json_obj = NULL;
@@ -200,8 +347,10 @@ int main(int argc, char **argv)
 	proc_cache_get();
 	proc_cache_get_pthreads();
 
+	signal(SIGCHLD, SIG_DFL);
+
 	for (;;) {
-		int c = getopt(argc, argv, "bcd:hp:m:o:rvwW");
+		int c = getopt(argc, argv, "+bcd:hp:m:o:ru:vwW");
 		if (c == -1)
 			break;
 		switch (c) {
@@ -232,6 +381,9 @@ int main(int argc, char **argv)
 		case 'r':
 			opt_flags |= OPT_ADDR_RESOLVE;
 			break;
+		case 'u':
+			opt_username = optarg;
+			break;
 		case 'v':
 			opt_flags |= OPT_VERBOSE;
 			break;
@@ -251,11 +403,35 @@ int main(int argc, char **argv)
 		health_check_exit(EXIT_FAILURE);
 	}
 
-	if (geteuid() != 0) {
+	if ((getuid() !=0 ) || (geteuid() != 0)) {
 		fprintf(stderr, "%s requires root privileges to write to %s\n",
 			APP_NAME, TIMER_STATS);
 		health_check_exit(EXIT_FAILURE);
 	}
+
+	if (optind < argc) {
+		const char *path;
+
+		if (pids.head != NULL) {
+			fprintf(stderr, "Cannot heath-check a program and provide pids to trace at same time.\n");
+			health_check_exit(EXIT_FAILURE);
+		}
+
+		argv += optind;
+		path = find_executable(argv[0]);
+		if (path) {
+			pid_t pid = exec_executable(opt_username, path, argv);
+			proc_info_t *p;
+			if ((p = proc_cache_find_by_pid(pid)) == NULL) {
+				fprintf(stderr, "Cannot find process with PID %i\n", pid);
+				return -1;
+			}
+			free(p->cmdline);
+			p->cmdline = strdup(basename(path));
+			proc_pids_add_proc(&pids, p);
+		}
+	}
+
 	if (pids.head == NULL) {
 		fprintf(stderr, "Must provide one or more valid process IDs or name\n");
 		health_check_exit(EXIT_FAILURE);
@@ -324,7 +500,9 @@ int main(int argc, char **argv)
 	gettimeofday(&tv_now, NULL);
 	duration = timeval_sub(&tv_end, &tv_now);
 
-	while (keep_running && timeval_to_double(&duration) > 0.0) {
+	while ((procs_traced > 0) &&
+	       keep_running &&
+	       timeval_to_double(&duration) > 0.0) {
 		fd_set rfds;
 		FD_ZERO(&rfds);
 		FD_SET(fan_fd, &rfds);

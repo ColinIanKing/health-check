@@ -100,6 +100,7 @@ typedef struct syscall_wakelock_info {
 
 extern syscall_t syscalls[];
 extern size_t syscalls_len;
+extern int procs_traced;
 
 extern void *syscall_trace(void *arg);
 extern void syscall_dump_hashtable(json_object *j_tests, const double duration);
