@@ -1475,6 +1475,8 @@ void syscall_handle_event(syscall_context_t *ctxt, int event)
 
 		if ((p = proc_cache_add(child, 0, false)) != NULL)
 			proc_pids_add_proc(__pids, p);
+
+		net_connection_pid(child);	/* Update net connections on new process */
 	}
 }
 
