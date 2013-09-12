@@ -34,13 +34,11 @@ typedef struct {
 	uint64_t	involuntary;	/* Unvoluntary context switches */
 	uint64_t	total;		/* Total context switches */
 	bool		valid;		/* true if valid data */
-	struct timeval	whence;		/* time sample was taken */
-	double		duration;	/* Duration between old and new samples */
 } ctxt_switch_info_t;
 
 extern void ctxt_switch_get_all_pids(const list_t *pids, proc_state state);
 extern void ctxt_switch_get_by_proc(proc_info_t *proc, proc_state state);
-extern void ctxt_switch_dump_diff(json_object *j_tests);
+extern void ctxt_switch_dump_diff(json_object *j_tests, const double duration);
 extern void ctxt_switch_init(void);
 extern void ctxt_switch_cleanup(void);
 
