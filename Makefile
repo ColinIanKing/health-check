@@ -1,4 +1,4 @@
-VERSION=0.01.24
+VERSION=0.01.25
 
 JSON_OUTPUT=y
 
@@ -25,30 +25,35 @@ health-check: $(OBJS)
 health-check.8.gz: health-check.8
 	gzip -c $< > $@
 
-net.o: net.c net.h
+alloc.o: alloc.c alloc.h
+
+cpustat.o: cpustat.c list.h json.h cpustat.h timeval.h health-check.h
+
+ctxt-switch.o: ctxt-switch.c list.h json.h ctxt-switch.h health-check.h
+
+event.o: event.c list.h json.h event.h health-check.h
+
+fnotify.o: fnotify.c fnotify.h list.h json.h proc.h health-check.h
+
+health-check.o: health-check.c list.h json.h pid.h proc.h syscall.h timeval.h \
+	fnotify.h event.h cpustat.h mem.h net.h ctxt-switch.h
 
 json.o: json.c json.h health-check.h
-
-cpustat.o: cpustat.c list.h cpustat.h health-check.h
-
-event.o: event.c list.h event.h health-check.h
-
-fnotify.o: fnotify.c fnotify.h list.h proc.h health-check.h
-
-health-check.o: health-check.c list.h pid.h proc.h syscall.h timeval.h \
-	fnotify.h event.h cpustat.h mem.h net.h
 
 list.o: list.c list.h
 
 mem.o: mem.c mem.h list.h health-check.h
 
-pid.o: pid.c pid.h list.h proc.h
+net.o: net.c net.h list.h proc.h json.h health-check.h
 
-proc.o: proc.c list.h pid.h proc.h health-check.h
+pid.o: pid.c pid.h list.h proc.h alloc.h
 
-syscall.o: syscall.c syscall.h proc.h health-check.h
+proc.o: proc.c list.h pid.h proc.h net.h health-check.h
 
-timeval.o: timeval.c
+syscall.o: syscall.c syscall.h proc.h json.h net.h mem.h \
+	cpustat.h fnotify.h ctxt-switch.h health-check.h
+
+timeval.o: timeval.c timeval.h
 
 dist:
 	git archive --format=tar --prefix="health-check-$(VERSION)/" V$(VERSION) | \
