@@ -27,6 +27,11 @@
 
 #include "list.h"
 
+typedef enum {
+        PROC_START   = 0x00000001,
+        PROC_FINISH  = 0x00000002
+} proc_state;
+
 /* process specific information */
 typedef struct {
 	pid_t		pid;		/* PID */
