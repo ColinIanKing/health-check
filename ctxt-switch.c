@@ -28,6 +28,7 @@
 
 #include "list.h"
 #include "json.h"
+#include "timeval.h"
 #include "ctxt-switch.h"
 #include "health-check.h"
 
@@ -82,6 +83,8 @@ void ctxt_switch_get_by_proc(proc_info_t *proc, proc_state state)
 	fclose(fp);
 	info->total = info->voluntary + info->involuntary;
 	info->valid = true;
+	gettimeofday(&info->whence, NULL);
+	info->duration = 0.0;
 
 	list_append(ctxt_switches, info);
 }
@@ -131,7 +134,8 @@ static void ctxt_switch_delta(
 	const list_t *ctxt_switches_old,
 	uint64_t *total,
 	uint64_t *voluntary,
-	uint64_t *involuntary)
+	uint64_t *involuntary,
+	double   *duration)
 {
 	link_t *l;
 
@@ -142,7 +146,10 @@ static void ctxt_switch_delta(
 				break;
 			*total = ctxt_switch_new->total - ctxt_switch_old->total;
 			*voluntary = ctxt_switch_new->voluntary - ctxt_switch_old->voluntary;
-			*involuntary = ctxt_switch_new->involuntary -ctxt_switch_old->involuntary;
+			*involuntary = ctxt_switch_new->involuntary - ctxt_switch_old->involuntary;
+			*duration =
+				timeval_to_double(&ctxt_switch_new->whence) -
+				timeval_to_double(&ctxt_switch_old->whence);
 			return;
 		}
 	}
@@ -150,6 +157,7 @@ static void ctxt_switch_delta(
 	*total = ctxt_switch_new->total;
 	*voluntary = ctxt_switch_new->voluntary;
 	*involuntary = ctxt_switch_new->involuntary;
+	*duration = 1;	/* Kludge */
 }
 
 
@@ -157,9 +165,7 @@ static void ctxt_switch_delta(
  *  ctxt_switch_dump_diff()
  *	dump differences between old and new events
  */
-void ctxt_switch_dump_diff(
-	json_object *j_tests,
-	const double duration)
+void ctxt_switch_dump_diff(json_object *j_tests)
 {
 	link_t *l;
 	list_t sorted;
@@ -182,8 +188,12 @@ void ctxt_switch_dump_diff(
 			health_check_exit(EXIT_FAILURE);
 		}
 		new_info->proc = info->proc;
-		ctxt_switch_delta(info, &ctxt_switch_info_old,
-			&new_info->total, &new_info->voluntary, &new_info->involuntary);
+		ctxt_switch_delta(info,
+			&ctxt_switch_info_old,
+			&new_info->total,
+			&new_info->voluntary,
+			&new_info->involuntary,
+			&new_info->duration);
 		list_add_ordered(&sorted, new_info, ctx_switch_cmp);
 	}
 
@@ -193,9 +203,8 @@ void ctxt_switch_dump_diff(
 
 			for (l = sorted.head; l; l = l->next) {
 				ctxt_switch_info_t *info = (ctxt_switch_info_t *)l->data;
-				rate += (double)info->total;
+				rate += (double)info->total / info->duration;
 			}
-			rate /= duration;
 			printf(" %.2f context switches/sec (%s)\n\n",
 				rate, ctxt_switch_loading(rate));
 		} else {
@@ -209,20 +218,18 @@ void ctxt_switch_dump_diff(
 
 				printf(" %5d %-20.20s %12.2f %12.2f %12.2f (%s)\n",
 					info->proc->pid, info->proc->cmdline,
-					(double)info->voluntary / duration,
-					(double)info->involuntary / duration,
-					(double)info->total / duration,
-					ctxt_switch_loading((double)info->total / duration));
-				total_total += (double)info->total;
-				total_voluntary += (double)info->voluntary;
-				total_involuntary += (double)info->involuntary;
+					(double)info->voluntary / info->duration,
+					(double)info->involuntary / info->duration,
+					(double)info->total / info->duration,
+					ctxt_switch_loading((double)info->total / info->duration));
+				total_total += (double)info->total / info->duration;
+				total_voluntary += (double)info->voluntary / info->duration;
+				total_involuntary += (double)info->involuntary / info->duration;
 				count++;
 			}
 			if (count > 1)
 				printf(" %-27.27s%12.2f %12.2f %12.2f\n", "Total",
-					total_voluntary / duration,
-					total_involuntary / duration,
-					total_total / duration);
+					total_voluntary, total_involuntary, total_total);
 			printf("\n");
 		}
 	} else {
@@ -234,6 +241,7 @@ void ctxt_switch_dump_diff(
 		json_object *j_ctxt_switch_test, *j_ctxt_switches, *j_ctxt_switch;
 		uint64_t total = 0;
 		double total_rate;
+		double total_duration = 0.0;
 
 		j_obj_obj_add(j_tests, "context-switches", (j_ctxt_switch_test = j_obj_new_obj()));
 		j_obj_obj_add(j_ctxt_switch_test, "context-switches-per-process", (j_ctxt_switches = j_obj_new_array()));
@@ -241,6 +249,7 @@ void ctxt_switch_dump_diff(
 		for (l = sorted.head; l; l = l->next) {
 			ctxt_switch_info_t *info = (ctxt_switch_info_t *)l->data;
 			total += info->total;
+			total_duration += info->duration;
 
 			j_ctxt_switch = j_obj_new_obj();
 			j_obj_new_int32_add(j_ctxt_switch, "pid", info->proc->pid);
@@ -248,16 +257,16 @@ void ctxt_switch_dump_diff(
 			j_obj_new_int32_add(j_ctxt_switch, "is-thread", info->proc->is_thread);
 			j_obj_new_string_add(j_ctxt_switch, "name", info->proc->cmdline);
 			j_obj_new_int64_add(j_ctxt_switch, "voluntary-context-switches", info->voluntary);
-			j_obj_new_double_add(j_ctxt_switch, "voluntary-context-switch-rate", (double)info->voluntary / duration);
-			j_obj_new_int64_add(j_ctxt_switch, "involuntary-context-switches", info->involuntary);
-			j_obj_new_double_add(j_ctxt_switch, "involuntary-context-switch-rate", (double)info->involuntary / duration);
+			j_obj_new_double_add(j_ctxt_switch, "voluntary-context-switch-rate", (double)info->voluntary / info->duration);
+			j_obj_new_int64_add(j_ctxt_switch, "involuntary-context-switches", info->involuntary / info->duration);
+			j_obj_new_double_add(j_ctxt_switch, "involuntary-context-switch-rate", (double)info->involuntary / info->duration);
 			j_obj_new_int64_add(j_ctxt_switch, "total-context-switches", info->total);
-			j_obj_new_double_add(j_ctxt_switch, "total-context-switch-rate", (double)info->total / duration);
-			j_obj_new_string_add(j_ctxt_switch, "load-hint", ctxt_switch_loading((double)info->total / duration));
+			j_obj_new_double_add(j_ctxt_switch, "total-context-switch-rate", (double)info->total / info->duration);
+			j_obj_new_string_add(j_ctxt_switch, "load-hint", ctxt_switch_loading((double)info->total / info->duration));
 			j_obj_array_add(j_ctxt_switches, j_ctxt_switch);
 		}
 
-		total_rate = (double)total / duration;
+		total_rate = (double)total / total_duration;
 		j_obj_obj_add(j_ctxt_switch_test, "context-switches-total", (j_ctxt_switch = j_obj_new_obj()));
 		j_obj_new_int64_add(j_ctxt_switch, "context-switch-total", total);
 		j_obj_new_double_add(j_ctxt_switch, "context-switch-rate-total", total_rate);
