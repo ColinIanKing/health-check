@@ -30,6 +30,8 @@
 #include "mem.h"
 #include "health-check.h"
 
+static list_t mem_info_old, mem_info_new;
+
 static const char *mem_types[] = {
 	"Stack",
 	"Heap",
@@ -131,41 +133,47 @@ static int mem_get_entry(FILE *fp, mem_info_t *mem)
 	return 0;
 }
 
+static void mem_get_by_proc(proc_info_t *p, proc_state state)
+{
+	FILE *fp;
+	char path[PATH_MAX];
+	mem_info_t *m;
+	list_t *mem = (state == PROC_START) ? &mem_info_old : &mem_info_new;
+
+	if (p->is_thread)
+		return;
+
+	snprintf(path, sizeof(path), "/proc/%i/smaps", p->pid);
+
+	if ((fp = fopen(path, "r")) == NULL)
+		return;
+
+	if ((m = calloc(1, sizeof(*m))) == NULL) {
+		fprintf(stderr, "Out of memory\n");
+		health_check_exit(EXIT_FAILURE);
+	}
+
+	m->proc = p;
+
+	while (mem_get_entry(fp, m) != -1)
+		;
+
+	list_append(mem, m);
+
+	fclose(fp);
+}
+
 /*
- *  mem_get()
+ *  mem_get_all_pids()
  *	scan mem and get mmap info
  */
-void mem_get(const list_t *pids, list_t *mem)
+void mem_get_all_pids(const list_t *pids, proc_state state)
 {
 	link_t *l;
 
 	for (l = pids->head; l; l = l->next) {
-		FILE *fp;
-		char path[PATH_MAX];
 		proc_info_t *p = (proc_info_t *)l->data;
-		mem_info_t *m;
-
-		if (p->is_thread)
-			continue;
-
-		snprintf(path, sizeof(path), "/proc/%i/smaps", p->pid);
-
-		if ((fp = fopen(path, "r")) == NULL)
-			continue;
-
-		if ((m = calloc(1, sizeof(*m))) == NULL) {
-			fprintf(stderr, "Out of memory\n");
-			health_check_exit(EXIT_FAILURE);
-		}
-
-		m->proc = p;
-
-		while (mem_get_entry(fp, m) != -1)
-			;
-
-		list_append(mem, m);
-
-		fclose(fp);
+		mem_get_by_proc(p, state);
 	}
 }
 
@@ -244,9 +252,7 @@ static mem_info_t *mem_delta(mem_info_t *mem_new, const list_t *mem_old_list)
  */
 void mem_dump_diff(
 	json_object *j_tests,
-	const double duration,
-	const list_t *mem_old_list,
-	const list_t *mem_new_list)
+	const double duration)
 {
 	list_t sorted, sorted_delta;
 	link_t *l;
@@ -256,7 +262,7 @@ void mem_dump_diff(
 	(void)j_tests;
 #endif
 
-	if (mem_new_list->head == NULL) {
+	if (mem_info_new.head == NULL) {
 		printf("Memory:\n");
 		printf(" No memory detected.\n\n");
 		return;
@@ -265,15 +271,15 @@ void mem_dump_diff(
 	list_init(&sorted);
 	list_init(&sorted_delta);
 
-	for (l = mem_new_list->head; l; l = l->next) {
+	for (l = mem_info_new.head; l; l = l->next) {
 		mem_info_t *mem_new = (mem_info_t *)l->data;
 		list_add_ordered(&sorted, mem_new, mem_cmp);
 	}
 
-	for (l = mem_new_list->head; l; l = l->next) {
+	for (l = mem_info_new.head; l; l = l->next) {
 		mem_info_t *delta, *mem_new = (mem_info_t *)l->data;
 
-		delta = mem_delta(mem_new, mem_old_list);
+		delta = mem_delta(mem_new, &mem_info_old);
 		list_add_ordered(&sorted_delta, delta, mem_cmp);
 	}
 
@@ -396,4 +402,16 @@ void mem_dump_diff(
 		}
 	}
 #endif
+}
+
+void mem_init(void)
+{
+	list_init(&mem_info_old);
+        list_init(&mem_info_new);
+}
+
+void mem_cleanup(void)
+{
+	list_free(&mem_info_old, free);
+	list_free(&mem_info_new, free);
 }

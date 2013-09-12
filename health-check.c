@@ -323,7 +323,6 @@ int main(int argc, char **argv)
 	list_t event_info_old, event_info_new;
 	list_t fnotify_files, fnotify_wakelocks, pids;
 	list_t cpustat_info_old, cpustat_info_new;
-	list_t mem_info_old, mem_info_new;
 	list_t ctxt_switch_info_old, ctxt_switch_info_new;
 	link_t *l;
 	void *buffer;
@@ -338,8 +337,6 @@ int main(int argc, char **argv)
 	list_init(&event_info_new);
 	list_init(&cpustat_info_old);
 	list_init(&cpustat_info_new);
-	list_init(&mem_info_old);
-	list_init(&mem_info_new);
 	list_init(&ctxt_switch_info_old);
 	list_init(&ctxt_switch_info_new);
 	list_init(&fnotify_files);
@@ -347,6 +344,7 @@ int main(int argc, char **argv)
 	list_init(&pids);
 	list_init(&proc_cache);
 
+	mem_init();
 	net_connection_init();
 	proc_cache_get();
 	proc_cache_get_pthreads();
@@ -493,7 +491,8 @@ int main(int argc, char **argv)
 
 	event_get(&pids, &event_info_old);
 	cpustat_get(&pids, &cpustat_info_old);
-	mem_get(&pids, &mem_info_old);
+
+	mem_get_all_pids(&pids, PROC_START);
 	ctxt_switch_get(&pids, &ctxt_switch_info_old);
 
 	gettimeofday(&tv_now, NULL);
@@ -538,7 +537,7 @@ int main(int argc, char **argv)
 
 	event_get(&pids, &event_info_new);
 	cpustat_get(&pids, &cpustat_info_new);
-	mem_get(&pids, &mem_info_new);
+	mem_get_all_pids(&pids, PROC_FINISH);
 	ctxt_switch_get(&pids, &ctxt_switch_info_new);
 	event_deinit();
 
@@ -550,7 +549,7 @@ int main(int argc, char **argv)
 	fnotify_dump_events(json_tests, actual_duration, &pids, &fnotify_files);
 	syscall_dump_hashtable(json_tests, actual_duration);
 	syscall_dump_pollers(json_tests, actual_duration);
-	mem_dump_diff(json_tests, actual_duration, &mem_info_old, &mem_info_new);
+	mem_dump_diff(json_tests, actual_duration);
 	net_connection_dump(json_tests);
 
 	if (opt_flags & OPT_WAKELOCKS_LIGHT)
@@ -565,6 +564,7 @@ int main(int argc, char **argv)
 #endif
 
 out:
+	mem_cleanup();
 	net_connection_cleanup();
 	syscall_cleanup();
 	free(buffer);
@@ -573,8 +573,6 @@ out:
 	list_free(&event_info_new, event_free);
 	list_free(&cpustat_info_old, free);
 	list_free(&cpustat_info_new, free);
-	list_free(&mem_info_old, free);
-	list_free(&mem_info_new, free);
 	list_free(&ctxt_switch_info_old, free);
 	list_free(&ctxt_switch_info_new, free);
 	list_free(&fnotify_files, fnotify_event_free);
