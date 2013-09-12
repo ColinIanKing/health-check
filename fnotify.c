@@ -85,6 +85,7 @@ int fnotify_event_init(void)
 				strerror (errno));
 		}
 	}
+	endmntent (mounts);
 
 	/* Track /sys/power ops for wakealarm analysis */
 	(void)fanotify_mark(fan_fd, FAN_MARK_ADD,
@@ -93,8 +94,6 @@ int fnotify_event_init(void)
 	(void)fanotify_mark(fan_fd, FAN_MARK_ADD,
 		FAN_ACCESS | FAN_MODIFY, AT_FDCWD,
 		"/sys/power/wake_unlock");
-
-	endmntent (mounts);
 
 	return fan_fd;
 }
@@ -175,7 +174,6 @@ void fnotify_event_add(
 				fprintf(stderr, "Out of memory\n");
 				health_check_exit(EXIT_FAILURE);
 			}
-
 			if ((opt_flags & OPT_WAKELOCKS_LIGHT) &&
 			    (metadata->mask & (FAN_MODIFY | FAN_CLOSE_WRITE)) &&
 			    (!strcmp(filename, "/sys/power/wake_lock") ||
@@ -303,6 +301,10 @@ static const char *fnotify_mask_to_str(const int mask)
 	return modes;
 }
 
+/*
+ *  fnotify_is_syspower()
+ *	check for /sys/power wakelock activity
+ */
 static inline bool fnotify_is_syspower(fnotify_fileinfo_t *info)
 {
 	return !strncmp(info->filename, "/sys/power", 10);
@@ -320,17 +322,16 @@ static void fnotify_dump_files(
 	link_t 	*l;
 	int count;
 	uint64_t total;
+
 #ifndef JSON_OUTPUT
 	(void)j_tests;
 	(void)duration;
 #endif
-
 	list_init(&sorted);
 	for (l = fnotify_files.head; l; l = l->next) {
 		fnotify_fileinfo_t *info = (fnotify_fileinfo_t *)l->data;
 		list_add_ordered(&sorted, info, fnotify_event_cmp_count);
 	}
-
 	if (fnotify_files.head && !(opt_flags & OPT_BRIEF)) {
 		printf("  PID  Process               Count  Op  Filename\n");
 		for (count = 0, total = 0, l = sorted.head; l; l = l->next) {
@@ -346,7 +347,7 @@ static void fnotify_dump_files(
 		}
 		if (count > 1)
 			printf(" %-25.25s%8" PRIu64 "\n", "Total", total);
-		printf("\n");
+		printf(" Op: O=Open, R=Read, W=Write, C=Close\n\n");
 	}
 
 #ifdef JSON_OUTPUT
@@ -388,8 +389,7 @@ static void fnotify_dump_io_ops(
 	const double duration,
 	const list_t *pids)
 {
-	link_t 	*l;
-	link_t  *lp;
+	link_t 	*l, *lp;
 	list_t	sorted;
 	int count;
 	uint64_t read_total, write_total, open_total, close_total;
@@ -482,7 +482,6 @@ static void fnotify_dump_io_ops(
 	}
 
 #ifdef JSON_OUTPUT
-	/* And dump JSON */
 	if (j_tests) {
 		json_object *j_fnotify_test, *j_io_ops, *j_io_op;
 
@@ -549,7 +548,6 @@ void fnotify_dump_wakelocks(
 	}
 
 	list_init(&sorted);
-
 	for (l = fnotify_wakelocks.head; l; l = l->next) {
 		fnotify_wakelock_info_t *info = (fnotify_wakelock_info_t *)l->data;
 		list_add_ordered(&sorted, info, fnotify_wakelock_cmp_count);
@@ -589,12 +587,20 @@ void fnotify_dump_events(
 	}
 }
 
+/*
+ *  fnotify_init()
+ *	initialize fnotify lists
+ */
 void fnotify_init(void)
 {
 	list_init(&fnotify_files);
 	list_init(&fnotify_wakelocks);
 }
 
+/*
+ *  fnotify_cleanup()
+ *	free fnotify lists
+ */
 void fnotify_cleanup(void)
 {
 	list_free(&fnotify_files, fnotify_event_free);
