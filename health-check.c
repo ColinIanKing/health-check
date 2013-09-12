@@ -267,7 +267,7 @@ static const char *find_executable(const char *filename)
 			fprintf(stderr, "executable name too long.\n");
 			health_check_exit(EXIT_FAILURE);
 		}
-		strcpy(path, filename);
+		strncpy(path, filename, sizeof(path) - 1);
 		if (is_executable(path))
 			return path;
 		else 
