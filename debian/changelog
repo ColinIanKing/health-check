@@ -1,3 +1,16 @@
+health-check (0.01.25) saucy; urgency=low
+
+  * Makefile: bump version and update header dependencies
+  * timeval.c should include timeval.h
+  * alloc.c should include alloc.h
+  * Tidy up mem source
+  * Tidy up fnotify a little
+  * Calculate CPU load on overall run duration time
+  * Remove redundant timeval conversion helper
+  * Calculate switch rate on overall run time.
+
+ -- Colin King <colin.king@canonical.com>  Fri, 13 Sep 2013 00:04:21 +0100
+
 health-check (0.01.24) saucy; urgency=low
 
   * Makefile: bump version
