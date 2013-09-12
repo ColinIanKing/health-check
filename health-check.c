@@ -321,7 +321,6 @@ int main(int argc, char **argv)
 	struct timeval tv_start, tv_end, tv_now, duration;
 	int ret, rc = EXIT_SUCCESS, fan_fd = 0;
 	list_t fnotify_files, fnotify_wakelocks, pids;
-	list_t cpustat_info_old, cpustat_info_new;
 	list_t ctxt_switch_info_old, ctxt_switch_info_new;
 	link_t *l;
 	void *buffer;
@@ -332,8 +331,6 @@ int main(int argc, char **argv)
 #endif
 	json_object *json_tests = NULL;
 
-	list_init(&cpustat_info_old);
-	list_init(&cpustat_info_new);
 	list_init(&ctxt_switch_info_old);
 	list_init(&ctxt_switch_info_new);
 	list_init(&fnotify_files);
