@@ -122,17 +122,13 @@ static int mem_get_entry(FILE *fp, mem_info_t *mem)
 	mem->rss[type] += rss;
 	mem->pss[type] += pss;
 	mem->total[type] += size + rss + pss;
-
-	/* 
-	printf("%6.6s %16" PRIx64 "-%16" PRIx64 "SZ:%16" PRIx64 " Rss:%16" PRIx64 " Pss:%16" PRIx64
-	 	"\tTOT: SZ:%16" PRIx64 " Rss:%16" PRIx64 " Pss:%16" PRIx64 "\n",
-		mem_types[type], addr_start, addr_end, size, rss, pss,
-		mem->size[type], mem->rss[type], mem->pss[type]);
-	*/
-
 	return 0;
 }
 
+/*
+ *  mem_get_by_proc()
+ *	get mem info for a specific proc
+ */
 void mem_get_by_proc(proc_info_t *p, proc_state state)
 {
 	FILE *fp;
@@ -152,14 +148,12 @@ void mem_get_by_proc(proc_info_t *p, proc_state state)
 		fprintf(stderr, "Out of memory\n");
 		health_check_exit(EXIT_FAILURE);
 	}
-
 	m->proc = p;
 
 	while (mem_get_entry(fp, m) != -1)
 		;
 
 	list_append(mem, m);
-
 	fclose(fp);
 }
 
@@ -189,7 +183,6 @@ static const char *mem_loading(const double mem_rate)
 
 	if (rate == 0.0)
 		return "no change";
-
 	if (rate < 0) {
 		verb = "shrinking";
 		rate = -mem_rate;
@@ -404,12 +397,20 @@ void mem_dump_diff(
 #endif
 }
 
+/*
+ *  mem_init()
+ *	initialise mem lists
+ */
 void mem_init(void)
 {
 	list_init(&mem_info_old);
         list_init(&mem_info_new);
 }
 
+/*
+ *  mem_cleanup()
+ *	free mem lists
+ */
 void mem_cleanup(void)
 {
 	list_free(&mem_info_old, free);
