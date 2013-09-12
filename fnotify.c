@@ -39,6 +39,8 @@
 #include "fnotify.h"
 #include "health-check.h"
 
+static list_t fnotify_files;
+
 /*
  *  fnotify_event_init()
  *	initialize fnotify
@@ -157,7 +159,6 @@ char *fnotify_get_filename(const pid_t pid, const int fd)
 void fnotify_event_add(
 	const list_t *pids,
 	const struct fanotify_event_metadata *metadata,
-	list_t *fnotify_files,
 	list_t *fnotify_wakelocks)
 {
 	link_t *l;
@@ -216,7 +217,7 @@ void fnotify_event_add(
 				link_t	*l;
 				bool	found = false;
 
-				for (l = fnotify_files->head; l; l = l->next) {
+				for (l = fnotify_files.head; l; l = l->next) {
 					fileinfo = (fnotify_fileinfo_t *)l->data;
 					if ((metadata->mask == fileinfo->mask) &&
 					    (!strcmp(fileinfo->filename, fileinfo->filename))) {
@@ -234,7 +235,7 @@ void fnotify_event_add(
 					fileinfo->mask = metadata->mask;
 					fileinfo->proc = p;
 					fileinfo->count = 0;
-					list_append(fnotify_files, fileinfo);
+					list_append(&fnotify_files, fileinfo);
 				} else {
 					free(filename);
 				}
@@ -314,8 +315,7 @@ static inline bool fnotify_is_syspower(fnotify_fileinfo_t *info)
  */
 static void fnotify_dump_files(
 	json_object *j_tests,
-	const double duration,
-	const list_t *fnotify_files)
+	const double duration)
 {
 	list_t	sorted;
 	link_t 	*l;
@@ -327,12 +327,12 @@ static void fnotify_dump_files(
 #endif
 
 	list_init(&sorted);
-	for (l = fnotify_files->head; l; l = l->next) {
+	for (l = fnotify_files.head; l; l = l->next) {
 		fnotify_fileinfo_t *info = (fnotify_fileinfo_t *)l->data;
 		list_add_ordered(&sorted, info, fnotify_event_cmp_count);
 	}
 
-	if (fnotify_files->head && !(opt_flags & OPT_BRIEF)) {
+	if (fnotify_files.head && !(opt_flags & OPT_BRIEF)) {
 		printf("  PID  Process               Count  Op  Filename\n");
 		for (count = 0, total = 0, l = sorted.head; l; l = l->next) {
 			fnotify_fileinfo_t *info = (fnotify_fileinfo_t *)l->data;
@@ -387,8 +387,7 @@ static void fnotify_dump_files(
 static void fnotify_dump_io_ops(
 	json_object *j_tests,
 	const double duration,
-	const list_t *pids,
-	const list_t *fnotify_files)
+	const list_t *pids)
 {
 	link_t 	*l;
 	link_t  *lp;
@@ -407,7 +406,7 @@ static void fnotify_dump_io_ops(
 		memset(&io_ops, 0, sizeof(io_ops));
 		io_ops.proc = p;
 
-		for (l = fnotify_files->head; l; l = l->next) {
+		for (l = fnotify_files.head; l; l = l->next) {
 			fnotify_fileinfo_t *info = (fnotify_fileinfo_t *)l->data;
 
 			if (info->proc->pid != p->pid)
@@ -437,7 +436,7 @@ static void fnotify_dump_io_ops(
 	}
 
 	open_total = close_total = read_total = write_total = 0;
-	if (fnotify_files->head) {
+	if (fnotify_files.head) {
 		if (opt_flags & OPT_BRIEF) {
 			for (l = sorted.head; l; l = l->next) {
 				io_ops_t *io_ops = (io_ops_t *)l->data;
@@ -581,14 +580,23 @@ void fnotify_dump_wakelocks(
 void fnotify_dump_events(
 	json_object *j_tests,
 	const double duration,
-	const list_t *pids,
-	const list_t *fnotify_files)
+	const list_t *pids)
 {
 	printf("File I/O operations:\n");
-	if (!fnotify_files->head)
+	if (!fnotify_files.head)
 		printf(" No file I/O operations detected.\n\n");
 	else {
-		fnotify_dump_files(j_tests, duration, fnotify_files);
-		fnotify_dump_io_ops(j_tests, duration, pids, fnotify_files);
+		fnotify_dump_files(j_tests, duration);
+		fnotify_dump_io_ops(j_tests, duration, pids);
 	}
+}
+
+void fnotify_init(void)
+{
+	list_init(&fnotify_files);
+}
+
+void fnotify_cleanup(void)
+{
+	list_free(&fnotify_files, fnotify_event_free);
 }
