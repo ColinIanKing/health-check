@@ -270,6 +270,8 @@ static const char *find_executable(const char *filename)
 		strcpy(path, filename);
 		if (is_executable(path))
 			return path;
+		else 
+			fprintf(stderr, "%s is not a valid executable program\n", filename);
 	} else {
 		/* Try and find it in $PATH */
 		char *p = getenv("PATH");
@@ -308,6 +310,7 @@ static const char *find_executable(const char *filename)
 
 			p += skiplen;
 		}
+		fprintf(stderr, "Cannot find %s in $PATH\n", filename);
 	}
 	return NULL;	/* No hope */
 }
@@ -414,7 +417,7 @@ int main(int argc, char **argv)
 		const char *path;
 
 		if (pids.head != NULL) {
-			fprintf(stderr, "Cannot heath-check a program and provide pids to trace at same time.\n");
+			fprintf(stderr, "Cannot heath-check a program and provide pids to trace at same time\n");
 			health_check_exit(EXIT_FAILURE);
 		}
 
@@ -423,14 +426,15 @@ int main(int argc, char **argv)
 		if (path) {
 			pid_t pid = exec_executable(opt_username, path, argv);
 			proc_info_t *p;
-			if ((p = proc_cache_find_by_pid(pid)) == NULL) {
+			if ((p = proc_cache_add(pid, 0, false)) == NULL) {
 				fprintf(stderr, "Cannot find process with PID %i\n", pid);
 				return -1;
 			}
 			free(p->cmdline);
 			p->cmdline = strdup(basename(path));
 			proc_pids_add_proc(&pids, p);
-		}
+		} else
+			health_check_exit(EXIT_FAILURE);
 	}
 
 	if (pids.head == NULL) {
@@ -477,13 +481,7 @@ int main(int argc, char **argv)
 
 	signal(SIGINT, &handle_sigint);
 	syscall_init();
-	for (l = pids.head; l; l = l->next) {
-		proc_info_t *p = (proc_info_t *)l->data;
-		if (pthread_create(&p->pthread, NULL, syscall_trace, &p->pid) < 0) {
-			fprintf(stderr, "Failed to create tracing thread for pid %i\n", p->pid);
-			goto out;
-		}
-	}
+	syscall_trace_proc(&pids);
 
 	event_init();
 
@@ -568,7 +566,7 @@ int main(int argc, char **argv)
 
 out:
 	net_connection_cleanup();
-	syscall_cleanup(&pids);
+	syscall_cleanup();
 	free(buffer);
 	list_free(&pids, NULL);
 	list_free(&event_info_old, event_free);

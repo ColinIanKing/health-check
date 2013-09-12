@@ -45,14 +45,14 @@
 #define HASH_TABLE_SIZE	(1997)		/* Must be prime */
 #define ARRAY_SIZE(a)	(sizeof(a) / sizeof(a[0]))
 
-static pthread_mutex_t ptrace_mutex = PTHREAD_MUTEX_INITIALIZER;
-static pthread_mutex_t fd_cache_mutex = PTHREAD_MUTEX_INITIALIZER;
-static pthread_mutex_t procs_traced_mutex = PTHREAD_MUTEX_INITIALIZER;
+static pthread_t syscall_tracer;
 int procs_traced = 0;
 static int syscall_count = 0;
 static int info_emit = false;
 
 static list_t syscall_wakelocks;
+static list_t syscall_contexts;
+static list_t *__pids;	/* We need to fix this into a global pids cache/list */
 
 /* minimum allowed thresholds for poll'd system calls that have timeouts */
 static double syscall_timeout[] = {
@@ -309,21 +309,44 @@ static void syscall_mq_timedsend_ret(json_object *j_obj, const syscall_t *sc, co
 #endif
 
 /*
+ *  syscall_is_call_entry()
+ *	are we entering a system call (true) or exiting it (false)
+ */
+static bool syscall_is_call_entry(const pid_t pid)
+{
+#if defined(__x86_64__)
+	errno = 0;
+	if (ptrace(PTRACE_PEEKUSER, pid, 8 * RAX, NULL) != -ENOSYS)
+		return false;
+	if (errno) {
+		return false;
+	}
+	return true;
+
+#elif defined(__i386__)
+	errno = 0;
+	if (ptrace(PTRACE_PEEKUSER, pid, 8 * EAX, NULL) != -ENOSYS)
+		return false;
+	if (errno)
+		return false;
+	return true;
+
+#elif defined(__arm__)
+	(void)pid;
+
+	return true;	/* Need to fix this */
+#endif
+	return false;
+}
+
+
+/*
  *  syscall_get_call()
  *	get syscall number
  */
 static int syscall_get_call(const pid_t pid, int *syscall)
 {
 #if defined(__x86_64__)
-	errno = 0;
-	if (ptrace(PTRACE_PEEKUSER, pid, 8 * RAX, NULL) != -ENOSYS) {
-		*syscall = -1;
-		return -1;	/* Not in syscall entry */
-	}
-	if (errno) {
-		*syscall = -1;
-		return -1;
-	}
 	errno = 0;
 	*syscall = ptrace(PTRACE_PEEKUSER, pid, 8 * ORIG_RAX, NULL);
 	if (errno) {
@@ -332,15 +355,6 @@ static int syscall_get_call(const pid_t pid, int *syscall)
 	}
 	return 0;
 #elif defined(__i386__)
-	errno = 0;
-	if (ptrace(PTRACE_PEEKUSER, pid, 8 * EAX, NULL) != -ENOSYS) {
-		*syscall = -1;
-		return -1;
-	}
-	if (errno) {
-		*syscall = -1;
-		return -1;
-	}
 	errno = 0;
 	*syscall = ptrace(PTRACE_PEEKUSER, pid, 4 * ORIG_EAX, NULL);
 	if (errno) {
@@ -656,18 +670,16 @@ static void syscall_count_timeout(
 	double t = BUCKET_START;
 	int bucket = 0;
 
-	while (t <= timeout) {
+	while ((t <= timeout) && (bucket < MAX_BUCKET - 1)) {
 		bucket++;
 		t *= 10;
 	}
 
-	pthread_mutex_lock(&ptrace_mutex);
 	s->poll_count++;
 
 	/*  Indefinite waits we ignore in the stats */
 	if (timeout < 0.0) {
 		s->poll_infinite++;
-		pthread_mutex_unlock(&ptrace_mutex);
 		return;
 	}
 
@@ -684,16 +696,14 @@ static void syscall_count_timeout(
 	if (timeout == 0.0) {
 		s->poll_zero++;
 		s->poll_too_low++;
-		pthread_mutex_unlock(&ptrace_mutex);
 		return;
 	}
 
 	s->poll_total += timeout;
 	s->bucket[bucket]++;
+
 	if (timeout <= threshold)
 		s->poll_too_low++;
-
-	pthread_mutex_unlock(&ptrace_mutex);
 }
 
 /*
@@ -827,7 +837,6 @@ static void syscall_wakelock_fd_cache_free(void)
 {
 	int i;
 
-	pthread_mutex_lock(&fd_cache_mutex);
 	for (i = 0; i < HASH_TABLE_SIZE; i++) {
 		fd_cache_t *next, *fc = fd_cache[i];
 
@@ -838,7 +847,6 @@ static void syscall_wakelock_fd_cache_free(void)
 			fc = next;
 		}
 	}
-	pthread_mutex_unlock(&fd_cache_mutex);
 }
 
 
@@ -924,11 +932,8 @@ static void syscall_write_args(
 			health_check_exit(EXIT_FAILURE);
 		}
 		pthread_mutex_init(&fc->mutex, NULL);
-
-		pthread_mutex_lock(&fd_cache_mutex);
 		fc->next = fd_cache[h];
 		fd_cache[h] = fc;
-		pthread_mutex_unlock(&fd_cache_mutex);
 	} else {
 		/*
 		 * We've found a cached file, but it may be null if closed
@@ -944,7 +949,6 @@ static void syscall_write_args(
 			}
 		}
 		pthread_mutex_unlock(&fc->mutex);
-
 	}
 
 	pthread_mutex_lock(&fc->mutex);
@@ -1369,10 +1373,7 @@ static void syscall_account_return(
 				}
 				info->timeout = timeout;
 				info->ret = ret;
-
-				pthread_mutex_lock(&ptrace_mutex);
 				list_append(&s->return_history, info);
-				pthread_mutex_unlock(&ptrace_mutex);
 			}
 		}
 	}
@@ -1398,16 +1399,13 @@ static syscall_info_t *syscall_count_usage(
 
 	if (sc->do_accounting) {
 		*timeout = -1.0;
-		pthread_mutex_lock(&ptrace_mutex);
 		for (s = syscall_info[h]; s; s = s->next) {
-			if ((s->syscall == syscall) &&
-		    	(s->proc->pid == pid)) {
+			if ((s->syscall == syscall) && (s->proc->pid == pid)) {
 				s->count++;
 				found = true;
 				break;
 			}
 		}
-		pthread_mutex_unlock(&ptrace_mutex);
 
 		if (!found) {
 			/*
@@ -1429,51 +1427,130 @@ static syscall_info_t *syscall_count_usage(
 			s->poll_too_low = 0;
 			list_init(&s->return_history);
 
-			pthread_mutex_lock(&ptrace_mutex);
 			s->next = syscall_info[h];
 			syscall_info[h] = s;
-			pthread_mutex_unlock(&ptrace_mutex);
 		}
 	}
-
 	if (sc->check_func) {
-		pthread_mutex_lock(&ptrace_mutex);
 		if (++syscall_count >= opt_max_syscalls)
 			keep_running = false;
-		pthread_mutex_unlock(&ptrace_mutex);
 		sc->check_func(sc, s, pid, *(sc->threshold), timeout);
 	}
+
 	return s;
 }
 
-/*
- *  syscall_wait()
- *	wait for ptrace
- */
-static bool syscall_wait(const pid_t pid)
+void syscall_handle_syscall(syscall_context_t *ctxt)
 {
-	while (keep_running) {
-		int status;
-		pid_t wpid;
-		ptrace(PTRACE_SYSCALL, pid, 0, 0);
-		wpid = waitpid(pid, &status, __WALL /*| WNOHANG */);
-		if (wpid <= 0)
-			continue;
-		if (WIFSTOPPED(status) &&
-		    WSTOPSIG(status) & 0x80) {
-			if (pid != wpid)
-				printf("Waited for %d, got %d\n", pid, wpid);
-			return false;
+	if (syscall_is_call_entry(ctxt->pid)) {
+		if (syscall_get_call(ctxt->pid, &ctxt->syscall) == -1) {
+			ctxt->syscall_info = NULL;
+			ctxt->timeout = 0.0;
+			return;
+		} else {
+			ctxt->syscall_info = syscall_count_usage(ctxt->pid, ctxt->syscall, &ctxt->timeout);
+			return;
 		}
-		if (WIFEXITED(status)) {
-			printf("PROC %d exit\n", pid);
-			pthread_mutex_lock(&procs_traced_mutex);
-			procs_traced--;
-			pthread_mutex_unlock(&procs_traced_mutex);
-			return true;
+	} else {
+		if (ctxt->syscall_info != NULL)
+			syscall_account_return(ctxt->syscall_info, ctxt->pid, ctxt->syscall, ctxt->timeout);
+		/* We've got a return, so clear info for next syscall */
+		ctxt->syscall = -1;
+		ctxt->syscall_info = NULL;
+		ctxt->timeout = 0.0;
+	}
+}
+
+void syscall_handle_event(syscall_context_t *ctxt, int event)
+{
+	if (event == PTRACE_EVENT_CLONE ||
+	    event == PTRACE_EVENT_FORK ||
+	    event == PTRACE_EVENT_VFORK) {
+		unsigned long msg;
+		pid_t child;
+		proc_info_t *p;
+
+		ptrace(PTRACE_GETEVENTMSG, ctxt->pid, 0, &msg);
+		child = (pid_t)msg;
+
+		if ((p = proc_cache_add(child, 0, false)) != NULL)
+			proc_pids_add_proc(__pids, p);
+	}
+}
+
+void syscall_handle_trap(syscall_context_t *ctxt)
+{
+	siginfo_t siginfo;
+
+	if (ptrace(PTRACE_GETSIGINFO, ctxt->pid, 0, &siginfo) == -1) {
+		fprintf(stderr, "Cannot get signal info on pid %d\n", ctxt->pid);
+		return;
+	}
+
+	if (siginfo.si_code == SIGTRAP) {
+		syscall_handle_syscall(ctxt);
+	} else {
+		/* printf("breakpoint on PID %d\n", ctxt->pid); */
+	}
+}
+
+int syscall_handle_stop(syscall_context_t *ctxt, const int status)
+{
+	int event = status >> 16;
+	int sig = WSTOPSIG(status);
+			
+	if (sig == SIGTRAP) {
+		if (event) {
+			syscall_handle_event(ctxt, event);
+		} else {
+			syscall_handle_trap(ctxt);
+		}
+	} else if (sig == (SIGTRAP | 0x80)) {
+		syscall_handle_syscall(ctxt);
+	} else if ((sig != SIGCHLD) && (sig != SIGSTOP)) {
+		return sig;
+	}
+	return 0;
+}
+
+/*
+ *  syscall_context_find_by_pid()
+ * 	find syscall context by pid
+ */
+syscall_context_t *syscall_context_find_by_pid(const pid_t pid)
+{
+	link_t *l;
+	syscall_context_t *ctxt;
+
+	for (l = syscall_contexts.head; l; l = l->next) {
+		ctxt = (syscall_context_t *)l->data;
+		if (ctxt->pid == pid) {
+			return ctxt;
 		}
 	}
-	return true;
+
+	return NULL;
+}
+
+syscall_context_t *syscall_get_context(pid_t pid)
+{
+	syscall_context_t *ctxt;
+
+	ctxt = syscall_context_find_by_pid(pid);
+	if (ctxt == NULL) {
+		if ((ctxt = calloc(1, sizeof(*ctxt))) == NULL) {
+			fprintf(stderr, "Out of memory allocating tracing context\n");
+			return NULL;
+		}
+		ctxt->pid = pid;
+		ctxt->timeout = 0.0;
+		ctxt->syscall = -1;
+		ctxt->syscall_info = NULL;
+		ctxt->alive = true;
+		list_append(&syscall_contexts, ctxt);
+		procs_traced++;
+	}
+	return ctxt;
 }
 
 /*
@@ -1482,57 +1559,101 @@ static bool syscall_wait(const pid_t pid)
  */
 void *syscall_trace(void *arg)
 {
-	int status, syscall;
-	pid_t pid = *((pid_t*)arg);
+	syscall_context_t *ctxt;
+	int status;
+	link_t *l;
 
-	pthread_mutex_lock(&procs_traced_mutex);
-	procs_traced++;
-	pthread_mutex_unlock(&procs_traced_mutex);
+	(void)arg;
 
-	//waitpid(pid, &status, 0);
-	ptrace(PTRACE_ATTACH, pid, 0, 0);
-	waitpid(pid, &status, 0);
-	ptrace(PTRACE_SETOPTIONS, pid, 0, PTRACE_O_TRACESYSGOOD);
-
-	while (keep_running) {
-		syscall_info_t *s;
-		double timeout;
-		if (syscall_wait(pid))
-			break;
-		if (syscall_get_call(pid, &syscall) < 0)
-			continue;
-		s = syscall_count_usage(pid, syscall, &timeout);
-		if (syscall_wait(pid))
-			break;
-		syscall_account_return(s, pid, syscall, timeout);
+	for (l = syscall_contexts.head; l; l = l->next) {
+		ctxt = (syscall_context_t *)l->data;	
+		ptrace(PTRACE_ATTACH, ctxt->pid, 0, 0);
+		ptrace(PTRACE_SETOPTIONS, ctxt->pid, 0,
+			PTRACE_O_TRACESYSGOOD |
+			PTRACE_O_TRACECLONE | 
+			PTRACE_O_TRACEFORK |
+			PTRACE_O_TRACEVFORK);
+		procs_traced++;
 	}
 
-	ptrace(PTRACE_DETACH, pid, 0, 0);
+	while (keep_running && procs_traced > 0) {
+		int sig = 0;
+		pid_t pid;
+
+		errno = 0;
+		if ((pid = waitpid(-1, &status, __WALL)) == -1) {
+			if (errno == ECHILD)
+				break;
+		}
+
+		if ((ctxt = syscall_get_context(pid)) == NULL) {
+			fprintf(stderr, "Out of memory allocating tracing context\n");
+			break;
+		}
+
+		if (WIFSTOPPED(status)) {
+			sig = syscall_handle_stop(ctxt, status);
+		} else if (WIFEXITED(status)) {
+			ctxt->alive = false;
+			procs_traced--;
+		} 
+#if SYSCALL_PTRACE_DEBUG
+		else if (WIFSIGNALED(status)) {
+			printf("Signaled %d -> %d\n", ctxt->pid, WTERMSIG(status));
+		} else if (WIFCONTINUED(status)) {
+			printf("Continued %d\n", ctxt->pid);
+		} else {
+			printf("Unexpected status %d for PID %d\n", status, ctxt->pid);
+		}
+#endif
+		ptrace(PTRACE_SYSCALL, ctxt->pid, 0, sig);
+	}
+
+	for (l = syscall_contexts.head; l; l = l->next) {
+		ctxt = (syscall_context_t *)l->data;
+		if (ctxt->alive) {
+			ptrace(PTRACE_CONT, ctxt->pid, 0, 0);
+			ptrace(PTRACE_DETACH, ctxt->pid, 0, 0);
+		}
+	}
+
+	keep_running = false;
 	pthread_exit(0);
 }
 
 void syscall_init(void)
 {
 	list_init(&syscall_wakelocks);
+	list_init(&syscall_contexts);
 }
 
-void syscall_cleanup(list_t *pids)
+void syscall_cleanup(void)
+{
+	pthread_cancel(syscall_tracer);
+	pthread_join(syscall_tracer, NULL);
+
+	list_free(&syscall_wakelocks, syscall_wakelock_free);
+	list_free(&syscall_contexts, free);
+	syscall_wakelock_fd_cache_free();
+	syscall_hashtable_free();
+}
+
+int syscall_trace_proc(list_t *pids)
 {
 	link_t *l;
 
+	__pids = pids;
+
 	for (l = pids->head; l; l = l->next) {
 		proc_info_t *p = (proc_info_t *)l->data;
-		if (p->pthread) {
-			ptrace(PTRACE_CONT, p->pid, 0, 0);
-			ptrace(PTRACE_DETACH, p->pid, 0, 0);
-			pthread_cancel(p->pthread);
-			pthread_join(p->pthread, NULL);
-		}
+		(void)syscall_get_context(p->pid);
 	}
 
-	list_free(&syscall_wakelocks, syscall_wakelock_free);
-	syscall_wakelock_fd_cache_free();
-	syscall_hashtable_free();
+	if (pthread_create(&syscall_tracer, NULL, syscall_trace, NULL) < 0) {
+		fprintf(stderr, "Failed to create tracing thread\n");
+		return -1;
+	}
+	return 0;
 }
 
 /* system call table */

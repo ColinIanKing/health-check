@@ -24,6 +24,8 @@
 #include <stdbool.h>
 #include "json.h"
 
+#include "alloc.h"
+
 #define OPT_GET_CHILDREN                0x00000001
 #define OPT_BRIEF                       0x00000002
 #define OPT_ADDR_RESOLVE		0x00000004

@@ -33,6 +33,8 @@
 #include "health-check.h"
 
 list_t	proc_cache;
+static pthread_mutex_t pids_mutex = PTHREAD_MUTEX_INITIALIZER;
+static pthread_mutex_t proc_cache_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 /*
  *  proc_cache_add()
@@ -51,11 +53,15 @@ proc_info_t *proc_cache_add(const pid_t pid, const pid_t ppid, const bool is_thr
 		return NULL;
 	}
 
+	pthread_mutex_lock(&proc_cache_mutex);
 	for (l = proc_cache.head; l; l = l->next) {
 		proc_info_t *p = (proc_info_t *)l->data;
-		if (p->pid == pid)
+		if (p->pid == pid) {
+			pthread_mutex_unlock(&proc_cache_mutex);
 			return p;
+		}
 	}
+	pthread_mutex_unlock(&proc_cache_mutex);
 
 	if ((p = calloc(1, sizeof(*p))) == NULL) {
 		fprintf(stderr, "Out of memory\n");
@@ -67,7 +73,9 @@ proc_info_t *proc_cache_add(const pid_t pid, const pid_t ppid, const bool is_thr
 	p->cmdline = get_pid_cmdline(pid);
 	p->comm = get_pid_comm(pid);
 	p->is_thread = is_thread;
+	pthread_mutex_lock(&proc_cache_mutex);
 	list_append(&proc_cache, p);
+	pthread_mutex_unlock(&proc_cache_mutex);
 
 	return p;
 }
@@ -80,12 +88,16 @@ proc_info_t *proc_cache_find_by_pid(const pid_t pid)
 {
 	link_t *l;
 
+	pthread_mutex_lock(&proc_cache_mutex);
 	for (l = proc_cache.head; l; l = l->next) {
 		proc_info_t *p = (proc_info_t *)l->data;
 
-		if (p->pid == pid)
+		if (p->pid == pid) {
+			pthread_mutex_unlock(&proc_cache_mutex);
 			return p;
+		}
 	}
+	pthread_mutex_unlock(&proc_cache_mutex);
 
 	return proc_cache_add(pid, 0, false);	/* Need to find parent really */
 }
@@ -209,7 +221,9 @@ void proc_pids_add_proc(list_t *pids, proc_info_t *p)
 		fprintf(stderr, "Cannot run health-check on itself. Aborting.\n");
 		health_check_exit(EXIT_FAILURE);
 	}
+	pthread_mutex_lock(&pids_mutex);
 	list_append(pids, p);
+	pthread_mutex_unlock(&pids_mutex);
 }
 
 /*
@@ -223,6 +237,7 @@ int proc_cache_find_by_procname(
 	bool found = false;
 	link_t *l;
 
+	pthread_mutex_lock(&proc_cache_mutex);
 	for (l = proc_cache.head; l; l = l->next) {
 		proc_info_t *p = (proc_info_t *)l->data;
 
@@ -231,6 +246,7 @@ int proc_cache_find_by_procname(
 			found = true;
 		}
 	}
+	pthread_mutex_unlock(&proc_cache_mutex);
 
 	if (!found) {
 		fprintf(stderr, "Cannot find process %s\n", procname);

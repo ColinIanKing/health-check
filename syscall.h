@@ -98,6 +98,14 @@ typedef struct syscall_wakelock_info {
 	struct syscall_wakelock_info *paired;	/* ptr to lock/unlock pair */
 } syscall_wakelock_info_t;
 
+typedef struct {
+	pid_t		pid;		/* process */
+	int		syscall;	/* syscall detected */
+	double		timeout;	/* timeout on poll syscalls */
+	syscall_info_t	*syscall_info;	/* syscall accounting */
+	bool		alive;		/* is traced thread alive */
+} syscall_context_t;
+
 extern syscall_t syscalls[];
 extern size_t syscalls_len;
 extern int procs_traced;
@@ -106,7 +114,8 @@ extern void *syscall_trace(void *arg);
 extern void syscall_dump_hashtable(json_object *j_tests, const double duration);
 extern void syscall_dump_pollers(json_object *j_tests, const double duration);
 extern void syscall_init(void);
-extern void syscall_cleanup(list_t *pids);
+extern void syscall_cleanup(void);
 extern void syscall_dump_wakelocks(json_object *j_tests, const double duration, list_t *pids);
+extern int syscall_trace_proc(list_t *pids);
 
 #endif

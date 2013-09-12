@@ -34,7 +34,6 @@ typedef struct {
 	char		*comm;		/* Kernel process comm name */
 	char		*cmdline;	/* Process name from cmdline */
 	bool		is_thread;	/* true if process is a thread */
-	pthread_t	pthread;	/* thread to do ptrace monitoring of process */
 } proc_info_t;
 
 extern list_t  proc_cache;
