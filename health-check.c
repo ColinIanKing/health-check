@@ -72,7 +72,7 @@ static void handle_sigint(int dummy)
  */
 void health_check_exit(const int status)
 {
-	event_deinit();
+	event_stop();
 	exit(status);
 }
 
@@ -320,7 +320,6 @@ int main(int argc, char **argv)
 	double actual_duration, opt_duration_secs = 60.0;
 	struct timeval tv_start, tv_end, tv_now, duration;
 	int ret, rc = EXIT_SUCCESS, fan_fd = 0;
-	list_t event_info_old, event_info_new;
 	list_t fnotify_files, fnotify_wakelocks, pids;
 	list_t cpustat_info_old, cpustat_info_new;
 	list_t ctxt_switch_info_old, ctxt_switch_info_new;
@@ -333,8 +332,6 @@ int main(int argc, char **argv)
 #endif
 	json_object *json_tests = NULL;
 
-	list_init(&event_info_old);
-	list_init(&event_info_new);
 	list_init(&cpustat_info_old);
 	list_init(&cpustat_info_new);
 	list_init(&ctxt_switch_info_old);
@@ -489,7 +486,7 @@ int main(int argc, char **argv)
 	gettimeofday(&tv_start, NULL);
 	tv_end = timeval_add(&tv_start, &duration);
 
-	event_get(&pids, &event_info_old);
+	event_get_all_pids(&pids, PROC_START);
 	cpustat_get(&pids, &cpustat_info_old);
 
 	mem_get_all_pids(&pids, PROC_START);
@@ -535,16 +532,16 @@ int main(int argc, char **argv)
 	duration = timeval_sub(&tv_now, &tv_start);
 	actual_duration = timeval_to_double(&duration);
 
-	event_get(&pids, &event_info_new);
+	event_get_all_pids(&pids, PROC_FINISH);
 	cpustat_get(&pids, &cpustat_info_new);
 	mem_get_all_pids(&pids, PROC_FINISH);
 	ctxt_switch_get(&pids, &ctxt_switch_info_new);
-	event_deinit();
+	event_stop();
 
 	signal(SIGINT, SIG_DFL);
 
 	cpustat_dump_diff(json_tests, actual_duration, &cpustat_info_old, &cpustat_info_new);
-	event_dump_diff(json_tests, actual_duration, &event_info_old, &event_info_new);
+	event_dump_diff(json_tests, actual_duration);
 	ctxt_switch_dump_diff(json_tests, actual_duration, &ctxt_switch_info_old, &ctxt_switch_info_new);
 	fnotify_dump_events(json_tests, actual_duration, &pids, &fnotify_files);
 	syscall_dump_hashtable(json_tests, actual_duration);
@@ -567,10 +564,9 @@ out:
 	mem_cleanup();
 	net_connection_cleanup();
 	syscall_cleanup();
+	event_cleanup();
 	free(buffer);
 	list_free(&pids, NULL);
-	list_free(&event_info_old, event_free);
-	list_free(&event_info_new, event_free);
 	list_free(&cpustat_info_old, free);
 	list_free(&cpustat_info_new, free);
 	list_free(&ctxt_switch_info_old, free);

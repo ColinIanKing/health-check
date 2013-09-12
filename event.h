@@ -36,11 +36,10 @@ typedef struct {
 	uint64_t	count;		/* Number of events */
 } event_info_t;
 
-extern void timer_stat_set(const char *str, const bool carp);
-extern void event_free(void *data);
-extern void event_get(const list_t *pids, list_t *events);
-extern void event_dump_diff(json_object *j_tests, const double duration, const list_t *events_old, const list_t *events_new);
+extern void event_get_all_pids(const list_t *pids, proc_state state);
+extern void event_dump_diff(json_object *j_tests, const double duration);
+extern void event_stop(void);
 extern void event_init(void);
-extern void event_deinit(void);
+extern void event_cleanup(void);
 
 #endif

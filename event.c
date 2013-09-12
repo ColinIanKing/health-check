@@ -30,6 +30,8 @@
 #include "event.h"
 #include "health-check.h"
 
+static list_t event_info_old, event_info_new;
+
 /*
  *  event_timer_stat_set()
  *	enable/disable timer stat
@@ -54,7 +56,7 @@ static void event_timer_stat_set(const char *str, const bool carp)
  *  event_free()
  *	free event info
  */
-void event_free(void *data)
+static void event_free(void *data)
 {
 	event_info_t *ev = (event_info_t *)data;
 
@@ -131,14 +133,15 @@ static void event_add(
 }
 
 /*
- *  event_get()
+ *  event_get_all_pids()
  *	scan /proc/timer_stats and populate a timer stat hash table with
  *	unique events
  */
-void event_get(const list_t *pids, list_t *events)
+void event_get_all_pids(const list_t *pids, proc_state state)
 {
 	FILE *fp;
 	char buf[4096];
+	list_t *events = (state == PROC_START) ? &event_info_old : &event_info_new;
 
 	if ((fp = fopen(TIMER_STATS, "r")) == NULL) {
 		fprintf(stderr, "Cannot open %s\n", TIMER_STATS);
@@ -239,9 +242,7 @@ static uint64_t event_delta(const event_info_t *event_new, const list_t *events_
  */
 void event_dump_diff(
 	json_object *j_tests,
-	const double duration,
-	const list_t *events_old,
-	const list_t *events_new)
+	const double duration)
 {
 	link_t *l;
 #ifndef JSON_OUTPUT
@@ -250,28 +251,27 @@ void event_dump_diff(
 
 	printf("Wakeups:\n");
 
-	if (events_new->head) {
+	if (event_info_new.head) {
 		if (opt_flags & OPT_BRIEF) {
 			double event_rate = 0.0;
-			for (l = events_new->head; l; l = l->next) {
+			for (l = event_info_new.head; l; l = l->next) {
 				event_info_t *event_new = (event_info_t *)l->data;
-				uint64_t delta = event_delta(event_new, events_old);
+				uint64_t delta = event_delta(event_new, &event_info_old);
 				event_rate += (double)delta;
 			}
 			event_rate /= duration;
 			printf(" %.2f wakeups/sec (%s)\n\n",
 				event_rate, event_loading(event_rate));
-			
 		} else {
 			int count = 0;
 			double total = 0.0;
 
 			printf("  PID  Process               Wake/Sec Kernel Functions\n");
-			for (l = events_new->head; l; l = l->next) {
+			for (l = event_info_new.head; l; l = l->next) {
 				event_info_t *event_new = (event_info_t *)l->data;
-				uint64_t delta = event_delta(event_new, events_old);
+				uint64_t delta = event_delta(event_new, &event_info_old);
 				double event_rate = (double)delta / duration;
-	
+
 				printf(" %5d %-20.20s %9.2f (%s, %s) (%s)\n",
 					event_new->proc->pid, event_new->proc->cmdline,
 					event_rate,
@@ -283,7 +283,6 @@ void event_dump_diff(
 			if (count > 1)
 				printf(" %-27.27s%9.2f\n", "Total",
 					total);
-				
 			printf("\n");
 		}
 	} else {
@@ -299,9 +298,9 @@ void event_dump_diff(
 		j_obj_obj_add(j_tests, "wakeup-events", (j_event_test = j_obj_new_obj()));
 		j_obj_obj_add(j_event_test, "wakeup-events-per-process", (j_events = j_obj_new_array()));
 
-		for (l = events_new->head; l; l = l->next) {
+		for (l = event_info_new.head; l; l = l->next) {
 			event_info_t *event = (event_info_t *)l->data;
-			uint64_t delta = event_delta(event, events_old);
+			uint64_t delta = event_delta(event, &event_info_old);
 			double event_rate = (double)delta / duration;
 			total_delta += delta;
 
@@ -328,13 +327,34 @@ void event_dump_diff(
 #endif
 }
 
+/*
+ *  event_init()
+ *	initialise events and start timer stat
+ */
 void event_init(void)
 {
+	list_init(&event_info_old);
+	list_init(&event_info_new);
+
 	/* Should really catch signals and set back to zero before we die */
         event_timer_stat_set("1", true);
 }
 
-void event_deinit(void)
+/*
+ *  event_stop()
+ *	stop event timer stat
+ */
+void event_stop(void)
 {
         event_timer_stat_set("0", false);
+}
+
+/*
+ *  event_cleanup()
+ *	free memory
+ */
+void event_cleanup(void)
+{
+	list_free(&event_info_old, event_free);
+	list_free(&event_info_new, event_free);
 }
