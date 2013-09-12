@@ -538,7 +538,7 @@ int main(int argc, char **argv)
 
 	cpustat_dump_diff(json_tests);
 	event_dump_diff(json_tests, actual_duration);
-	ctxt_switch_dump_diff(json_tests, actual_duration);
+	ctxt_switch_dump_diff(json_tests);
 	fnotify_dump_events(json_tests, actual_duration, &pids);
 	syscall_dump_hashtable(json_tests, actual_duration);
 	syscall_dump_pollers(json_tests, actual_duration);
