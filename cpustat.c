@@ -43,7 +43,7 @@ static const char *cpustat_loading(const double cpu_percent)
 	if (cpu_percent == 0.0)
 		return "idle";
 	if (cpu_percent > 99.0)
-		return "1 CPU fully loaded";
+		return "CPU fully loaded";
 	if (cpu_percent > 95.0)
 		return "nearly 1 CPU fully loaded";
 	if (cpu_percent > 85.0)
@@ -134,7 +134,7 @@ void cpustat_dump_diff(
 				100.0 * ttime_total,
 				cpustat_loading(100.0 * (double)ttime_total));
 		} else {
-			printf("  PID  Process                USR%%   SYS%%  TOTAL%%  Duration\n");
+			printf("  PID  Process                USR%%   SYS%% TOTAL%%   Duration\n");
 			for (ln = sorted.head; ln; ln = ln->next) {
 				cin = (cpustat_info_t*)ln->data;
 				printf(" %5d %-20.20s %6.2f %6.2f %6.2f   %8.2f  (%s)\n",
