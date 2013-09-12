@@ -22,6 +22,8 @@
 #include <sys/types.h>
 #include <unistd.h>
 
+#include "timeval.h"
+
 /*
  *  timeval_to_double()
  *	convert timeval to seconds as a double
