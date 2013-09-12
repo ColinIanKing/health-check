@@ -23,15 +23,6 @@
 #include <unistd.h>
 
 /*
- *  timeval_double
- *	timeval to a double
- */
-double timeval_double(const struct timeval *tv)
-{
-	return (double)tv->tv_sec + ((double)tv->tv_usec / 1000000.0);
-}
-
-/*
  *  timeval_to_double()
  *	convert timeval to seconds as a double
  */
