@@ -332,9 +332,8 @@ int main(int argc, char **argv)
 
 	list_init(&pids);
 	proc_cache_init();
-	fnotify_init();
-	mem_init();
-	net_connection_init();
+
+	/* Get a cached view of current process state */
 	proc_cache_get();
 	proc_cache_get_pthreads();
 
@@ -443,7 +442,9 @@ int main(int argc, char **argv)
 		health_check_exit(EXIT_FAILURE);
 	}
 
+	net_connection_init();
 	net_connection_pids(&pids);
+
 #ifdef JSON_OUTPUT
 	if (opt_json_file) {
 		if ((json_obj = json_object_new_object()) == NULL) {
@@ -457,6 +458,7 @@ int main(int argc, char **argv)
 		json_object_object_add(json_obj, "health-check", json_tests);
 	}
 #endif
+	fnotify_init();
 	if ((fan_fd = fnotify_event_init()) < 0)
 		health_check_exit(EXIT_FAILURE);
 
@@ -470,6 +472,7 @@ int main(int argc, char **argv)
 	syscall_init();
 	syscall_trace_proc(&pids);
 
+	mem_init();
 	event_init();
 	cpustat_init();
 	ctxt_switch_init();
@@ -482,7 +485,6 @@ int main(int argc, char **argv)
 
 	event_get_all_pids(&pids, PROC_START);
 	cpustat_get_all_pids(&pids, PROC_START);
-
 	mem_get_all_pids(&pids, PROC_START);
 	ctxt_switch_get_all_pids(&pids, PROC_START);
 
