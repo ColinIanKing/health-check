@@ -1487,8 +1487,6 @@ void syscall_handle_event(syscall_context_t *ctxt, int event)
 			mem_get_by_proc(p, PROC_START);
 			cpustat_get_by_proc(p, PROC_START);
 		}
-		printf("PROC INFO for new %d --> %p\n", child, p);
-
 		net_connection_pid(child);	/* Update net connections on new process */
 	}
 }
@@ -1547,7 +1545,7 @@ syscall_context_t *syscall_context_find_by_pid(const pid_t pid)
 	return NULL;
 }
 
-syscall_context_t *syscall_get_context(pid_t pid)
+static syscall_context_t *syscall_get_context(pid_t pid)
 {
 	syscall_context_t *ctxt;
 
@@ -1558,6 +1556,7 @@ syscall_context_t *syscall_get_context(pid_t pid)
 			return NULL;
 		}
 		ctxt->pid = pid;
+		ctxt->proc = proc_cache_find_by_pid(pid);
 		ctxt->timeout = 0.0;
 		ctxt->syscall = -1;
 		ctxt->syscall_info = NULL;
@@ -1609,6 +1608,9 @@ void *syscall_trace(void *arg)
 		if (WIFSTOPPED(status)) {
 			sig = syscall_handle_stop(ctxt, status);
 		} else if (WIFEXITED(status)) {
+			if (ctxt->proc)
+				cpustat_get_by_proc(ctxt->proc, PROC_FINISH);
+
 			ctxt->alive = false;
 			procs_traced--;
 		} 

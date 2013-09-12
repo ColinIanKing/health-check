@@ -134,19 +134,20 @@ void cpustat_dump_diff(
 				100.0 * ttime_total,
 				cpustat_loading(100.0 * (double)ttime_total));
 		} else {
-			printf("  PID  Process                USR%%   SYS%%  TOTAL%%\n");
+			printf("  PID  Process                USR%%   SYS%%  TOTAL%%  Duration\n");
 			for (ln = sorted.head; ln; ln = ln->next) {
 				cin = (cpustat_info_t*)ln->data;
-				printf(" %5d %-20.20s %6.2f %6.2f %6.2f (%s)\n",
+				printf(" %5d %-20.20s %6.2f %6.2f %6.2f   %8.2f  (%s)\n",
 					cin->proc->pid,
 					cin->proc->cmdline,
 					100.0 * (double)cin->utime / (nr_ticks * cin->duration),
 					100.0 * (double)cin->stime / (nr_ticks * cin->duration),
 					100.0 * (double)cin->ttime / (nr_ticks * cin->duration),
+					cin->duration,
 					cpustat_loading(100.0 * (double)cin->ttime / (nr_ticks * cin->duration)));
 			}
 			if (count > 1)
-				printf(" %-26.26s %6.2f %6.2f %6.2f (%s)\n",
+				printf(" %-26.26s %6.2f %6.2f %6.2f             (%s)\n",
 					"Total",
 					100.0 * utime_total,
 					100.0 * stime_total,
@@ -249,7 +250,6 @@ int cpustat_get_all_pids(const list_t *pids, proc_state state)
 			continue;
 
 		cpustat_get_by_proc(p, state);
-
 	}
 
 	return 0;

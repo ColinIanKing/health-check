@@ -100,6 +100,7 @@ typedef struct syscall_wakelock_info {
 
 typedef struct {
 	pid_t		pid;		/* process */
+	proc_info_t	*proc;		/* proc info */
 	int		syscall;	/* syscall detected */
 	double		timeout;	/* timeout on poll syscalls */
 	syscall_info_t	*syscall_info;	/* syscall accounting */
