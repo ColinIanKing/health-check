@@ -260,6 +260,7 @@ inline static int is_executable(const char *path)
 static const char *find_executable(const char *filename)
 {
 	static char path[PATH_MAX];
+	size_t filenamelen = strlen(filename);
 
 	if (strchr(filename, '/')) {
 		/* Given a full path, try this */
@@ -274,10 +275,11 @@ static const char *find_executable(const char *filename)
 			fprintf(stderr, "%s is not a valid executable program\n", filename);
 	} else {
 		/* Try and find it in $PATH */
-		char *p = getenv("PATH");
+		size_t skiplen;
+		char *p;
 
-		while (p && *p) {
-			size_t len, skiplen, pathlen;
+		for (p = getenv("PATH"); p && *p; p += skiplen) {
+			size_t len, pathlen;
 			char *ptr = strchr(p, ':');
 
 			if (ptr) {
@@ -299,10 +301,19 @@ static const char *find_executable(const char *filename)
 					continue;	/* Silently ignore */
 				pathlen = strlen(p);
 			}
+		
+			if (pathlen + filenamelen + 2 > sizeof(path))
+				continue;
 
-			if ((pathlen > 0) &&
-			    (path[pathlen - 1] != '/'))
+			if ((pathlen > 0) && (path[pathlen - 1] != '/')) {
+				if (pathlen >= sizeof(path) - 1)
+					continue;	/* Too big! */
 				path[pathlen++] = '/';
+			}
+
+			/* is Filename + '/' + pathname + EOS too big? */
+			if (filenamelen + pathlen >= sizeof(path) - 2)
+				continue;
 			strcpy(path + pathlen, filename);
 
 			if (is_executable(path))
