@@ -35,7 +35,9 @@ typedef struct {
 	uint64_t	ttime;		/* Total time */
 } cpustat_info_t;
 
-void cpustat_dump_diff(json_object *json_obj, const double duration, const list_t *cpustat_old, const list_t *cpustat_new);
-int cpustat_get(const list_t *pids, list_t *cpustat);
+extern void cpustat_dump_diff(json_object *json_obj, const double duration);
+extern int cpustat_get_all_pids(const list_t *pids, proc_state state);
+extern void cpustat_init(void);
+extern void cpustat_cleanup(void);
 
 #endif

@@ -479,6 +479,7 @@ int main(int argc, char **argv)
 	syscall_trace_proc(&pids);
 
 	event_init();
+	cpustat_init();
 
 	duration.tv_sec = (time_t)opt_duration_secs;
 	duration.tv_usec = (suseconds_t)(opt_duration_secs * 1000000.0) - (duration.tv_sec * 1000000);
@@ -487,7 +488,7 @@ int main(int argc, char **argv)
 	tv_end = timeval_add(&tv_start, &duration);
 
 	event_get_all_pids(&pids, PROC_START);
-	cpustat_get(&pids, &cpustat_info_old);
+	cpustat_get_all_pids(&pids, PROC_START);
 
 	mem_get_all_pids(&pids, PROC_START);
 	ctxt_switch_get(&pids, &ctxt_switch_info_old);
@@ -533,14 +534,14 @@ int main(int argc, char **argv)
 	actual_duration = timeval_to_double(&duration);
 
 	event_get_all_pids(&pids, PROC_FINISH);
-	cpustat_get(&pids, &cpustat_info_new);
+	cpustat_get_all_pids(&pids, PROC_FINISH);
 	mem_get_all_pids(&pids, PROC_FINISH);
 	ctxt_switch_get(&pids, &ctxt_switch_info_new);
 	event_stop();
 
 	signal(SIGINT, SIG_DFL);
 
-	cpustat_dump_diff(json_tests, actual_duration, &cpustat_info_old, &cpustat_info_new);
+	cpustat_dump_diff(json_tests, actual_duration);
 	event_dump_diff(json_tests, actual_duration);
 	ctxt_switch_dump_diff(json_tests, actual_duration, &ctxt_switch_info_old, &ctxt_switch_info_new);
 	fnotify_dump_events(json_tests, actual_duration, &pids, &fnotify_files);
@@ -565,10 +566,9 @@ out:
 	net_connection_cleanup();
 	syscall_cleanup();
 	event_cleanup();
+	cpustat_cleanup();
 	free(buffer);
 	list_free(&pids, NULL);
-	list_free(&cpustat_info_old, free);
-	list_free(&cpustat_info_new, free);
 	list_free(&ctxt_switch_info_old, free);
 	list_free(&ctxt_switch_info_new, free);
 	list_free(&fnotify_files, fnotify_event_free);

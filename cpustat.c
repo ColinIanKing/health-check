@@ -30,6 +30,8 @@
 #include "cpustat.h"
 #include "health-check.h"
 
+list_t cpustat_info_old, cpustat_info_new;
+
 /*
  *  cpustat_loading()
  *	map CPU loading to some human understandable form
@@ -76,9 +78,7 @@ static int cpustat_cmp(const void *data1, const void *data2)
  */
 void cpustat_dump_diff(
 	json_object *j_tests,
-	const double duration,
-	const list_t *cpustat_old,
-	const list_t *cpustat_new)
+	const double duration)
 {
 	double nr_ticks =
 		/* (double)sysconf(_SC_NPROCESSORS_CONF) * */
@@ -95,10 +95,10 @@ void cpustat_dump_diff(
 
 	list_init(&sorted);
 
-	for (ln = cpustat_new->head; ln; ln = ln->next) {
+	for (ln = cpustat_info_new.head; ln; ln = ln->next) {
 		cin = (cpustat_info_t*)ln->data;
 
-		for (lo = cpustat_old->head; lo; lo = lo->next) {
+		for (lo = cpustat_info_old.head; lo; lo = lo->next) {
 			cio = (cpustat_info_t*)lo->data;
 
 			if (cin->proc->pid == cio->proc->pid) {
@@ -153,14 +153,14 @@ void cpustat_dump_diff(
 					cpustat_loading(100.0 * (double)ttime_total / (double)nr_ticks));
 		}
 	}
-	
+
 #ifdef JSON_OUTPUT
 	if (j_tests) {
 		json_object *j_cpustat, *j_cpuload, *j_cpu;
 
 		j_obj_obj_add(j_tests, "cpu-load", (j_cpustat = j_obj_new_obj()));
 		j_obj_obj_add(j_cpustat, "cpu-load-per-process", (j_cpuload = j_obj_new_array()));
-		
+
 		for (ln = sorted.head; ln; ln = ln->next) {
 			cin = (cpustat_info_t*)ln->data;
 
@@ -174,7 +174,7 @@ void cpustat_dump_diff(
 			j_obj_new_int64_add(j_cpu, "total-cpu-ticks", cin->ttime);
 			j_obj_new_double_add(j_cpu, "user-cpu-percent",
 				100.0 * (double)cin->utime / (double)nr_ticks);
-			j_obj_new_double_add(j_cpu, "system-cpu-percent", 
+			j_obj_new_double_add(j_cpu, "system-cpu-percent",
 				100.0 * (double)cin->stime / (double)nr_ticks);
 			j_obj_new_double_add(j_cpu, "total-cpu-percent",
 				100.0 * (double)cin->ttime / (double)nr_ticks);
@@ -199,14 +199,15 @@ void cpustat_dump_diff(
 }
 
 /*
- *  cpustat_get()
- *
+ *  cpustat_get_all_pids()
+ *	get CPU stats for all processes
  */
-int cpustat_get(const list_t *pids, list_t *cpustat)
+int cpustat_get_all_pids(const list_t *pids, proc_state state)
 {
 	char filename[PATH_MAX];
 	FILE *fp;
 	link_t *l;
+	list_t *cpustat = (state == PROC_START) ? &cpustat_info_old : &cpustat_info_new;
 
 	for (l = pids->head; l; l = l->next) {
 		proc_info_t *p = (proc_info_t *)l->data;
@@ -242,3 +243,16 @@ int cpustat_get(const list_t *pids, list_t *cpustat)
 
 	return 0;
 }
+
+void cpustat_init(void)
+{
+	list_init(&cpustat_info_old);
+	list_init(&cpustat_info_new);
+}
+
+void cpustat_cleanup(void)
+{
+	list_free(&cpustat_info_old, free);
+	list_free(&cpustat_info_new, free);
+}
+
