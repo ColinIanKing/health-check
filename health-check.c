@@ -545,7 +545,7 @@ int main(int argc, char **argv)
 
 	signal(SIGINT, SIG_DFL);
 
-	cpustat_dump_diff(json_tests);
+	cpustat_dump_diff(json_tests, actual_duration);
 	event_dump_diff(json_tests, actual_duration);
 	ctxt_switch_dump_diff(json_tests, actual_duration);
 	fnotify_dump_events(json_tests, actual_duration, &pids);

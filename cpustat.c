@@ -32,7 +32,7 @@
 #include "timeval.h"
 #include "health-check.h"
 
-list_t cpustat_info_old, cpustat_info_new;
+static list_t cpustat_info_old, cpustat_info_new;
 
 /*
  *  cpustat_loading()
@@ -58,7 +58,6 @@ static const char *cpustat_loading(const double cpu_percent)
 		return "slight load";
 	if (cpu_percent > 2.5)
 		return "light load";
-
 	return "very light load";
 }
 
@@ -78,11 +77,10 @@ static int cpustat_cmp(const void *data1, const void *data2)
  *  cpustat_dump_diff()
  *	dump difference in CPU loading between two snapshots in time
  */
-void cpustat_dump_diff(
-	json_object *j_tests)
+void cpustat_dump_diff(json_object *j_tests, const double duration)
 {
-	double nr_ticks = (double)sysconf(_SC_CLK_TCK);
-	double  utime_total = 0.0, stime_total = 0.0, ttime_total = 0.0;
+	double nr_ticks = (double)sysconf(_SC_CLK_TCK) * duration;
+	double utime_total = 0.0, stime_total = 0.0, ttime_total = 0.0;
 	int count = 0;
 	link_t *lo, *ln;
 	list_t	sorted;
@@ -91,7 +89,6 @@ void cpustat_dump_diff(
 	(void)j_tests;
 #endif
 	list_init(&sorted);
-
 	for (ln = cpustat_info_new.head; ln; ln = ln->next) {
 		cin = (cpustat_info_t*)ln->data;
 
@@ -115,9 +112,9 @@ void cpustat_dump_diff(
 				list_add_ordered(&sorted, cpustat, cpustat_cmp);
 
 				/* We calculate this in terms of ticks and duration of each process */
-				utime_total += cpustat->utime / (nr_ticks * cpustat->duration);
-				stime_total += cpustat->stime / (nr_ticks * cpustat->duration);
-				ttime_total += cpustat->ttime / (nr_ticks * cpustat->duration);
+				utime_total += (double)cpustat->utime / nr_ticks;
+				stime_total += (double)cpustat->stime / nr_ticks;
+				ttime_total += (double)cpustat->ttime / nr_ticks;
 				count++;
 			}
 		}
@@ -140,11 +137,11 @@ void cpustat_dump_diff(
 				printf(" %5d %-20.20s %6.2f %6.2f %6.2f   %8.2f  (%s)\n",
 					cin->proc->pid,
 					cin->proc->cmdline,
-					100.0 * (double)cin->utime / (nr_ticks * cin->duration),
-					100.0 * (double)cin->stime / (nr_ticks * cin->duration),
-					100.0 * (double)cin->ttime / (nr_ticks * cin->duration),
+					100.0 * (double)cin->utime / nr_ticks,
+					100.0 * (double)cin->stime / nr_ticks,
+					100.0 * (double)cin->ttime / nr_ticks,
 					cin->duration,
-					cpustat_loading(100.0 * (double)cin->ttime / (nr_ticks * cin->duration)));
+					cpustat_loading(100.0 * (double)cin->ttime / nr_ticks));
 			}
 			if (count > 1)
 				printf(" %-26.26s %6.2f %6.2f %6.2f             (%s)\n",
@@ -175,13 +172,13 @@ void cpustat_dump_diff(
 			j_obj_new_int64_add(j_cpu, "system-cpu-ticks", cin->stime);
 			j_obj_new_int64_add(j_cpu, "total-cpu-ticks", cin->ttime);
 			j_obj_new_double_add(j_cpu, "user-cpu-percent",
-				100.0 * (double)cin->utime / (nr_ticks * cin->duration));
+				100.0 * (double)cin->utime / nr_ticks);
 			j_obj_new_double_add(j_cpu, "system-cpu-percent",
-				100.0 * (double)cin->stime / (nr_ticks * cin->duration));
+				100.0 * (double)cin->stime / nr_ticks);
 			j_obj_new_double_add(j_cpu, "total-cpu-percent",
-				100.0 * (double)cin->ttime / (nr_ticks * cin->duration));
+				100.0 * (double)cin->ttime / nr_ticks);
 			j_obj_new_string_add(j_cpu, "load-hint",
-				cpustat_loading(100.0 * (double)cin->ttime / (nr_ticks * cin->duration)));
+				cpustat_loading(100.0 * (double)cin->ttime / nr_ticks));
 			j_obj_array_add(j_cpuload, j_cpu);
 		}
 
@@ -255,15 +252,22 @@ int cpustat_get_all_pids(const list_t *pids, proc_state state)
 	return 0;
 }
 
+/*
+ *  cpustat_init()
+ *	initialize cpustat lists
+ */
 void cpustat_init(void)
 {
 	list_init(&cpustat_info_old);
 	list_init(&cpustat_info_new);
 }
 
+/*
+ *  cpustat_cleanup()
+ *	free cpustat lists
+ */
 void cpustat_cleanup(void)
 {
 	list_free(&cpustat_info_old, free);
 	list_free(&cpustat_info_new, free);
 }
-
