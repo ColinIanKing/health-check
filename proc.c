@@ -198,7 +198,7 @@ int proc_cache_get_pthreads(void)
  *  proc_cache_info_free()
  *	free a proc cache item
  */
-void proc_cache_info_free(void *data)
+static void proc_cache_info_free(void *data)
 {
 	proc_info_t *p = (proc_info_t*)data;
 
@@ -254,4 +254,22 @@ int proc_cache_find_by_procname(
 	}
 
 	return 0;
+}
+
+/*
+ *  proc_cache_init()
+ *	initialize proc cache
+ */
+void proc_cache_init(void)
+{
+	list_init(&proc_cache);
+}
+
+/*
+ *  proc_cache_cleanup
+ *	cleanup
+ */
+void proc_cache_cleanup(void)
+{
+	list_free(&proc_cache, proc_cache_info_free);
 }

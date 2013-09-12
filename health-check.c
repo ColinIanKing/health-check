@@ -331,8 +331,7 @@ int main(int argc, char **argv)
 	json_object *json_tests = NULL;
 
 	list_init(&pids);
-	list_init(&proc_cache);
-
+	proc_cache_init();
 	fnotify_init();
 	mem_init();
 	net_connection_init();
@@ -564,8 +563,8 @@ out:
 	ctxt_switch_cleanup();
 	fnotify_cleanup();
 	free(buffer);
+	proc_cache_cleanup();
 	list_free(&pids, NULL);
-	list_free(&proc_cache, proc_cache_info_free);
 
 	health_check_exit(rc);
 }
