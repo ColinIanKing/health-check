@@ -320,7 +320,7 @@ int main(int argc, char **argv)
 	double actual_duration, opt_duration_secs = 60.0;
 	struct timeval tv_start, tv_end, tv_now, duration;
 	int ret, rc = EXIT_SUCCESS, fan_fd = 0;
-	list_t fnotify_files, fnotify_wakelocks, pids;
+	list_t pids;
 	link_t *l;
 	void *buffer;
 	char *opt_username = NULL;
@@ -330,11 +330,10 @@ int main(int argc, char **argv)
 #endif
 	json_object *json_tests = NULL;
 
-	list_init(&fnotify_files);
-	list_init(&fnotify_wakelocks);
 	list_init(&pids);
 	list_init(&proc_cache);
 
+	fnotify_init();
 	mem_init();
 	net_connection_init();
 	proc_cache_get();
@@ -514,7 +513,7 @@ int main(int argc, char **argv)
 					metadata = (struct fanotify_event_metadata *)buffer;
 
 					while (FAN_EVENT_OK(metadata, len)) {
-						fnotify_event_add(&pids, metadata, &fnotify_files, &fnotify_wakelocks);
+						fnotify_event_add(&pids, metadata);
 						metadata = FAN_EVENT_NEXT(metadata, len);
 					}
 				}
@@ -539,14 +538,14 @@ int main(int argc, char **argv)
 	cpustat_dump_diff(json_tests, actual_duration);
 	event_dump_diff(json_tests, actual_duration);
 	ctxt_switch_dump_diff(json_tests, actual_duration);
-	fnotify_dump_events(json_tests, actual_duration, &pids, &fnotify_files);
+	fnotify_dump_events(json_tests, actual_duration, &pids);
 	syscall_dump_hashtable(json_tests, actual_duration);
 	syscall_dump_pollers(json_tests, actual_duration);
 	mem_dump_diff(json_tests, actual_duration);
 	net_connection_dump(json_tests);
 
 	if (opt_flags & OPT_WAKELOCKS_LIGHT)
-		fnotify_dump_wakelocks(json_tests, actual_duration, &fnotify_wakelocks);
+		fnotify_dump_wakelocks(json_tests, actual_duration);
 
 	if (opt_flags & OPT_WAKELOCKS_HEAVY)
 		syscall_dump_wakelocks(json_tests, actual_duration, &pids);
@@ -563,10 +562,9 @@ out:
 	event_cleanup();
 	cpustat_cleanup();
 	ctxt_switch_cleanup();
+	fnotify_cleanup();
 	free(buffer);
 	list_free(&pids, NULL);
-	list_free(&fnotify_files, fnotify_event_free);
-	list_free(&fnotify_wakelocks, free);
 	list_free(&proc_cache, proc_cache_info_free);
 
 	health_check_exit(rc);

@@ -39,7 +39,7 @@
 #include "fnotify.h"
 #include "health-check.h"
 
-static list_t fnotify_files;
+static list_t fnotify_files, fnotify_wakelocks;
 
 /*
  *  fnotify_event_init()
@@ -158,8 +158,7 @@ char *fnotify_get_filename(const pid_t pid, const int fd)
  */
 void fnotify_event_add(
 	const list_t *pids,
-	const struct fanotify_event_metadata *metadata,
-	list_t *fnotify_wakelocks)
+	const struct fanotify_event_metadata *metadata)
 {
 	link_t *l;
 
@@ -185,7 +184,7 @@ void fnotify_event_add(
 				link_t	*l;
 				bool	found = false;
 
-				for (l = fnotify_wakelocks->head; l; l = l->next) {
+				for (l = fnotify_wakelocks.head; l; l = l->next) {
 					wakelock_info = (fnotify_wakelock_info_t *)l->data;
 					if (wakelock_info->proc == p) {
 						found = true;
@@ -202,7 +201,7 @@ void fnotify_event_add(
 					wakelock_info->locked = 0;
 					wakelock_info->unlocked = 0;
 					wakelock_info->total = 0;
-					list_append(fnotify_wakelocks, wakelock_info);
+					list_append(&fnotify_wakelocks, wakelock_info);
 				}
 
 				if (strcmp(filename, "/sys/power/wake_unlock"))
@@ -532,8 +531,7 @@ static void fnotify_dump_io_ops(
  */
 void fnotify_dump_wakelocks(
 	json_object *j_tests,
-	const double duration,
-	const list_t *fnotify_wakelocks)
+	const double duration)
 {
 	list_t	sorted;
 	link_t 	*l;
@@ -545,19 +543,19 @@ void fnotify_dump_wakelocks(
 		return;
 
 	printf("Wakelock operations:\n");
-	if (!fnotify_wakelocks->head) {
+	if (!fnotify_wakelocks.head) {
 		printf(" None.\n\n");
 		return;
 	}
 
 	list_init(&sorted);
 
-	for (l = fnotify_wakelocks->head; l; l = l->next) {
+	for (l = fnotify_wakelocks.head; l; l = l->next) {
 		fnotify_wakelock_info_t *info = (fnotify_wakelock_info_t *)l->data;
 		list_add_ordered(&sorted, info, fnotify_wakelock_cmp_count);
 	}
 
-	if (fnotify_wakelocks->head && !(opt_flags & OPT_BRIEF)) {
+	if (fnotify_wakelocks.head && !(opt_flags & OPT_BRIEF)) {
 		printf("  PID  Process                 Locks  Unlocks\n");
 
 		for (l = sorted.head; l; l = l->next) {
@@ -594,9 +592,11 @@ void fnotify_dump_events(
 void fnotify_init(void)
 {
 	list_init(&fnotify_files);
+	list_init(&fnotify_wakelocks);
 }
 
 void fnotify_cleanup(void)
 {
 	list_free(&fnotify_files, fnotify_event_free);
+	list_free(&fnotify_wakelocks, free);
 }
