@@ -1,3 +1,38 @@
+health-check (0.01.24) saucy; urgency=low
+
+  * Makefile: bump version
+  * Don't double increment the point by skiplen
+  * Make path parsing stronger
+  * Avoid possible argv[0] strcpy buffer overflow
+  * Fix build issue
+  * Forgot to add changes to ctxt-switch.h
+  * Remove redundant proc finish calls now we do this in exit
+  * Account for duration of process life for context switch accounting
+  * Do final process accounting on exit
+  * Add context switch per proc updates
+  * Fix some CPU stat formatting and output
+  * Get correct CPU stat durations when processes die
+  * Check for new procs and add them to CPU stats
+  * syscall: Add new net connections on new process
+  * Minor tidyup
+  * Hide proc_cache list from health check main
+  * Hide fnotify_wakelocks from health check main
+  * Hide fnotify_files list from health check main
+  * Hide context switch lists from health check main
+  * Forgot to remove cpustat lists
+  * Hide cpustat lists from health check main
+  * Hide event lists from heath check main
+  * Hide mem lists from health-check main
+  * Add proc state
+  * Re-work ptrace, simplify, remove need for multiple threads
+  * Add simple heap debugging shim
+  * Update man page
+  * Update short help info
+  * Add in ability to trace a given program
+  * ctxt-switch: Fix message when no context switches are detected
+
+ -- Colin King <colin.king@canonical.com>  Thu, 12 Sep 2013 21:13:44 +0100
+
 health-check (0.01.23) saucy; urgency=low
 
   * Makefile: bump version
