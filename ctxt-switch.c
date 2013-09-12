@@ -45,25 +45,31 @@ static int ctx_switch_cmp(const void *data1, const void *data2)
 	return c2->total - c1->total;
 }
 
-static void ctxt_switch_read(const pid_t pid, ctxt_switch_info_t *info)
+void ctxt_switch_get_by_proc(proc_info_t *proc, proc_state state)
 {
 	char path[PATH_MAX];
 	char buf[4096];
 	FILE *fp;
+	ctxt_switch_info_t *info;
+	list_t *ctxt_switches = (state == PROC_START) ? &ctxt_switch_info_old : &ctxt_switch_info_new;
 
+	snprintf(path, sizeof(path), "/proc/%i/status", proc->pid);
+	if ((fp = fopen(path, "r")) == NULL)
+		return;
+
+	if ((info = calloc(1, sizeof(*info))) == NULL) {
+		fclose(fp);
+		fprintf(stderr, "Out of memory allocating context switch information.\n");
+		health_check_exit(EXIT_FAILURE);
+	}
 	info->voluntary = 0;
 	info->involuntary = 0;
 	info->valid = false;
-
-	snprintf(path, sizeof(path), "/proc/%i/status", pid);
-
-	if ((fp = fopen(path, "r")) == NULL)
-		return;
+	info->proc = proc;
 
 	while (!feof(fp)) {
 		if (fgets(buf, sizeof(buf), fp) == NULL)
 			break;
-
 		if (!strncmp(buf, "voluntary_ctxt_switches:", 24)) {
 			(void)sscanf(buf + 24, "%" SCNu64, &info->voluntary);
 			continue;
@@ -73,10 +79,11 @@ static void ctxt_switch_read(const pid_t pid, ctxt_switch_info_t *info)
 			continue;
 		}
 	}
-
+	fclose(fp);
 	info->total = info->voluntary + info->involuntary;
 	info->valid = true;
-	fclose(fp);
+
+	list_append(ctxt_switches, info);
 }
 
 /*
@@ -86,20 +93,10 @@ static void ctxt_switch_read(const pid_t pid, ctxt_switch_info_t *info)
 void ctxt_switch_get_all_pids(const list_t *pids, proc_state state)
 {
 	link_t *l;
-	list_t *ctxt_switches = (state == PROC_START) ? &ctxt_switch_info_old : &ctxt_switch_info_new;
 
 	for (l = pids->head; l; l = l->next) {
 		proc_info_t *p = (proc_info_t *)l->data;
-		ctxt_switch_info_t *info;
-
-		info = calloc(1, sizeof(*info));
-		if (info == NULL) {
-			fprintf(stderr, "Out of memory allocating context switch information.\n");
-			health_check_exit(EXIT_FAILURE);
-		}
-		ctxt_switch_read(p->pid, info);
-		info->proc = p;
-		list_append(ctxt_switches, info);
+		ctxt_switch_get_by_proc(p, state);
 	}
 }
 

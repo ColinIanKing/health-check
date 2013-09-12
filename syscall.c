@@ -42,6 +42,7 @@
 #include "mem.h"
 #include "cpustat.h"
 #include "fnotify.h"
+#include "ctxt-switch.h"
 #include "health-check.h"
 
 #define HASH_TABLE_SIZE	(1997)		/* Must be prime */
@@ -1475,17 +1476,20 @@ void syscall_handle_event(syscall_context_t *ctxt, int event)
 		ptrace(PTRACE_GETEVENTMSG, ctxt->pid, 0, &msg);
 		child = (pid_t)msg;
 
+#if SYSCALL_DEBUG
 		if (event == PTRACE_EVENT_CLONE)
 			printf("PID %d is a clone\n", child);
 		if (event == PTRACE_EVENT_FORK)
 			printf("PID %d forked\n", child);
 		if (event == PTRACE_EVENT_VFORK)
 			printf("PID %d vforked\n", child);
+#endif
 
 		if ((p = proc_cache_add(child, 0, event == PTRACE_EVENT_CLONE)) != NULL) {
 			proc_pids_add_proc(__pids, p);
 			mem_get_by_proc(p, PROC_START);
 			cpustat_get_by_proc(p, PROC_START);
+			ctxt_switch_get_by_proc(p, PROC_START);
 		}
 		net_connection_pid(child);	/* Update net connections on new process */
 	}
@@ -1608,16 +1612,35 @@ void *syscall_trace(void *arg)
 		if (WIFSTOPPED(status)) {
 			sig = syscall_handle_stop(ctxt, status);
 		} else if (WIFEXITED(status)) {
-			if (ctxt->proc)
+			if (ctxt->proc) {
+				/*
+				 *  We need to probably catch exit in the system call
+			 	 *  so we can do accounting, it seems that the proc files
+				 *  disappear too early.
+				 */
 				cpustat_get_by_proc(ctxt->proc, PROC_FINISH);
-
+				ctxt_switch_get_by_proc(ctxt->proc, PROC_FINISH);
+				mem_get_by_proc(ctxt->proc, PROC_FINISH);
+			}
 			ctxt->alive = false;
 			procs_traced--;
 		} 
-#if SYSCALL_PTRACE_DEBUG
 		else if (WIFSIGNALED(status)) {
-			printf("Signaled %d -> %d\n", ctxt->pid, WTERMSIG(status));
-		} else if (WIFCONTINUED(status)) {
+			/*
+			 *  In an ideal world we could find the final
+			 *  stats *before* it died and update CPU stat etc
+			 *  TODO: See if we can find out final state before
+			 *  signalled.
+			 */
+			if (WTERMSIG(status) == SIGKILL) {
+				/* It died */
+				printf("Process %d received SIGKILL during monitoring.\n", pid);
+				ctxt->alive = false;
+				procs_traced--;
+			}
+		} 
+#if SYSCALL_DEBUG
+		else if (WIFCONTINUED(status)) {
 			printf("Continued %d\n", ctxt->pid);
 		} else {
 			printf("Unexpected status %d for PID %d\n", status, ctxt->pid);
