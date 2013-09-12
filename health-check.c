@@ -321,7 +321,6 @@ int main(int argc, char **argv)
 	struct timeval tv_start, tv_end, tv_now, duration;
 	int ret, rc = EXIT_SUCCESS, fan_fd = 0;
 	list_t fnotify_files, fnotify_wakelocks, pids;
-	list_t ctxt_switch_info_old, ctxt_switch_info_new;
 	link_t *l;
 	void *buffer;
 	char *opt_username = NULL;
@@ -331,8 +330,6 @@ int main(int argc, char **argv)
 #endif
 	json_object *json_tests = NULL;
 
-	list_init(&ctxt_switch_info_old);
-	list_init(&ctxt_switch_info_new);
 	list_init(&fnotify_files);
 	list_init(&fnotify_wakelocks);
 	list_init(&pids);
@@ -477,6 +474,7 @@ int main(int argc, char **argv)
 
 	event_init();
 	cpustat_init();
+	ctxt_switch_init();
 
 	duration.tv_sec = (time_t)opt_duration_secs;
 	duration.tv_usec = (suseconds_t)(opt_duration_secs * 1000000.0) - (duration.tv_sec * 1000000);
@@ -488,7 +486,7 @@ int main(int argc, char **argv)
 	cpustat_get_all_pids(&pids, PROC_START);
 
 	mem_get_all_pids(&pids, PROC_START);
-	ctxt_switch_get(&pids, &ctxt_switch_info_old);
+	ctxt_switch_get_all_pids(&pids, PROC_START);
 
 	gettimeofday(&tv_now, NULL);
 	duration = timeval_sub(&tv_end, &tv_now);
@@ -533,14 +531,14 @@ int main(int argc, char **argv)
 	event_get_all_pids(&pids, PROC_FINISH);
 	cpustat_get_all_pids(&pids, PROC_FINISH);
 	mem_get_all_pids(&pids, PROC_FINISH);
-	ctxt_switch_get(&pids, &ctxt_switch_info_new);
+	ctxt_switch_get_all_pids(&pids, PROC_FINISH);
 	event_stop();
 
 	signal(SIGINT, SIG_DFL);
 
 	cpustat_dump_diff(json_tests, actual_duration);
 	event_dump_diff(json_tests, actual_duration);
-	ctxt_switch_dump_diff(json_tests, actual_duration, &ctxt_switch_info_old, &ctxt_switch_info_new);
+	ctxt_switch_dump_diff(json_tests, actual_duration);
 	fnotify_dump_events(json_tests, actual_duration, &pids, &fnotify_files);
 	syscall_dump_hashtable(json_tests, actual_duration);
 	syscall_dump_pollers(json_tests, actual_duration);
@@ -564,10 +562,9 @@ out:
 	syscall_cleanup();
 	event_cleanup();
 	cpustat_cleanup();
+	ctxt_switch_cleanup();
 	free(buffer);
 	list_free(&pids, NULL);
-	list_free(&ctxt_switch_info_old, free);
-	list_free(&ctxt_switch_info_new, free);
 	list_free(&fnotify_files, fnotify_event_free);
 	list_free(&fnotify_wakelocks, free);
 	list_free(&proc_cache, proc_cache_info_free);

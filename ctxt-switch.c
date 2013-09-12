@@ -31,6 +31,8 @@
 #include "ctxt-switch.h"
 #include "health-check.h"
 
+static list_t ctxt_switch_info_old, ctxt_switch_info_new;
+
 /*
  *  ctxt_switch_cmp()
  *	compare context switch info for sorting
@@ -78,12 +80,13 @@ static void ctxt_switch_read(const pid_t pid, ctxt_switch_info_t *info)
 }
 
 /*
- *  ctxt_switch_get()
+ *  ctxt_switch_get_all_pids()
  *	scan /proc/pid/status for context switch data
  */
-void ctxt_switch_get(const list_t *pids, list_t *ctxt_switches)
+void ctxt_switch_get_all_pids(const list_t *pids, proc_state state)
 {
 	link_t *l;
+	list_t *ctxt_switches = (state == PROC_START) ? &ctxt_switch_info_old : &ctxt_switch_info_new;
 
 	for (l = pids->head; l; l = l->next) {
 		proc_info_t *p = (proc_info_t *)l->data;
@@ -159,9 +162,7 @@ static void ctxt_switch_delta(
  */
 void ctxt_switch_dump_diff(
 	json_object *j_tests,
-	const double duration,
-	const list_t *ctxt_switches_old,
-	const list_t *ctxt_switches_new)
+	const double duration)
 {
 	link_t *l;
 	list_t sorted;
@@ -172,9 +173,9 @@ void ctxt_switch_dump_diff(
 	printf("Context Switches:\n");
 
 	list_init(&sorted);
-	for (l = ctxt_switches_new->head; l; l = l->next) {
+	for (l = ctxt_switch_info_new.head; l; l = l->next) {
 		ctxt_switch_info_t *new_info, *info = (ctxt_switch_info_t *)l->data;
-	
+
 		if (!info->valid)
 			continue;
 
@@ -184,7 +185,7 @@ void ctxt_switch_dump_diff(
 			health_check_exit(EXIT_FAILURE);
 		}
 		new_info->proc = info->proc;
-		ctxt_switch_delta(info, ctxt_switches_old,
+		ctxt_switch_delta(info, &ctxt_switch_info_old,
 			&new_info->total, &new_info->voluntary, &new_info->involuntary);
 		list_add_ordered(&sorted, new_info, ctx_switch_cmp);
 	}
@@ -267,4 +268,16 @@ void ctxt_switch_dump_diff(
 	}
 #endif
 	list_free(&sorted, free);
+}
+
+void ctxt_switch_init(void)
+{
+	list_init(&ctxt_switch_info_old);
+	list_init(&ctxt_switch_info_new);
+}
+
+void ctxt_switch_cleanup(void)
+{
+	list_free(&ctxt_switch_info_old, free);
+	list_free(&ctxt_switch_info_new, free);
 }
