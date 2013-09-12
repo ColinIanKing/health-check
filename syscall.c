@@ -1646,9 +1646,11 @@ void *syscall_trace(void *arg)
 			 	 *  so we can do accounting, it seems that the proc files
 				 *  disappear too early.
 				 */
+				/*
 				cpustat_get_by_proc(ctxt->proc, PROC_FINISH);
 				ctxt_switch_get_by_proc(ctxt->proc, PROC_FINISH);
 				mem_get_by_proc(ctxt->proc, PROC_FINISH);
+				*/
 			}
 			ctxt->alive = false;
 			procs_traced--;
