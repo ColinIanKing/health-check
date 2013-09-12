@@ -318,8 +318,6 @@ static const char *find_executable(const char *filename)
 
 			if (is_executable(path))
 				return path;
-
-			p += skiplen;
 		}
 		fprintf(stderr, "Cannot find %s in $PATH\n", filename);
 	}
