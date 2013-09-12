@@ -19,6 +19,8 @@
 #include <stdlib.h>
 #include <stdio.h>
 
+#include "alloc.h"
+
 #if DEBUG_MALLOC
 
 void *__malloc(size_t size, char *where, int line)
