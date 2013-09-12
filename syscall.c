@@ -39,6 +39,8 @@
 #include "proc.h"
 #include "json.h"
 #include "net.h"
+#include "mem.h"
+#include "cpustat.h"
 #include "fnotify.h"
 #include "health-check.h"
 
@@ -1473,8 +1475,19 @@ void syscall_handle_event(syscall_context_t *ctxt, int event)
 		ptrace(PTRACE_GETEVENTMSG, ctxt->pid, 0, &msg);
 		child = (pid_t)msg;
 
-		if ((p = proc_cache_add(child, 0, false)) != NULL)
+		if (event == PTRACE_EVENT_CLONE)
+			printf("PID %d is a clone\n", child);
+		if (event == PTRACE_EVENT_FORK)
+			printf("PID %d forked\n", child);
+		if (event == PTRACE_EVENT_VFORK)
+			printf("PID %d vforked\n", child);
+
+		if ((p = proc_cache_add(child, 0, event == PTRACE_EVENT_CLONE)) != NULL) {
 			proc_pids_add_proc(__pids, p);
+			mem_get_by_proc(p, PROC_START);
+			cpustat_get_by_proc(p, PROC_START);
+		}
+		printf("PROC INFO for new %d --> %p\n", child, p);
 
 		net_connection_pid(child);	/* Update net connections on new process */
 	}

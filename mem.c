@@ -133,7 +133,7 @@ static int mem_get_entry(FILE *fp, mem_info_t *mem)
 	return 0;
 }
 
-static void mem_get_by_proc(proc_info_t *p, proc_state state)
+void mem_get_by_proc(proc_info_t *p, proc_state state)
 {
 	FILE *fp;
 	char path[PATH_MAX];

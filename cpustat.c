@@ -24,10 +24,12 @@
 #include <inttypes.h>
 #include <unistd.h>
 #include <limits.h>
+#include <sys/time.h>
 
 #include "list.h"
 #include "json.h"
 #include "cpustat.h"
+#include "timeval.h"
 #include "health-check.h"
 
 list_t cpustat_info_old, cpustat_info_new;
@@ -77,14 +79,10 @@ static int cpustat_cmp(const void *data1, const void *data2)
  *	dump difference in CPU loading between two snapshots in time
  */
 void cpustat_dump_diff(
-	json_object *j_tests,
-	const double duration)
+	json_object *j_tests)
 {
-	double nr_ticks =
-		/* (double)sysconf(_SC_NPROCESSORS_CONF) * */
-		(double)sysconf(_SC_CLK_TCK) *
-		duration;
-	uint64_t utime_total = 0, stime_total = 0, ttime_total = 0;
+	double nr_ticks = (double)sysconf(_SC_CLK_TCK);
+	double  utime_total = 0.0, stime_total = 0.0, ttime_total = 0.0;
 	int count = 0;
 	link_t *lo, *ln;
 	list_t	sorted;
@@ -92,7 +90,6 @@ void cpustat_dump_diff(
 #ifndef JSON_OUTPUT
 	(void)j_tests;
 #endif
-
 	list_init(&sorted);
 
 	for (ln = cpustat_info_new.head; ln; ln = ln->next) {
@@ -112,11 +109,15 @@ void cpustat_dump_diff(
 				cpustat->utime = cin->utime - cio->utime;
 				cpustat->stime = cin->stime - cio->stime;
 				cpustat->ttime = cin->ttime - cio->ttime;
+				cpustat->duration = 
+					timeval_to_double(&cin->whence) -
+					timeval_to_double(&cio->whence);
 				list_add_ordered(&sorted, cpustat, cpustat_cmp);
 
-				utime_total += cpustat->utime;
-				stime_total += cpustat->stime;
-				ttime_total += cpustat->ttime;
+				/* We calculate this in terms of ticks and duration of each process */
+				utime_total += cpustat->utime / (nr_ticks * cpustat->duration);
+				stime_total += cpustat->stime / (nr_ticks * cpustat->duration);
+				ttime_total += cpustat->ttime / (nr_ticks * cpustat->duration);
 				count++;
 			}
 		}
@@ -128,10 +129,10 @@ void cpustat_dump_diff(
 	} else {
 		if (opt_flags & OPT_BRIEF) {
 			printf(" User: %6.2f%%, System: %6.2f%%, Total: %6.2f%% (%s)\n",
-				100.0 * (double)utime_total / (double)nr_ticks,
-				100.0 * (double)stime_total / (double)nr_ticks,
-				100.0 * (double)ttime_total / (double)nr_ticks,
-				cpustat_loading(100.0 * (double)ttime_total / (double)nr_ticks));
+				100.0 * utime_total,
+				100.0 * stime_total,
+				100.0 * ttime_total,
+				cpustat_loading(100.0 * (double)ttime_total));
 		} else {
 			printf("  PID  Process                USR%%   SYS%%  TOTAL%%\n");
 			for (ln = sorted.head; ln; ln = ln->next) {
@@ -139,18 +140,18 @@ void cpustat_dump_diff(
 				printf(" %5d %-20.20s %6.2f %6.2f %6.2f (%s)\n",
 					cin->proc->pid,
 					cin->proc->cmdline,
-					100.0 * (double)cin->utime / (double)nr_ticks,
-					100.0 * (double)cin->stime / (double)nr_ticks,
-					100.0 * (double)cin->ttime / (double)nr_ticks,
-					cpustat_loading(100.0 * (double)cin->ttime / (double)nr_ticks));
+					100.0 * (double)cin->utime / (nr_ticks * cin->duration),
+					100.0 * (double)cin->stime / (nr_ticks * cin->duration),
+					100.0 * (double)cin->ttime / (nr_ticks * cin->duration),
+					cpustat_loading(100.0 * (double)cin->ttime / (nr_ticks * cin->duration)));
 			}
 			if (count > 1)
 				printf(" %-26.26s %6.2f %6.2f %6.2f (%s)\n",
 					"Total",
-					100.0 * (double)utime_total / (double)nr_ticks,
-					100.0 * (double)stime_total / (double)nr_ticks,
-					100.0 * (double)ttime_total / (double)nr_ticks,
-					cpustat_loading(100.0 * (double)ttime_total / (double)nr_ticks));
+					100.0 * utime_total,
+					100.0 * stime_total,
+					100.0 * ttime_total,
+					cpustat_loading(100.0 * ttime_total));
 		}
 	}
 
@@ -173,23 +174,20 @@ void cpustat_dump_diff(
 			j_obj_new_int64_add(j_cpu, "system-cpu-ticks", cin->stime);
 			j_obj_new_int64_add(j_cpu, "total-cpu-ticks", cin->ttime);
 			j_obj_new_double_add(j_cpu, "user-cpu-percent",
-				100.0 * (double)cin->utime / (double)nr_ticks);
+				100.0 * (double)cin->utime / (nr_ticks * cin->duration));
 			j_obj_new_double_add(j_cpu, "system-cpu-percent",
-				100.0 * (double)cin->stime / (double)nr_ticks);
+				100.0 * (double)cin->stime / (nr_ticks * cin->duration));
 			j_obj_new_double_add(j_cpu, "total-cpu-percent",
-				100.0 * (double)cin->ttime / (double)nr_ticks);
+				100.0 * (double)cin->ttime / (nr_ticks * cin->duration));
 			j_obj_new_string_add(j_cpu, "load-hint",
-				cpustat_loading(100.0 * (double)cin->ttime / (double)nr_ticks));
+				cpustat_loading(100.0 * (double)cin->ttime / (nr_ticks * cin->duration)));
 			j_obj_array_add(j_cpuload, j_cpu);
 		}
 
 		j_obj_obj_add(j_cpustat, "cpu-load-total", (j_cpu = j_obj_new_obj()));
-		j_obj_new_double_add(j_cpu, "cpu-load-total",
-			100.0 * (double)utime_total / (double)nr_ticks);
-		j_obj_new_double_add(j_cpu, "user-cpu-percent",
-			100.0 * (double)stime_total / (double)nr_ticks);
-		j_obj_new_double_add(j_cpu, "system-cpu-percent",
-			100.0 * (double)ttime_total / (double)nr_ticks);
+		j_obj_new_double_add(j_cpu, "cpu-load-total", 100.0 * utime_total);
+		j_obj_new_double_add(j_cpu, "user-cpu-percent", 100.0 * stime_total);
+		j_obj_new_double_add(j_cpu, "system-cpu-percent", 100.0 * ttime_total);
 	}
 #endif
 
@@ -199,15 +197,50 @@ void cpustat_dump_diff(
 }
 
 /*
+ *  cpustat_get_by_proc()
+ *	get CPU stats for a process
+ */
+void cpustat_get_by_proc(proc_info_t *proc, proc_state state)
+{
+	char filename[PATH_MAX];
+	FILE *fp;
+	list_t *cpustat = (state == PROC_START) ? &cpustat_info_old : &cpustat_info_new;
+
+	snprintf(filename, sizeof(filename), "/proc/%d/stat", proc->pid);
+	if ((fp = fopen(filename, "r")) != NULL) {
+		char comm[20];
+		uint64_t utime, stime;
+		pid_t pid;
+
+		/* 3173 (a.out) R 3093 3173 3093 34818 3173 4202496 165 0 0 0 3194 0 */
+		if (fscanf(fp, "%d (%[^)]) %*c %*d %*d %*d %*d %*d %*u %*u %*u %*u %*u %" SCNu64 " %" SCNu64,
+			&pid, comm, &utime, &stime) == 4) {
+			cpustat_info_t *info;
+
+			info = calloc(1, sizeof(*info));
+			if (info == NULL) {
+				fprintf(stderr, "Out of memory\n");
+				health_check_exit(EXIT_FAILURE);
+			}
+			info->proc  = proc;
+			info->utime = utime;
+			info->stime = stime;
+			info->ttime = utime + stime;
+			gettimeofday(&info->whence, NULL);
+			info->duration = 0.0;
+			list_append(cpustat, info);
+		}
+		fclose(fp);
+	}
+}
+
+/*
  *  cpustat_get_all_pids()
  *	get CPU stats for all processes
  */
 int cpustat_get_all_pids(const list_t *pids, proc_state state)
 {
-	char filename[PATH_MAX];
-	FILE *fp;
 	link_t *l;
-	list_t *cpustat = (state == PROC_START) ? &cpustat_info_old : &cpustat_info_new;
 
 	for (l = pids->head; l; l = l->next) {
 		proc_info_t *p = (proc_info_t *)l->data;
@@ -215,30 +248,8 @@ int cpustat_get_all_pids(const list_t *pids, proc_state state)
 		if (p->is_thread)
 			continue;
 
-		snprintf(filename, sizeof(filename), "/proc/%d/stat", p->pid);
-		if ((fp = fopen(filename, "r")) != NULL) {
-			char comm[20];
-			uint64_t utime, stime;
-			pid_t pid;
+		cpustat_get_by_proc(p, state);
 
-			/* 3173 (a.out) R 3093 3173 3093 34818 3173 4202496 165 0 0 0 3194 0 */
-			if (fscanf(fp, "%d (%[^)]) %*c %*d %*d %*d %*d %*d %*u %*u %*u %*u %*u %" SCNu64 " %" SCNu64,
-				&pid, comm, &utime, &stime) == 4) {
-				cpustat_info_t *info;
-
-				info = calloc(1, sizeof(*info));
-				if (info == NULL) {
-					fprintf(stderr, "Out of memory\n");
-					health_check_exit(EXIT_FAILURE);
-				}
-				info->proc  = p;
-				info->utime = utime;
-				info->stime = stime;
-				info->ttime = utime + stime;
-				list_append(cpustat, info);
-			}
-			fclose(fp);
-		}
 	}
 
 	return 0;
