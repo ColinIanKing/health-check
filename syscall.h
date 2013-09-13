@@ -98,13 +98,14 @@ typedef struct syscall_wakelock_info {
 	struct syscall_wakelock_info *paired;	/* ptr to lock/unlock pair */
 } syscall_wakelock_info_t;
 
-typedef struct {
+typedef struct syscall_context {
 	pid_t		pid;		/* process */
 	proc_info_t	*proc;		/* proc info */
 	int		syscall;	/* syscall detected */
 	double		timeout;	/* timeout on poll syscalls */
 	syscall_info_t	*syscall_info;	/* syscall accounting */
 	bool		alive;		/* is traced thread alive */
+	struct syscall_context *next;
 } syscall_context_t;
 
 extern syscall_t syscalls[];

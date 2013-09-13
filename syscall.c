@@ -54,8 +54,18 @@ static int syscall_count = 0;
 static int info_emit = false;
 
 static list_t syscall_wakelocks;
-static list_t syscall_contexts;
+static list_t syscall_contexts;		/* This links all the items in syscall_contexts_cache */
 static list_t *__pids;	/* We need to fix this into a global pids cache/list */
+
+/* hash table for syscalls, hashed on pid and syscall number */
+static syscall_info_t *syscall_info[HASH_TABLE_SIZE];
+
+/* hash table for cached fds, hashed on pid and fd */
+static fd_cache_t *fd_cache[HASH_TABLE_SIZE];
+
+/* hash table for cached context info, hased on pid */
+static syscall_context_t *syscall_contexts_cache[HASH_TABLE_SIZE];
+
 
 /* minimum allowed thresholds for poll'd system calls that have timeouts */
 static double syscall_timeout[] = {
@@ -99,13 +109,6 @@ static double syscall_timeout[] = {
 	TIMEOUT(semtimedop, 1.0),
 #endif
 };
-
-
-/* hash table for syscalls, hashed on pid and syscall number */
-static syscall_info_t *syscall_info[HASH_TABLE_SIZE];
-
-/* hash table for cached fds, hashed on pid and fd */
-static fd_cache_t *fd_cache[HASH_TABLE_SIZE];
 
 /*
  *  syscall_valid()
@@ -550,6 +553,17 @@ static inline unsigned long hash_fd(const pid_t pid, const int fd)
 
 	h = (pid ^ (pid << 3) ^ fd) % HASH_TABLE_SIZE;
 	return h;
+}
+
+/*
+ *  hash_syscall_context
+ *	hash by pid
+ */
+static inline unsigned long hash_syscall_context(const pid_t pid)
+{
+	unsigned long h = (unsigned long)pid;
+
+	return h % HASH_TABLE_SIZE;
 }
 
 /*
@@ -1459,7 +1473,7 @@ static syscall_info_t *syscall_count_usage(
 	return s;
 }
 
-void syscall_handle_syscall(syscall_context_t *ctxt)
+static void syscall_handle_syscall(syscall_context_t *ctxt)
 {
 	if (syscall_is_call_entry(ctxt->pid)) {
 		if (syscall_get_call(ctxt->pid, &ctxt->syscall) == -1) {
@@ -1480,7 +1494,7 @@ void syscall_handle_syscall(syscall_context_t *ctxt)
 	}
 }
 
-void syscall_handle_event(syscall_context_t *ctxt, int event)
+static void syscall_handle_event(syscall_context_t *ctxt, int event)
 {
 	if (event == PTRACE_EVENT_CLONE ||
 	    event == PTRACE_EVENT_FORK ||
@@ -1511,7 +1525,7 @@ void syscall_handle_event(syscall_context_t *ctxt, int event)
 	}
 }
 
-void syscall_handle_trap(syscall_context_t *ctxt)
+static void syscall_handle_trap(syscall_context_t *ctxt)
 {
 	siginfo_t siginfo;
 
@@ -1527,7 +1541,7 @@ void syscall_handle_trap(syscall_context_t *ctxt)
 	}
 }
 
-int syscall_handle_stop(syscall_context_t *ctxt, const int status)
+static int syscall_handle_stop(syscall_context_t *ctxt, const int status)
 {
 	int event = status >> 16;
 	int sig = WSTOPSIG(status);
@@ -1550,17 +1564,14 @@ int syscall_handle_stop(syscall_context_t *ctxt, const int status)
  *  syscall_context_find_by_pid()
  * 	find syscall context by pid
  */
-syscall_context_t *syscall_context_find_by_pid(const pid_t pid)
+static syscall_context_t *syscall_context_find_by_pid(const pid_t pid)
 {
-	link_t *l;
 	syscall_context_t *ctxt;
+	unsigned long h = hash_syscall_context(pid);
 
-	for (l = syscall_contexts.head; l; l = l->next) {
-		ctxt = (syscall_context_t *)l->data;
-		if (ctxt->pid == pid) {
+	for (ctxt = syscall_contexts_cache[h]; ctxt; ctxt = ctxt->next)
+		if (ctxt->pid == pid)
 			return ctxt;
-		}
-	}
 
 	return NULL;
 }
@@ -1571,6 +1582,7 @@ static syscall_context_t *syscall_get_context(pid_t pid)
 
 	ctxt = syscall_context_find_by_pid(pid);
 	if (ctxt == NULL) {
+		unsigned long h = hash_syscall_context(pid);
 		if ((ctxt = calloc(1, sizeof(*ctxt))) == NULL) {
 			fprintf(stderr, "Out of memory allocating tracing context.\n");
 			return NULL;
@@ -1581,6 +1593,10 @@ static syscall_context_t *syscall_get_context(pid_t pid)
 		ctxt->syscall = -1;
 		ctxt->syscall_info = NULL;
 		ctxt->alive = true;
+
+		/* Add to fast look up cache and list */
+		ctxt->next = syscall_contexts_cache[h];
+		syscall_contexts_cache[h] = ctxt;
 		list_append(&syscall_contexts, ctxt);
 		procs_traced++;
 	}
