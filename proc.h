@@ -41,7 +41,7 @@ typedef struct {
 	bool		is_thread;	/* true if process is a thread */
 } proc_info_t;
 
-extern list_t  proc_cache;
+extern list_t  proc_cache_list;
 
 extern proc_info_t *proc_cache_add(const pid_t pid, const pid_t ppid, const bool is_thread);
 extern proc_info_t *proc_cache_find_by_pid(pid_t pid);

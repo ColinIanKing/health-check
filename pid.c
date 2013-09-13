@@ -136,7 +136,7 @@ void pid_get_children(
 {
 	link_t *l;
 
-	for (l = proc_cache.head; l; l = l->next) {
+	for (l = proc_cache_list.head; l; l = l->next) {
 		proc_info_t *p = (proc_info_t*)l->data;
 		if (p->ppid == pid) {
 			list_append(children, p);

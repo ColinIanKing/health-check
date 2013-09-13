@@ -32,7 +32,9 @@
 #include "net.h"
 #include "health-check.h"
 
-list_t	proc_cache;
+#define HASH_TABLE_SIZE (1997)
+
+list_t proc_cache_list;
 static pthread_mutex_t pids_mutex = PTHREAD_MUTEX_INITIALIZER;
 static pthread_mutex_t proc_cache_mutex = PTHREAD_MUTEX_INITIALIZER;
 
@@ -54,7 +56,7 @@ proc_info_t *proc_cache_add(const pid_t pid, const pid_t ppid, const bool is_thr
 	}
 
 	pthread_mutex_lock(&proc_cache_mutex);
-	for (l = proc_cache.head; l; l = l->next) {
+	for (l = proc_cache_list.head; l; l = l->next) {
 		proc_info_t *p = (proc_info_t *)l->data;
 		if (p->pid == pid) {
 			pthread_mutex_unlock(&proc_cache_mutex);
@@ -72,7 +74,7 @@ proc_info_t *proc_cache_add(const pid_t pid, const pid_t ppid, const bool is_thr
 	p->comm = get_pid_comm(pid);
 	p->is_thread = is_thread;
 	pthread_mutex_lock(&proc_cache_mutex);
-	list_append(&proc_cache, p);
+	list_append(&proc_cache_list, p);
 	pthread_mutex_unlock(&proc_cache_mutex);
 
 	return p;
@@ -87,7 +89,7 @@ proc_info_t *proc_cache_find_by_pid(const pid_t pid)
 	link_t *l;
 
 	pthread_mutex_lock(&proc_cache_mutex);
-	for (l = proc_cache.head; l; l = l->next) {
+	for (l = proc_cache_list.head; l; l = l->next) {
 		proc_info_t *p = (proc_info_t *)l->data;
 
 		if (p->pid == pid) {
@@ -236,7 +238,7 @@ int proc_cache_find_by_procname(
 	link_t *l;
 
 	pthread_mutex_lock(&proc_cache_mutex);
-	for (l = proc_cache.head; l; l = l->next) {
+	for (l = proc_cache_list.head; l; l = l->next) {
 		proc_info_t *p = (proc_info_t *)l->data;
 
 		if (p->cmdline && strcmp(p->cmdline, procname) == 0) {
@@ -260,7 +262,7 @@ int proc_cache_find_by_procname(
  */
 void proc_cache_init(void)
 {
-	list_init(&proc_cache);
+	list_init(&proc_cache_list);
 }
 
 /*
@@ -269,5 +271,5 @@ void proc_cache_init(void)
  */
 void proc_cache_cleanup(void)
 {
-	list_free(&proc_cache, proc_cache_info_free);
+	list_free(&proc_cache_list, proc_cache_info_free);
 }
