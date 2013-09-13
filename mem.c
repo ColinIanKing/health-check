@@ -391,6 +391,8 @@ void mem_dump_diff(
 		}
 	}
 #endif
+	list_free(&sorted, NULL);
+	list_free(&sorted_delta, free);
 }
 
 /*
