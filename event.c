@@ -42,7 +42,7 @@ static void event_timer_stat_set(const char *str, const bool carp)
 
 	if ((fp = fopen(TIMER_STATS, "w")) == NULL) {
 		if (carp) {
-			fprintf(stderr, "Cannot write to %s\n",TIMER_STATS);
+			fprintf(stderr, "Cannot write to %s.\n",TIMER_STATS);
 			exit(EXIT_FAILURE);
 		} else {
 			return;
@@ -140,7 +140,7 @@ void event_get_all_pids(const list_t *pids, proc_state state)
 	list_t *events = (state == PROC_START) ? &event_info_old : &event_info_new;
 
 	if ((fp = fopen(TIMER_STATS, "r")) == NULL) {
-		fprintf(stderr, "Cannot open %s\n", TIMER_STATS);
+		fprintf(stderr, "Cannot open %s.\n", TIMER_STATS);
 		return;
 	}
 

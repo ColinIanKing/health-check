@@ -129,7 +129,7 @@ static int parse_pid_list(char *arg, list_t *pids)
 
 			pid = atoi(token);
 			if ((p = proc_cache_find_by_pid(pid)) == NULL) {
-				fprintf(stderr, "Cannot find process with PID %i\n", pid);
+				fprintf(stderr, "Cannot find process with PID %i.\n", pid);
 				return -1;
 			}
 			proc_pids_add_proc(pids, p);
@@ -154,7 +154,7 @@ static int json_write(json_object *obj, const char *filename)
 	FILE *fp;
 
 	if (obj == NULL) {
-		fprintf(stderr, "Cannot create JSON log, no JSON data\n");
+		fprintf(stderr, "Cannot create JSON log, no JSON data.\n");
 		return -1;
 	}
 
@@ -169,7 +169,7 @@ static int json_write(json_object *obj, const char *filename)
 		return -1;
 	}
 	if ((fp = fopen(filename, "w")) == NULL) {
-		fprintf(stderr, "Cannot create JSON log file %s\n", filename);
+		fprintf(stderr, "Cannot create JSON log file %s.\n", filename);
 		return -1;
 	}
 
@@ -194,7 +194,7 @@ pid_t exec_executable(const char *opt_username, const char *path, char **argv)
 
 	pid = fork();
 	if (pid < 0) {
-		fprintf(stderr, "Cannot fork to run %s\n", path);
+		fprintf(stderr, "Cannot fork to run %s.\n", path);
 		exit(EXIT_FAILURE);
 	}
 	if (pid != 0)
@@ -207,14 +207,14 @@ pid_t exec_executable(const char *opt_username, const char *path, char **argv)
 		gid_t egid;
 
 		if ((pw = getpwnam(opt_username)) == NULL) {
-			fprintf(stderr, "Username %s does not exist\n", opt_username);
+			fprintf(stderr, "Username %s does not exist.\n", opt_username);
 			exit(EXIT_FAILURE);
 		}
 		uid = pw->pw_uid;
 		gid = pw->pw_gid;
 
 		if (stat(path, &buf) != 0) {
-			fprintf(stderr, "Cannot stat %s\n", path);
+			fprintf(stderr, "Cannot stat %s.\n", path);
 			health_check_exit(EXIT_FAILURE);
 		}
 		euid = buf.st_mode & S_ISUID ? buf.st_uid : uid;

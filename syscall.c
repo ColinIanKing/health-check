@@ -393,7 +393,7 @@ static int syscall_get_call(const pid_t pid, int *syscall)
 		sc = regs.ARM_r7;
 	else {
 		if ((sc & 0x0ff00000) != 0x0f900000) {
-			fprintf(stderr, "bad syscall trap 0x%lx\n", sc);
+			fprintf(stderr, "bad syscall trap 0x%lx.\n", sc);
 			*syscall = -1;
 			return -1;
 		}
@@ -449,7 +449,7 @@ static int syscall_get_return(const pid_t pid, int *rc)
 	*rc = regs.ARM_r0;
 	return 0;
 #else
-	fprintf(stderr, "Unknown arch\n");
+	fprintf(stderr, "Unknown arch.\n");
 	return -1;
 #endif
 }
@@ -485,7 +485,7 @@ static int syscall_get_args(
 		regs = regs64;
 		break;
 	default:
-		fprintf(stderr, "Unknown personality, CS=0x%x\n", (int)cs);
+		fprintf(stderr, "Unknown personality, CS=0x%x.\n", (int)cs);
 		return -1;
 	}
 
@@ -509,7 +509,7 @@ static int syscall_get_args(
 	for (i = 0; i <= arg; i++)
 		args[i] = 0;
 
-	fprintf(stderr, "Unknown arch\n");
+	fprintf(stderr, "Unknown arch.\n");
 	return -1;
 #endif
 }
@@ -1516,7 +1516,7 @@ void syscall_handle_trap(syscall_context_t *ctxt)
 	siginfo_t siginfo;
 
 	if (ptrace(PTRACE_GETSIGINFO, ctxt->pid, 0, &siginfo) == -1) {
-		fprintf(stderr, "Cannot get signal info on pid %d\n", ctxt->pid);
+		fprintf(stderr, "Cannot get signal info on pid %d.\n", ctxt->pid);
 		return;
 	}
 
@@ -1572,7 +1572,7 @@ static syscall_context_t *syscall_get_context(pid_t pid)
 	ctxt = syscall_context_find_by_pid(pid);
 	if (ctxt == NULL) {
 		if ((ctxt = calloc(1, sizeof(*ctxt))) == NULL) {
-			fprintf(stderr, "Out of memory allocating tracing context\n");
+			fprintf(stderr, "Out of memory allocating tracing context.\n");
 			return NULL;
 		}
 		ctxt->pid = pid;
@@ -1621,7 +1621,7 @@ void *syscall_trace(void *arg)
 		}
 
 		if ((ctxt = syscall_get_context(pid)) == NULL) {
-			fprintf(stderr, "Out of memory allocating tracing context\n");
+			fprintf(stderr, "Out of memory allocating tracing context.\n");
 			break;
 		}
 
@@ -1708,7 +1708,7 @@ int syscall_trace_proc(list_t *pids)
 	}
 
 	if (pthread_create(&syscall_tracer, NULL, syscall_trace, NULL) < 0) {
-		fprintf(stderr, "Failed to create tracing thread\n");
+		fprintf(stderr, "Failed to create tracing thread.\n");
 		return -1;
 	}
 	return 0;

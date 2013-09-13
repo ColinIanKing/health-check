@@ -378,12 +378,12 @@ static int net_parse(const net_type_t type)
 		procfile = "/proc/net/udp";
 		break;
 	default:
-		fprintf(stderr, "net_parse given bad net type\n");
+		fprintf(stderr, "net_parse given bad net type.\n");
 		return -1;
 	}
 
 	if ((fp = fopen(procfile, "r")) == NULL) {
-		fprintf(stderr, "Cannot open %s\n", procfile);
+		fprintf(stderr, "Cannot open %s.\n", procfile);
 		return -1;
 	}
 

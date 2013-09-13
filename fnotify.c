@@ -53,7 +53,7 @@ int fnotify_event_init(void)
 	struct mntent* mount;
 
 	if ((fan_fd = fanotify_init (0, 0)) < 0) {
-		fprintf(stderr, "Cannot initialize fanotify: %s\n",
+		fprintf(stderr, "Cannot initialize fanotify: %s.\n",
 			strerror(errno));
 		return -1;
 	}
@@ -62,12 +62,12 @@ int fnotify_event_init(void)
 		FAN_ACCESS| FAN_MODIFY | FAN_OPEN | FAN_CLOSE |
 		FAN_ONDIR | FAN_EVENT_ON_CHILD, AT_FDCWD, "/");
 	if (ret < 0) {
-		fprintf(stderr, "Cannot add fanotify watch on /: %s\n",
+		fprintf(stderr, "Cannot add fanotify watch on /: %s.\n",
 			strerror(errno));
 	}
 
 	if ((mounts = setmntent("/proc/self/mounts", "r")) == NULL) {
-		fprintf(stderr, "Cannot get mount points\n");
+		fprintf(stderr, "Cannot get mount points.\n");
 		return -1;
 	}
 
@@ -80,7 +80,7 @@ int fnotify_event_init(void)
 			FAN_ONDIR | FAN_EVENT_ON_CHILD, AT_FDCWD,
 			mount->mnt_dir);
 		if ((ret < 0) && (errno != ENOENT)) {
-			fprintf(stderr, "Cannot add watch on %s mount %s: %s\n",
+			fprintf(stderr, "Cannot add watch on %s mount %s: %s.\n",
 				mount->mnt_type, mount->mnt_dir,
 				strerror (errno));
 		}

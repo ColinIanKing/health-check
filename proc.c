@@ -110,7 +110,7 @@ int proc_cache_get(void)
 	struct dirent *procentry;
 
 	if ((procdir = opendir("/proc")) == NULL) {
-		fprintf(stderr, "Cannot open directory /proc\n");
+		fprintf(stderr, "Cannot open directory /proc.\n");
 		return -1;
 	}
 
@@ -150,7 +150,7 @@ int proc_cache_get_pthreads(void)
 	struct dirent *procentry;
 
 	if ((procdir = opendir("/proc")) == NULL) {
-		fprintf(stderr, "Cannot open directory /proc\n");
+		fprintf(stderr, "Cannot open directory /proc.\n");
 		return -1;
 	}
 
@@ -247,7 +247,7 @@ int proc_cache_find_by_procname(
 	pthread_mutex_unlock(&proc_cache_mutex);
 
 	if (!found) {
-		fprintf(stderr, "Cannot find process %s\n", procname);
+		fprintf(stderr, "Cannot find process %s.\n", procname);
 		return -1;
 	}
 
