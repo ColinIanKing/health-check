@@ -1,3 +1,11 @@
+health-check (0.01.26) saucy; urgency=low
+
+  * Makefile: bump version
+  * Minor clean up of error messages.
+  * Add out of memory helper, add better feedback when we run out of memory
+
+ -- Colin King <colin.king@canonical.com>  Fri, 13 Sep 2013 10:37:05 +0100
+
 health-check (0.01.25) saucy; urgency=low
 
   * Makefile: bump version and update header dependencies
