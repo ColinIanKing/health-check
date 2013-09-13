@@ -33,12 +33,13 @@ typedef enum {
 } proc_state;
 
 /* process specific information */
-typedef struct {
+typedef struct proc_info {
 	pid_t		pid;		/* PID */
 	pid_t		ppid;		/* Parent PID */
 	char		*comm;		/* Kernel process comm name */
 	char		*cmdline;	/* Process name from cmdline */
 	bool		is_thread;	/* true if process is a thread */
+	struct proc_info *next;		/* next in hash */
 } proc_info_t;
 
 extern list_t  proc_cache_list;

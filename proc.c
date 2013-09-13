@@ -35,35 +35,28 @@
 #define HASH_TABLE_SIZE (1997)
 
 list_t proc_cache_list;
+static proc_info_t *proc_cache_hash[HASH_TABLE_SIZE];
 static pthread_mutex_t pids_mutex = PTHREAD_MUTEX_INITIALIZER;
 static pthread_mutex_t proc_cache_mutex = PTHREAD_MUTEX_INITIALIZER;
 
+static inline unsigned long proc_cache_hash_pid(const pid_t pid)
+{
+	unsigned long h = (unsigned long)pid;
+
+	return h % HASH_TABLE_SIZE;
+}
+
 /*
- *  proc_cache_add()
- *	add process info to global cache
+ *  proc_cache_add_at_hash_index()
+ *	heler function to add proc info to the proc cache and list
  */
-proc_info_t *proc_cache_add(const pid_t pid, const pid_t ppid, const bool is_thread)
+static proc_info_t *proc_cache_add_at_hash_index(
+	const unsigned long h,
+	const pid_t pid,
+	const pid_t ppid,
+	const bool is_thread)
 {
 	proc_info_t *p;
-	link_t *l;
-
-	if (!pid_exists(pid))
-		return NULL;
-
-	if (pid == getpid()) {
-		/* We never should monitor oneself, it gets messy */
-		return NULL;
-	}
-
-	pthread_mutex_lock(&proc_cache_mutex);
-	for (l = proc_cache_list.head; l; l = l->next) {
-		proc_info_t *p = (proc_info_t *)l->data;
-		if (p->pid == pid) {
-			pthread_mutex_unlock(&proc_cache_mutex);
-			return p;
-		}
-	}
-	pthread_mutex_unlock(&proc_cache_mutex);
 
 	if ((p = calloc(1, sizeof(*p))) == NULL)
 		health_check_out_of_memory("allocating proc cache");
@@ -73,25 +66,31 @@ proc_info_t *proc_cache_add(const pid_t pid, const pid_t ppid, const bool is_thr
 	p->cmdline = get_pid_cmdline(pid);
 	p->comm = get_pid_comm(pid);
 	p->is_thread = is_thread;
+
 	pthread_mutex_lock(&proc_cache_mutex);
 	list_append(&proc_cache_list, p);
+	p->next = proc_cache_hash[h];
+	proc_cache_hash[h] = p;
 	pthread_mutex_unlock(&proc_cache_mutex);
 
 	return p;
 }
 
 /*
- *  proc_cache_find_by_pid()
- *	find process info by the process id
+ *  proc_cache_add()
+ *	explicity add process info to global cache ONLY if it is a traceable process
  */
-proc_info_t *proc_cache_find_by_pid(const pid_t pid)
+proc_info_t *proc_cache_add(const pid_t pid, const pid_t ppid, const bool is_thread)
 {
-	link_t *l;
+	proc_info_t *p;
+	unsigned long h;
+
+	if (!pid_exists(pid) || (pid == getpid()))
+		return NULL;
 
 	pthread_mutex_lock(&proc_cache_mutex);
-	for (l = proc_cache_list.head; l; l = l->next) {
-		proc_info_t *p = (proc_info_t *)l->data;
-
+	h = proc_cache_hash_pid(pid);
+	for (p = proc_cache_hash[h]; p; p = p->next) {
 		if (p->pid == pid) {
 			pthread_mutex_unlock(&proc_cache_mutex);
 			return p;
@@ -99,7 +98,38 @@ proc_info_t *proc_cache_find_by_pid(const pid_t pid)
 	}
 	pthread_mutex_unlock(&proc_cache_mutex);
 
-	return proc_cache_add(pid, 0, false);	/* Need to find parent really */
+	return proc_cache_add_at_hash_index(h, pid, ppid, is_thread);
+}
+
+/*
+ *  proc_cache_find_by_pid()
+ *	find process info by the process id, if it is not found
+ * 	and it is a traceable process then cache it
+ */
+proc_info_t *proc_cache_find_by_pid(const pid_t pid)
+{
+	unsigned long h;
+	proc_info_t *p;
+
+	pthread_mutex_lock(&proc_cache_mutex);
+	h = proc_cache_hash_pid(pid);
+	for (p = proc_cache_hash[h]; p; p = p->next) {
+		if (p->pid == pid) {
+			pthread_mutex_unlock(&proc_cache_mutex);
+			return p;
+		}
+	}
+	pthread_mutex_unlock(&proc_cache_mutex);
+
+	/*
+	 *  Not found, so add it and return it if it is a legitimate
+	 *  process to trace
+	 */
+	if (!pid_exists(pid) || (pid == getpid()))
+		return NULL;
+
+	/*  Be lazy and ignore the parent info lookup */
+	return proc_cache_add_at_hash_index(h, pid, 0, false);
 }
 
 /*
@@ -131,9 +161,8 @@ int proc_cache_get(void)
 			pid_t pid, ppid;
 			char comm[64];
 			/* 3173 (a.out) R 3093 3173 3093 34818 3173 4202496 165 0 0 0 3194 0 */
-			if (fscanf(fp, "%d (%[^)]) %*c %i", &pid, comm, &ppid) == 3) {
+			if (fscanf(fp, "%d (%[^)]) %*c %i", &pid, comm, &ppid) == 3)
 				proc_cache_add(pid, ppid, false);
-			}
 			fclose(fp);
 		}
 	}
@@ -184,7 +213,6 @@ int proc_cache_get_pthreads(void)
 			pid = atoi(taskentry->d_name);
 			if (pid == ppid)
 				continue;
-
 			proc_cache_add(pid, ppid, true);
 		}
 		closedir(taskdir);
@@ -229,6 +257,7 @@ void proc_pids_add_proc(list_t *pids, proc_info_t *p)
 /*
  *  proc_cache_find_by_procname()
  *	find process by process name (in cmdline)
+ *	we don't do this often, so a linear search is fine
  */
 int proc_cache_find_by_procname(
 	list_t *pids,
