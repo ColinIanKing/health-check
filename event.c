@@ -110,10 +110,8 @@ static void event_add(
 
 	/* Not found, it is new! */
 
-	if ((ev = calloc(1, sizeof(event_info_t))) == NULL) {
-		fprintf(stderr, "Out of memory\n");
-		health_check_exit(EXIT_FAILURE);
-	}
+	if ((ev = calloc(1, sizeof(event_info_t))) == NULL)
+		health_check_out_of_memory("allocting event information");
 
 	ev->proc = p;
 	ev->func = strdup(func);
@@ -124,10 +122,8 @@ static void event_add(
 	if (ev->proc == NULL ||
 	    ev->func == NULL ||
 	    ev->callback == NULL ||
-	    ev->ident == NULL) {
-		fprintf(stderr, "Out of memory\n");
-		health_check_exit(EXIT_FAILURE);
-	}
+	    ev->ident == NULL)
+		health_check_out_of_memory("allocting event information");
 
 	list_add_ordered(events, ev, event_cmp);
 }

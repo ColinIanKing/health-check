@@ -170,10 +170,8 @@ void fnotify_event_add(
 		if (metadata->pid == p->pid) {
 			char 	*filename = fnotify_get_filename(-1, metadata->fd);
 
-			if (filename == NULL) {
-				fprintf(stderr, "Out of memory\n");
-				health_check_exit(EXIT_FAILURE);
-			}
+			if (filename == NULL)
+				health_check_out_of_memory("allocating fnotify filename");
 			if ((opt_flags & OPT_WAKELOCKS_LIGHT) &&
 			    (metadata->mask & (FAN_MODIFY | FAN_CLOSE_WRITE)) &&
 			    (!strcmp(filename, "/sys/power/wake_lock") ||
@@ -191,10 +189,8 @@ void fnotify_event_add(
 				}
 
 				if (!found) {
-					if ((wakelock_info = calloc(1, sizeof(*wakelock_info))) == NULL) {
-						fprintf(stderr, "Out of memory\n");
-						health_check_exit(EXIT_FAILURE);
-					}
+					if ((wakelock_info = calloc(1, sizeof(*wakelock_info))) == NULL)
+						health_check_out_of_memory("allocating wakelock information");
 					wakelock_info->proc = p;
 					wakelock_info->locked = 0;
 					wakelock_info->unlocked = 0;
@@ -224,10 +220,8 @@ void fnotify_event_add(
 				}
 
 				if (!found) {
-					if ((fileinfo = calloc(1, sizeof(*fileinfo))) == NULL) {
-						fprintf(stderr, "Out of memory\n");
-						health_check_exit(EXIT_FAILURE);
-					}
+					if ((fileinfo = calloc(1, sizeof(*fileinfo))) == NULL)
+						health_check_out_of_memory("allocating fnotify file information");
 					fileinfo->filename = filename;
 					fileinfo->mask = metadata->mask;
 					fileinfo->proc = p;
@@ -425,10 +419,8 @@ static void fnotify_dump_io_ops(
 		if (io_ops.total) {
 			io_ops_t *new_io_ops;
 
-			if ((new_io_ops = calloc(1, sizeof(*new_io_ops))) == NULL) {
-				fprintf(stderr, "Out of memory\n");
-				health_check_exit(EXIT_FAILURE);
-			}
+			if ((new_io_ops = calloc(1, sizeof(*new_io_ops))) == NULL)
+				health_check_out_of_memory("allocating fnotify I/O ops information");
 			*new_io_ops = io_ops;
 			list_add_ordered(&sorted, new_io_ops, fnotify_event_cmp_io_ops);
 		}

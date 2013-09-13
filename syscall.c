@@ -807,10 +807,8 @@ static void *syscall_peek_data(const pid_t pid, const unsigned long addr, const 
 	unsigned *data;
 	size_t i, n = (len + sizeof(unsigned long) - 1) / sizeof(unsigned long);
 
-	if ((data = calloc(sizeof(unsigned long), n + 1)) == NULL) {
-		fprintf(stderr, "Out of memory\n");
-		health_check_exit(EXIT_FAILURE);
-	}
+	if ((data = calloc(sizeof(unsigned long), n + 1)) == NULL)
+		health_check_out_of_memory("allocating syscall peek buffer");
 
 	for (i = 0; i < n; i++)
 		data[i] = ptrace(PTRACE_PEEKDATA, pid,
@@ -951,17 +949,13 @@ static void syscall_write_args(
 			break;
 	}
 	if (fc == NULL) {
-		if ((fc = calloc(1, sizeof(*fc))) == NULL) {
-			fprintf(stderr, "Out of memory\n");
-			health_check_exit(EXIT_FAILURE);
-		}
+		if ((fc = calloc(1, sizeof(*fc))) == NULL)
+			health_check_out_of_memory("allocating file descriptor cache item");
 		fc->pid = pid;
 		fc->fd = fd;
 		fc->filename = fnotify_get_filename(pid, fd);
-		if (fc->filename == NULL) {
-			fprintf(stderr, "Out of memory\n");
-			health_check_exit(EXIT_FAILURE);
-		}
+		if (fc->filename == NULL)
+			health_check_out_of_memory("allocating filename");
 		pthread_mutex_init(&fc->mutex, NULL);
 		fc->next = fd_cache[h];
 		fd_cache[h] = fc;
@@ -975,8 +969,7 @@ static void syscall_write_args(
 			fc->filename = fnotify_get_filename(pid, fd);
 			if (fc->filename == NULL) {
 				pthread_mutex_unlock(&fc->mutex);
-				fprintf(stderr, "Out of memory\n");
-				health_check_exit(EXIT_FAILURE);
+				health_check_out_of_memory("allocating filename");
 			}
 		}
 		pthread_mutex_unlock(&fc->mutex);
@@ -992,8 +985,7 @@ static void syscall_write_args(
 
 		if ((info = calloc(1, sizeof(*info))) == NULL) {
 			pthread_mutex_unlock(&fc->mutex);
-			fprintf(stderr, "Out of memory\n");
-			health_check_exit(EXIT_FAILURE);
+			health_check_out_of_memory("allocating wakelock information");
 		}
 
 		info->pid = pid;
@@ -1398,10 +1390,8 @@ static void syscall_account_return(
 				return;
 
 			if (s) {
-				if ((info = (syscall_return_info_t *)calloc(1, sizeof(*info))) == NULL) {
-					fprintf(stderr, "Out of memory\n");
-					health_check_exit(EXIT_FAILURE);
-				}
+				if ((info = (syscall_return_info_t *)calloc(1, sizeof(*info))) == NULL)
+					health_check_out_of_memory("allocating syscall accounting information");
 				info->timeout = timeout;
 				info->ret = ret;
 				list_append(&s->return_history, info);
@@ -1442,10 +1432,8 @@ static syscall_info_t *syscall_count_usage(
 			/*
 			 *  Doesn't exist, create new one
 			 */
-			if ((s = calloc(1, sizeof(*s))) == NULL) {
-				fprintf(stderr, "Cannot allocate syscall hash item\n");
-				health_check_exit(EXIT_FAILURE);
-			}
+			if ((s = calloc(1, sizeof(*s))) == NULL)
+				health_check_out_of_memory("allocating syscall hash item");
 			s->syscall = syscall;
 			s->proc = proc_cache_find_by_pid(pid);
 			s->count = 1;

@@ -64,8 +64,7 @@ void ctxt_switch_get_by_proc(proc_info_t *proc, proc_state state)
 
 	if ((info = calloc(1, sizeof(*info))) == NULL) {
 		fclose(fp);
-		fprintf(stderr, "Out of memory allocating context switch information.\n");
-		health_check_exit(EXIT_FAILURE);
+		health_check_out_of_memory("allocating context switch information");
 	}
 	info->voluntary = 0;
 	info->involuntary = 0;
@@ -178,10 +177,8 @@ void ctxt_switch_dump_diff(json_object *j_tests, const double duration)
 		if (!info->valid)
 			continue;
 
-		if ((new_info = calloc(1, sizeof(*info))) == NULL) {
-			fprintf(stderr, "Out of memory allocating context switch information.\n");
-			health_check_exit(EXIT_FAILURE);
-		}
+		if ((new_info = calloc(1, sizeof(*info))) == NULL)
+			health_check_out_of_memory("allocating context switch information");
 		new_info->proc = info->proc;
 		ctxt_switch_delta(info,
 			&ctxt_switch_info_old,

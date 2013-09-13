@@ -30,19 +30,17 @@
  */
 extern json_object *json_object_new_int64(const int64_t) __attribute__((weak));
 
-static void j_obj_is_null(json_object *obj, const char *msg)
+static inline void j_obj_is_null(json_object *obj, const char *msg)
 {
-	if (!obj) {
-		fprintf(stderr, "%s", msg);
-		health_check_exit(EXIT_FAILURE);
-	}
+	if (!obj)
+		health_check_out_of_memory(msg);
 }
 
 json_object *j_obj_new_array(void)
 {
 	json_object *obj = json_object_new_array();
 
-	j_obj_is_null(obj, "Cannot allocate JSON array\n");
+	j_obj_is_null(obj, "cannot allocate JSON array");
 	return obj;
 }
 
@@ -50,7 +48,7 @@ json_object *j_obj_new_obj(void)
 {
 	json_object *obj = json_object_new_object();
 
-	j_obj_is_null(obj, "Cannot allocate JSON object\n");
+	j_obj_is_null(obj, "cannot allocate JSON object");
 	return obj;
 }
 
@@ -58,7 +56,7 @@ json_object *j_obj_new_int32(const int32_t i)
 {
 	json_object *obj = json_object_new_int(i);
 
-	j_obj_is_null(obj, "Cannot allocate JSON integer\n");
+	j_obj_is_null(obj, "cannot allocate JSON integer");
 	return obj;
 }
 
@@ -72,7 +70,7 @@ json_object *j_obj_new_int64(const int64_t i)
 		/* Older json-c doesn't have int64, so convert to double */
 		obj = json_object_new_double((double)i);
 	}
-	j_obj_is_null(obj, "Cannot allocate JSON integer\n");
+	j_obj_is_null(obj, "cannot allocate JSON integer");
 	return obj;
 }
 
@@ -80,7 +78,7 @@ json_object *j_obj_new_double(const double d)
 {
 	json_object *obj = json_object_new_double(d);
 
-	j_obj_is_null(obj, "Cannot allocate JSON double\n");
+	j_obj_is_null(obj, "cannot allocate JSON double");
 	return obj;
 }
 
@@ -88,6 +86,6 @@ json_object *j_obj_new_string(const char *str)
 {
 	json_object *obj = json_object_new_string(str);
 
-	j_obj_is_null(obj, "Cannot allocate JSON string\n");
+	j_obj_is_null(obj, "cannot allocate JSON string");
 	return obj;
 }

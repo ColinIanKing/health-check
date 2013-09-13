@@ -104,10 +104,8 @@ static void net_hash_add(uint64_t inode, pid_t pid, uint32_t fd)
 			return;
 	}
 
-	if ((n = calloc(1, sizeof(*n))) == NULL) {
-		fprintf(stderr, "Out of memory\n");
-		health_check_exit(EXIT_FAILURE);
-	}
+	if ((n = calloc(1, sizeof(*n))) == NULL)
+		health_check_out_of_memory("allocating net hash data");
 
 	n->inode = inode;
 	n->proc = proc_cache_find_by_pid(pid);
@@ -284,10 +282,8 @@ static void net_addr_add(net_addr_info_t *addr)
 			return;		/* Duplicate, ignore */
 	}
 
-	if ((new_addr = calloc(1, sizeof(*new_addr))) == NULL) {
-		fprintf(stderr, "Out of memory\n");
-		health_check_exit(EXIT_FAILURE);
-	}
+	if ((new_addr = calloc(1, sizeof(*new_addr))) == NULL)
+		health_check_out_of_memory("allocating net address information");
 	memcpy(new_addr, addr, sizeof(*addr));
 	list_add_ordered(&net_cached_addrs, new_addr, net_pid_cmp);
 }

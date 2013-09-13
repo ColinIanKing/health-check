@@ -77,6 +77,16 @@ void health_check_exit(const int status)
 }
 
 /*
+ *  health_check_out_of_memory();
+ *	report out of memory condition
+ */
+void health_check_out_of_memory(const char *msg)
+{
+	fprintf(stderr, "Out of memory: %s.\n", msg);
+	health_check_exit(EXIT_FAILURE);
+}
+
+/*
  *  show_usage()
  *	show how to use
  */
@@ -456,14 +466,10 @@ int main(int argc, char **argv)
 
 #ifdef JSON_OUTPUT
 	if (opt_json_file) {
-		if ((json_obj = json_object_new_object()) == NULL) {
-			fprintf(stderr, "Cannot allocate JSON object\n");
-			health_check_exit(EXIT_FAILURE);
-		}
-		if ((json_tests = json_object_new_object()) == NULL) {
-			fprintf(stderr, "Cannot allocate JSON array\n");
-			health_check_exit(EXIT_FAILURE);
-		}
+		if ((json_obj = json_object_new_object()) == NULL)
+			health_check_out_of_memory("cannot allocate JSON object");
+		if ((json_tests = json_object_new_object()) == NULL)
+			health_check_out_of_memory("cannot allocate JSON array");
 		json_object_object_add(json_obj, "health-check", json_tests);
 	}
 #endif
@@ -472,10 +478,8 @@ int main(int argc, char **argv)
 		health_check_exit(EXIT_FAILURE);
 
 	ret = posix_memalign(&buffer, 4096, 4096);
-	if (ret != 0 || buffer == NULL) {
-		fprintf(stderr, "Cannot allocate 4K aligned buffer\n");
-		health_check_exit(EXIT_FAILURE);
-	}
+	if (ret != 0 || buffer == NULL)
+		health_check_out_of_memory("cannot allocate 4K aligned buffer");
 
 	signal(SIGINT, &handle_sigint);
 	syscall_init();
@@ -559,6 +563,10 @@ int main(int argc, char **argv)
 
 	if (opt_flags & OPT_WAKELOCKS_HEAVY)
 		syscall_dump_wakelocks(json_tests, actual_duration, &pids);
+
+	if (actual_duration < 5.0)
+		printf("Analysis ran for just %.4f seconds, so rate calculations may be misleading\n",
+			actual_duration);
 
 #ifdef JSON_OUTPUT
 	if (json_obj)

@@ -63,10 +63,8 @@ proc_info_t *proc_cache_add(const pid_t pid, const pid_t ppid, const bool is_thr
 	}
 	pthread_mutex_unlock(&proc_cache_mutex);
 
-	if ((p = calloc(1, sizeof(*p))) == NULL) {
-		fprintf(stderr, "Out of memory\n");
-		health_check_exit(EXIT_FAILURE);
-	}
+	if ((p = calloc(1, sizeof(*p))) == NULL)
+		health_check_out_of_memory("allocating proc cache");
 
 	p->pid  = pid;
 	p->ppid = ppid;

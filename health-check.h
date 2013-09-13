@@ -34,6 +34,7 @@
 #define OPT_VERBOSE                     0x00000020
 
 extern void health_check_exit(const int status) __attribute__ ((noreturn));
+extern void health_check_out_of_memory(const char *msg) __attribute__ ((noreturn));
 extern volatile bool keep_running;
 extern int opt_max_syscalls;
 extern int opt_flags;

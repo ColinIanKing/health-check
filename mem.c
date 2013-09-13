@@ -144,10 +144,8 @@ void mem_get_by_proc(proc_info_t *p, proc_state state)
 	if ((fp = fopen(path, "r")) == NULL)
 		return;
 
-	if ((m = calloc(1, sizeof(*m))) == NULL) {
-		fprintf(stderr, "Out of memory\n");
-		health_check_exit(EXIT_FAILURE);
-	}
+	if ((m = calloc(1, sizeof(*m))) == NULL)
+		health_check_out_of_memory("allocating memory tracking information");
 	m->proc = p;
 
 	while (mem_get_entry(fp, m) != -1)
@@ -214,10 +212,8 @@ static mem_info_t *mem_delta(mem_info_t *mem_new, const list_t *mem_old_list)
 	int i;
 	mem_info_t *delta;
 
-	if ((delta = calloc(1, sizeof(*delta))) == NULL) {
-		fprintf(stderr, "Out of memory\n");
-		health_check_exit(EXIT_FAILURE);
-	}
+	if ((delta = calloc(1, sizeof(*delta))) == NULL)
+		health_check_out_of_memory("allocating memory delta tracking information");
 
 	memset(delta, 0, sizeof(*delta));
 

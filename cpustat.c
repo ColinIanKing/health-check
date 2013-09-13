@@ -98,10 +98,8 @@ void cpustat_dump_diff(json_object *j_tests, const double duration)
 			if (cin->proc->pid == cio->proc->pid) {
 				cpustat_info_t *cpustat;
 
-				if ((cpustat = calloc(1, sizeof(*cpustat))) == NULL) {
-					fprintf(stderr, "Out of memory\n");
-					health_check_exit(EXIT_FAILURE);
-				}
+				if ((cpustat = calloc(1, sizeof(*cpustat))) == NULL)
+					health_check_out_of_memory("cannot allocate cpustat information");
 				cpustat->proc  = cio->proc;
 				cpustat->utime = cin->utime - cio->utime;
 				cpustat->stime = cin->stime - cio->stime;
@@ -216,10 +214,8 @@ void cpustat_get_by_proc(proc_info_t *proc, proc_state state)
 			cpustat_info_t *info;
 
 			info = calloc(1, sizeof(*info));
-			if (info == NULL) {
-				fprintf(stderr, "Out of memory\n");
-				health_check_exit(EXIT_FAILURE);
-			}
+			if (info == NULL)
+				health_check_out_of_memory("allocating cpustat information");
 			info->proc  = proc;
 			info->utime = utime;
 			info->stime = stime;
