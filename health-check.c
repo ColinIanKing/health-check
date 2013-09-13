@@ -194,7 +194,6 @@ pid_t exec_executable(const char *opt_username, const char *path, char **argv)
 	uid_t uid;
 	gid_t gid;
 	pid_t pid;
-	struct stat buf;
 
 	pid = fork();
 	if (pid < 0) {
@@ -207,8 +206,6 @@ pid_t exec_executable(const char *opt_username, const char *path, char **argv)
 	/* Traced process starts here */
 	if (opt_username) {
 		struct passwd *pw;
-		uid_t euid;
-		gid_t egid;
 
 		if ((pw = getpwnam(opt_username)) == NULL) {
 			fprintf(stderr, "Username %s does not exist.\n", opt_username);
@@ -217,22 +214,15 @@ pid_t exec_executable(const char *opt_username, const char *path, char **argv)
 		uid = pw->pw_uid;
 		gid = pw->pw_gid;
 
-		if (stat(path, &buf) != 0) {
-			fprintf(stderr, "Cannot stat %s.\n", path);
-			health_check_exit(EXIT_FAILURE);
-		}
-		euid = buf.st_mode & S_ISUID ? buf.st_uid : uid;
-		egid = buf.st_mode & S_ISGID ? buf.st_gid : gid;
-
 		if (initgroups(opt_username, gid) < 0) {
 			fprintf(stderr, "initgroups failed user on %s\n", opt_username);
 			exit(EXIT_FAILURE);
 		}
-		if (setregid(gid, egid) < 0) {
+		if (setregid(gid, gid) < 0) {
 			fprintf(stderr, "setregid failed\n");
 			exit(EXIT_FAILURE);
 		}
-		if (setreuid(uid, euid) < 0) {
+		if (setreuid(uid, uid) < 0) {
 			fprintf(stderr, "setreuid failed\n");
 			exit(EXIT_FAILURE);
 		}
