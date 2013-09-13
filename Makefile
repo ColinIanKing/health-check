@@ -1,12 +1,16 @@
 VERSION=0.01.26
 
 JSON_OUTPUT=y
+FNOTIFY=y
 
 CFLAGS += -Wall -Wextra -DVERSION='"$(VERSION)"'
 LDFLAGS += -lpthread
 ifeq ($(JSON_OUTPUT),y)
 	LDFLAGS += -ljson	
 	CFLAGS += -DJSON_OUTPUT
+endif
+ifeq ($(FNOTIFY),y)
+	CFLAGS += -DFNOTIFY
 endif
 
 #CFLAGS += -DDEBUG_MALLOC
@@ -19,7 +23,7 @@ ifeq ($(JSON_OUTPUT),y)
 	OBJS += json.o
 endif
 
-health-check: $(OBJS)
+health-check: $(OBJS) Makefile
 	$(CC) $(CFLAGS) $(OBJS) -o $@ $(LDFLAGS)
 
 health-check.8.gz: health-check.8

@@ -41,7 +41,9 @@
 #include "proc.h"
 #include "syscall.h"
 #include "timeval.h"
+#ifdef FNOTIFY
 #include "fnotify.h"
+#endif
 #include "event.h"
 #include "cpustat.h"
 #include "mem.h"
@@ -107,7 +109,9 @@ static void show_usage(void)
 	printf("  -r            resolve IP addresses\n");
 	printf("  -u user       run command as a specified user\n");
 	printf("  -v            verbose output\n");
+#ifdef FNOTIFY
 	printf("  -w            monitor wakelock count\n");
+#endif
 	printf("  -W            monitor wakelock usage (has overhead)\n");
 
 	health_check_exit(EXIT_SUCCESS);
@@ -338,7 +342,10 @@ int main(int argc, char **argv)
 {
 	double actual_duration, opt_duration_secs = 60.0;
 	struct timeval tv_start, tv_end, tv_now, duration;
-	int ret, rc = EXIT_SUCCESS, fan_fd = 0;
+	int ret, rc = EXIT_SUCCESS;
+#ifdef FNOTIFY
+	int fan_fd = 0;
+#endif
 	list_t pids;
 	link_t *l;
 	void *buffer;
@@ -396,9 +403,11 @@ int main(int argc, char **argv)
 		case 'v':
 			opt_flags |= OPT_VERBOSE;
 			break;
+#ifdef FNOTIFY
 		case 'w':
 			opt_flags |= OPT_WAKELOCKS_LIGHT;
 			break;
+#endif
 		case 'W':
 			opt_flags |= OPT_WAKELOCKS_HEAVY;
 			break;
@@ -473,9 +482,11 @@ int main(int argc, char **argv)
 		json_object_object_add(json_obj, "health-check", json_tests);
 	}
 #endif
+#ifdef FNOTIFY
 	fnotify_init();
 	if ((fan_fd = fnotify_event_init()) < 0)
 		health_check_exit(EXIT_FAILURE);
+#endif
 
 	ret = posix_memalign(&buffer, 4096, 4096);
 	if (ret != 0 || buffer == NULL)
@@ -507,6 +518,7 @@ int main(int argc, char **argv)
 	while ((procs_traced > 0) &&
 	       keep_running &&
 	       timeval_to_double(&duration) > 0.0) {
+#ifdef FNOTIFY
 		fd_set rfds;
 		FD_ZERO(&rfds);
 		FD_SET(fan_fd, &rfds);
@@ -533,6 +545,16 @@ int main(int argc, char **argv)
 				}
 			}
 		}
+#else
+		ret = select(0, NULL, NULL, NULL, &duration);
+		if (ret < 0) {
+			if (errno != EINTR) {
+				fprintf(stderr, "Select failed: %s\n", strerror(errno));
+				gettimeofday(&tv_now, NULL);
+				goto out;
+			}
+		}
+#endif
 		gettimeofday(&tv_now, NULL);
 		duration = timeval_sub(&tv_end, &tv_now);
 	}
@@ -552,14 +574,18 @@ int main(int argc, char **argv)
 	cpustat_dump_diff(json_tests, actual_duration);
 	event_dump_diff(json_tests, actual_duration);
 	ctxt_switch_dump_diff(json_tests, actual_duration);
+#ifdef FNOTIFY
 	fnotify_dump_events(json_tests, actual_duration, &pids);
+#endif
 	syscall_dump_hashtable(json_tests, actual_duration);
 	syscall_dump_pollers(json_tests, actual_duration);
 	mem_dump_diff(json_tests, actual_duration);
 	net_connection_dump(json_tests);
 
+#ifdef FNOTIFY
 	if (opt_flags & OPT_WAKELOCKS_LIGHT)
 		fnotify_dump_wakelocks(json_tests, actual_duration);
+#endif
 
 	if (opt_flags & OPT_WAKELOCKS_HEAVY)
 		syscall_dump_wakelocks(json_tests, actual_duration, &pids);
@@ -580,7 +606,9 @@ out:
 	event_cleanup();
 	cpustat_cleanup();
 	ctxt_switch_cleanup();
+#ifdef FNOTIFY
 	fnotify_cleanup();
+#endif
 	free(buffer);
 	proc_cache_cleanup();
 	list_free(&pids, NULL);
