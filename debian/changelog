@@ -1,3 +1,16 @@
+health-check (0.01.27) saucy; urgency=low
+
+  * Makefile: bump version
+  * Remove stat and eliminate potential TOCTOU race
+  * Fix small memory leak
+  * Make fnotify monitoring optional so we can valgrind health-check
+  * Free up sorted items in mem
+  * Use a hash table for faster proc lookups
+  * rename proc_cache to proc_cache_list
+  * Improve pid to syscall context lookup by using a hash table
+
+ -- Colin King <colin.king@canonical.com>  Fri, 13 Sep 2013 17:00:01 +0100
+
 health-check (0.01.26) saucy; urgency=low
 
   * Makefile: bump version
