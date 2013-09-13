@@ -591,6 +591,7 @@ static void syscall_hashtable_free(void)
 
 		while (s) {
 			next = s->next;
+			list_free(&s->return_history, free);
 			free(s);
 			s = next;
 		}
