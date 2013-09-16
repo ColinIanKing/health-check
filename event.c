@@ -30,7 +30,7 @@
 #include "event.h"
 #include "health-check.h"
 
-static list_t event_info_old, event_info_new;
+static list_t event_info_start, event_info_finish;
 
 /*
  *  event_timer_stat_set()
@@ -137,7 +137,7 @@ void event_get_all_pids(const list_t *pids, proc_state state)
 {
 	FILE *fp;
 	char buf[4096];
-	list_t *events = (state == PROC_START) ? &event_info_old : &event_info_new;
+	list_t *events = (state == PROC_START) ? &event_info_start : &event_info_finish;
 
 	if ((fp = fopen(TIMER_STATS, "r")) == NULL) {
 		fprintf(stderr, "Cannot open %s.\n", TIMER_STATS);
@@ -247,12 +247,12 @@ void event_dump_diff(
 
 	printf("Wakeups:\n");
 
-	if (event_info_new.head) {
+	if (event_info_finish.head) {
 		if (opt_flags & OPT_BRIEF) {
 			double event_rate = 0.0;
-			for (l = event_info_new.head; l; l = l->next) {
+			for (l = event_info_finish.head; l; l = l->next) {
 				event_info_t *event_new = (event_info_t *)l->data;
-				uint64_t delta = event_delta(event_new, &event_info_old);
+				uint64_t delta = event_delta(event_new, &event_info_start);
 				event_rate += (double)delta;
 			}
 			event_rate /= duration;
@@ -263,9 +263,9 @@ void event_dump_diff(
 			double total = 0.0;
 
 			printf("  PID  Process               Wake/Sec Kernel Functions\n");
-			for (l = event_info_new.head; l; l = l->next) {
+			for (l = event_info_finish.head; l; l = l->next) {
 				event_info_t *event_new = (event_info_t *)l->data;
-				uint64_t delta = event_delta(event_new, &event_info_old);
+				uint64_t delta = event_delta(event_new, &event_info_start);
 				double event_rate = (double)delta / duration;
 
 				printf(" %5d %-20.20s %9.2f (%s, %s) (%s)\n",
@@ -294,9 +294,9 @@ void event_dump_diff(
 		j_obj_obj_add(j_tests, "wakeup-events", (j_event_test = j_obj_new_obj()));
 		j_obj_obj_add(j_event_test, "wakeup-events-per-process", (j_events = j_obj_new_array()));
 
-		for (l = event_info_new.head; l; l = l->next) {
+		for (l = event_info_finish.head; l; l = l->next) {
 			event_info_t *event = (event_info_t *)l->data;
-			uint64_t delta = event_delta(event, &event_info_old);
+			uint64_t delta = event_delta(event, &event_info_start);
 			double event_rate = (double)delta / duration;
 			total_delta += delta;
 
@@ -329,8 +329,8 @@ void event_dump_diff(
  */
 void event_init(void)
 {
-	list_init(&event_info_old);
-	list_init(&event_info_new);
+	list_init(&event_info_start);
+	list_init(&event_info_finish);
 
 	/* Should really catch signals and set back to zero before we die */
         event_timer_stat_set("1", true);
@@ -351,6 +351,6 @@ void event_stop(void)
  */
 void event_cleanup(void)
 {
-	list_free(&event_info_old, event_free);
-	list_free(&event_info_new, event_free);
+	list_free(&event_info_start, event_free);
+	list_free(&event_info_finish, event_free);
 }
