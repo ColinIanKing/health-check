@@ -1128,6 +1128,10 @@ static void syscall_sync_args(
 }
 #endif
 
+/*
+ *  syscall_sync_cmp()
+ *	syscall total usage list sort compare
+ */
 static int syscall_sync_cmp(const void *d1, const void *d2)
 {
 	syscall_sync_info_t *s1 = (syscall_sync_info_t *)d1;
@@ -1136,6 +1140,34 @@ static int syscall_sync_cmp(const void *d1, const void *d2)
 	return s2->total_count - s1->total_count;
 }
 
+/*
+ *  syscall_sync_free_fileinfo()
+ *	free sync file accounting info
+ */
+static void syscall_sync_free_fileinfo(void *data)
+{
+	syscall_sync_file_t *f = (syscall_sync_file_t *)data;
+
+	free(f->filename);
+	free(f);
+}
+
+/*
+ *  syscall_syncs_free_item()
+ *	free sync accounting info
+ */
+static void syscall_sync_free_item(void *data)
+{
+	syscall_sync_info_t *info = (syscall_sync_info_t *)data;
+
+	list_free(&info->sync_file, syscall_sync_free_fileinfo);
+	free(info);
+}
+
+/*
+ *  syscall_dump_sync()
+ *	dump sync family of syscall usage stats
+ */
 void syscall_dump_sync(json_object *j_tests, double duration)
 {
 	list_t sorted;
@@ -1935,7 +1967,7 @@ void syscall_cleanup(void)
 
 	list_free(&syscall_wakelocks, syscall_wakelock_free);
 	list_free(&syscall_contexts, free);
-	list_free(&syscall_syncs, free);
+	list_free(&syscall_syncs, syscall_sync_free_item);
 	syscall_wakelock_fd_cache_free();
 	syscall_hashtable_free();
 }
