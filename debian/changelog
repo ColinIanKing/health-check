@@ -1,3 +1,14 @@
+health-check (0.01.28) saucy; urgency=low
+
+  * Makefile: bump version
+  * Free sync file info
+  * Do poll accounting only on syscalls that do polling.
+  * Add sync, fdatasyc, fsync and syncfs accounting
+  * Ensure we do sys_write, sys_close and sys_exit handling if they exist
+  * Add -f option, tidy up help a little.
+
+ -- Colin King <colin.king@canonical.com>  Mon, 16 Sep 2013 17:01:46 +0100
+
 health-check (0.01.27) saucy; urgency=low
 
   * Makefile: bump version
