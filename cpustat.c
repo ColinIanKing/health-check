@@ -32,7 +32,7 @@
 #include "timeval.h"
 #include "health-check.h"
 
-static list_t cpustat_info_old, cpustat_info_new;
+static list_t cpustat_info_start, cpustat_info_finish;
 
 /*
  *  cpustat_loading()
@@ -89,10 +89,10 @@ void cpustat_dump_diff(json_object *j_tests, const double duration)
 	(void)j_tests;
 #endif
 	list_init(&sorted);
-	for (ln = cpustat_info_new.head; ln; ln = ln->next) {
+	for (ln = cpustat_info_finish.head; ln; ln = ln->next) {
 		cin = (cpustat_info_t*)ln->data;
 
-		for (lo = cpustat_info_old.head; lo; lo = lo->next) {
+		for (lo = cpustat_info_start.head; lo; lo = lo->next) {
 			cio = (cpustat_info_t*)lo->data;
 
 			if (cin->proc->pid == cio->proc->pid) {
@@ -200,7 +200,7 @@ void cpustat_get_by_proc(proc_info_t *proc, proc_state state)
 {
 	char filename[PATH_MAX];
 	FILE *fp;
-	list_t *cpustat = (state == PROC_START) ? &cpustat_info_old : &cpustat_info_new;
+	list_t *cpustat = (state == PROC_START) ? &cpustat_info_start : &cpustat_info_finish;
 
 	snprintf(filename, sizeof(filename), "/proc/%d/stat", proc->pid);
 	if ((fp = fopen(filename, "r")) != NULL) {
@@ -254,8 +254,8 @@ int cpustat_get_all_pids(const list_t *pids, proc_state state)
  */
 void cpustat_init(void)
 {
-	list_init(&cpustat_info_old);
-	list_init(&cpustat_info_new);
+	list_init(&cpustat_info_start);
+	list_init(&cpustat_info_finish);
 }
 
 /*
@@ -264,6 +264,6 @@ void cpustat_init(void)
  */
 void cpustat_cleanup(void)
 {
-	list_free(&cpustat_info_old, free);
-	list_free(&cpustat_info_new, free);
+	list_free(&cpustat_info_start, free);
+	list_free(&cpustat_info_finish, free);
 }
