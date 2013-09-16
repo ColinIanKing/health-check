@@ -33,7 +33,7 @@ void *__realloc(void *ptr, const size_t size, const char *where, const int line)
 #define malloc(size)	__malloc(size, __func__, __LINE__)
 #define free(ptr)	__free(ptr, __func__, __LINE__)
 #define calloc(nmemb, size)	__calloc(nmemb, size, __func__, __LINE__)
-#define realloc(size)	__realloc(ptr, size, __func__, __LINE__)
+#define realloc(ptr, size)	__realloc(ptr, size, __func__, __LINE__)
 
 #endif
 

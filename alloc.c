@@ -19,11 +19,9 @@
 #include <stdlib.h>
 #include <stdio.h>
 
-#include "alloc.h"
-
 #if DEBUG_MALLOC
 
-void *__malloc(size_t size, char *where, int line)
+void *__malloc(const size_t size, const char *where, const int line)
 {
 	void *ptr = malloc(size);
 
@@ -33,13 +31,13 @@ void *__malloc(size_t size, char *where, int line)
 	return ptr;
 }
 
-void __free(void *ptr, char *where, int line)
+void __free(void *ptr, const char *where, const int line)
 {
 	printf("free(%p) @ %s %d\n",
 		ptr, where, line);
 }
 
-void *__calloc(size_t nmemb, size_t size, char *where, int line)
+void *__calloc(const size_t nmemb, const size_t size, const char *where, const int line)
 {
 	void *ptr = calloc(nmemb, size);
 
@@ -49,7 +47,7 @@ void *__calloc(size_t nmemb, size_t size, char *where, int line)
 	return ptr;
 }
 
-void *__realloc(void *ptr, size_t size, char *where, int line)
+void *__realloc(void *ptr, const size_t size, const char *where, const int line)
 {
 	void *new = realloc(ptr, size);
 
