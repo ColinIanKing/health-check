@@ -1177,7 +1177,7 @@ void syscall_dump_sync(json_object *j_tests, double duration)
 
 	printf("Filesystem Syncs:\n");
 	if (syscall_syncs.head == NULL) {
-		printf(" None.\n");
+		printf(" None.\n\n");
 		return;
 	}
 
@@ -1330,7 +1330,7 @@ void syscall_dump_wakelocks(json_object *j_tests, const double duration, list_t 
 
 	printf("Wakelock operations by wakelock:\n");
 	if (!syscall_wakelocks.head) {
-		printf(" None.\n");
+		printf(" None.\n\n");
 		return;
 	}
 
