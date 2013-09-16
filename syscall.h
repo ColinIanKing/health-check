@@ -98,6 +98,22 @@ typedef struct syscall_wakelock_info {
 	struct syscall_wakelock_info *paired;	/* ptr to lock/unlock pair */
 } syscall_wakelock_info_t;
 
+typedef struct {
+	pid_t		pid;		/* process */
+	uint64_t	sync_count;	/* sync syscall count */
+	uint64_t	fsync_count;	/* fsync syscall count */
+	uint64_t	fdatasync_count;/* fdatasync syscall count */
+	uint64_t	syncfs_count;	/* syncfs syscall count */
+	uint64_t	total_count;	/* total count */
+	list_t		sync_file;	/* list of files that were sync'd */
+} syscall_sync_info_t;
+
+typedef struct {
+	char		*filename;
+	uint64_t	count;
+	int		syscall;
+} syscall_sync_file_t;
+
 typedef struct syscall_context {
 	pid_t		pid;		/* process */
 	proc_info_t	*proc;		/* proc info */
@@ -118,6 +134,7 @@ extern void syscall_dump_pollers(json_object *j_tests, const double duration);
 extern void syscall_init(void);
 extern void syscall_cleanup(void);
 extern void syscall_dump_wakelocks(json_object *j_tests, const double duration, list_t *pids);
+extern void syscall_dump_sync(json_object *j_tests, double duration);
 extern int syscall_trace_proc(list_t *pids);
 
 #endif

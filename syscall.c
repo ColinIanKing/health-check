@@ -55,6 +55,7 @@ static int info_emit = false;
 
 static list_t syscall_wakelocks;
 static list_t syscall_contexts;		/* This links all the items in syscall_contexts_cache */
+static list_t syscall_syncs;
 static list_t *__pids;	/* We need to fix this into a global pids cache/list */
 
 /* hash table for syscalls, hashed on pid and syscall number */
@@ -865,6 +866,45 @@ static void syscall_wakelock_fd_cache_free(void)
 	}
 }
 
+static fd_cache_t *syscall_fd_cache_lookup(const pid_t pid, const int fd)
+{
+	fd_cache_t *fc;
+	unsigned long h = hash_fd(pid, fd);
+
+	for (fc = fd_cache[h]; fc; fc = fc->next) {
+		if (fc->pid == pid && fc->fd == fd)
+			break;
+	}
+	if (fc == NULL) {
+		if ((fc = calloc(1, sizeof(*fc))) == NULL)
+			health_check_out_of_memory("allocating file descriptor cache item");
+		fc->pid = pid;
+		fc->fd = fd;
+		fc->filename = fnotify_get_filename(pid, fd);
+		if (fc->filename == NULL)
+			health_check_out_of_memory("allocating filename");
+		pthread_mutex_init(&fc->mutex, NULL);
+		fc->next = fd_cache[h];
+		fd_cache[h] = fc;
+	} else {
+		/*
+		 * We've found a cached file, but it may be null if closed
+		 * so check for this and re-refetch name if it was closed
+		 */
+		pthread_mutex_lock(&fc->mutex);
+		if (fc->filename == NULL) {
+			fc->filename = fnotify_get_filename(pid, fd);
+			if (fc->filename == NULL) {
+				pthread_mutex_unlock(&fc->mutex);
+				health_check_out_of_memory("allocating filename");
+			}
+		}
+		pthread_mutex_unlock(&fc->mutex);
+	}
+
+	return fc;
+}
+
 
 /*
  *  syscall_close_args()
@@ -917,7 +957,6 @@ static void syscall_write_args(
 {
 	unsigned long args[sc->arg + 1];
 	fd_cache_t *fc;
-	unsigned long h;
 	int fd;
 
 	if (!(opt_flags & OPT_WAKELOCKS_HEAVY))
@@ -929,38 +968,7 @@ static void syscall_write_args(
 
 	syscall_get_args(pid, sc->arg, args);
 	fd = (int)args[0];
-	h = hash_fd(pid, fd);
-
-	for (fc = fd_cache[h]; fc; fc = fc->next) {
-		if (fc->pid == pid && fc->fd == fd)
-			break;
-	}
-	if (fc == NULL) {
-		if ((fc = calloc(1, sizeof(*fc))) == NULL)
-			health_check_out_of_memory("allocating file descriptor cache item");
-		fc->pid = pid;
-		fc->fd = fd;
-		fc->filename = fnotify_get_filename(pid, fd);
-		if (fc->filename == NULL)
-			health_check_out_of_memory("allocating filename");
-		pthread_mutex_init(&fc->mutex, NULL);
-		fc->next = fd_cache[h];
-		fd_cache[h] = fc;
-	} else {
-		/*
-		 * We've found a cached file, but it may be null if closed
-		 * so check for this and re-refetch name if it was closed
-		 */
-		pthread_mutex_lock(&fc->mutex);
-		if (fc->filename == NULL) {
-			fc->filename = fnotify_get_filename(pid, fd);
-			if (fc->filename == NULL) {
-				pthread_mutex_unlock(&fc->mutex);
-				health_check_out_of_memory("allocating filename");
-			}
-		}
-		pthread_mutex_unlock(&fc->mutex);
-	}
+	fc = syscall_fd_cache_lookup(pid, fd);
 
 	pthread_mutex_lock(&fc->mutex);
 	if (!strcmp(fc->filename, "/sys/power/wake_lock") ||
@@ -1015,6 +1023,221 @@ static void syscall_exit_args(
 	}
 }
 #endif
+
+#if defined(SYS_fsync) || defined(SYS_fdatasync) || defined(SYS_syncfs) || defined(SYS_sync)
+/*
+ *  syscall_sync_info_find_by_pid()
+ *	local sync accounting related data from pid
+ */
+static syscall_sync_info_t *syscall_sync_info_find_by_pid(const pid_t pid)
+{
+	link_t *l;
+	syscall_sync_info_t *info;
+
+	for (l = syscall_syncs.head; l; l = l->next) {
+		info = (syscall_sync_info_t *)l->data;
+		if (info->pid == pid)
+			return info;
+	}
+
+	if ((info = calloc(1, sizeof(*info))) == NULL)
+		health_check_out_of_memory("allocating file sync accounting info");
+
+	info->pid = pid;
+	list_append(&syscall_syncs, info);
+
+	return info;
+}
+#endif
+
+#if defined(SYS_fsync) || defined(SYS_fdatasync) || defined(SYS_syncfs)
+/*
+ *
+ *
+ */
+static void syscall_account_sync_file(syscall_sync_info_t *info, const int syscall, const int pid, const int fd)
+{
+	syscall_sync_file_t *f;
+	fd_cache_t *fc;
+	link_t *l;
+
+	fc = syscall_fd_cache_lookup(pid, fd);
+	for (l = info->sync_file.head; l; l = l->next) {
+		f = (syscall_sync_file_t *)l->data;
+		if ((f->syscall == syscall) && !strcmp(f->filename, fc->filename)) {
+			f->count++;
+			return;
+		}
+	}
+
+	if ((f = calloc(1, sizeof(*f))) == NULL)
+		health_check_out_of_memory("allocating file sync filename info");
+
+	f->filename = strdup(fc->filename);
+	f->syscall = syscall;
+	f->count = 1;
+
+	list_append(&info->sync_file, f);
+}
+
+/*
+ *  syscall_fsync_generic_args()
+ *	keep track of fsync, fdatasync and syncfs calls
+ */
+static void syscall_fsync_generic_args(
+	const syscall_t *sc,
+	syscall_info_t *s,
+	const pid_t pid,
+	const double threshold,
+	double *ret_timeout)
+{
+	unsigned long args[sc->arg + 1];
+
+	(void)s;
+	(void)threshold;
+	(void)ret_timeout;
+
+	syscall_get_args(pid, sc->arg, args);
+	syscall_sync_info_t *info = syscall_sync_info_find_by_pid(pid);
+	info->fsync_count++;
+	info->total_count++;
+	syscall_account_sync_file(info, sc->syscall, pid, (int)args[0]);
+}
+#endif
+
+#ifdef SYS_sync
+/*
+ *  syscall_sync_args()
+ *	keep track of sync calls
+ */
+static void syscall_sync_args(
+	const syscall_t *sc,
+	syscall_info_t *s,
+	const pid_t pid,
+	const double threshold,
+	double *ret_timeout)
+{
+	(void)sc;
+	(void)s;
+	(void)threshold;
+	(void)ret_timeout;
+
+	syscall_sync_info_t *info = syscall_sync_info_find_by_pid(pid);
+	info->sync_count++;
+	info->total_count++;
+}
+#endif
+
+static int syscall_sync_cmp(const void *d1, const void *d2)
+{
+	syscall_sync_info_t *s1 = (syscall_sync_info_t *)d1;
+	syscall_sync_info_t *s2 = (syscall_sync_info_t *)d2;
+
+	return s2->total_count - s1->total_count;
+}
+
+void syscall_dump_sync(json_object *j_tests, double duration)
+{
+	list_t sorted;
+	link_t *l;
+	syscall_sync_info_t *info;
+	bool sync_filenames = false;
+
+	printf("Filesystem Syncs:\n");
+	if (syscall_syncs.head == NULL) {
+		printf(" None.\n");
+		return;
+	}
+
+	list_init(&sorted);
+	for (l = syscall_syncs.head; l; l = l->next) {
+		list_add_ordered(&sorted, l->data, syscall_sync_cmp);
+	}
+
+	printf("  PID   fdatasync    fsync     sync   syncfs    total   total (Rate)\n");
+	for (l = sorted.head; l; l = l->next) {
+		info = (syscall_sync_info_t *)l->data;
+		printf(" %5i   %8" PRIu64 " %8" PRIu64 " %8" PRIu64 " %8" PRIu64 " %8" PRIu64 " %8.2f\n",
+			info->pid,
+			info->fdatasync_count, info->fsync_count,
+			info->sync_count, info->syncfs_count,
+			info->total_count, (double)info->total_count / duration);
+			if (info->sync_file.length)
+				sync_filenames = true;
+	}
+	printf("\n");
+
+
+#ifdef JSON_OUTPUT
+	if (j_tests) {
+		json_object *j_syscall, *j_syscall_infos, *j_syscall_info;
+
+		j_obj_obj_add(j_tests, "file-system-syncs", (j_syscall = j_obj_new_obj()));
+                j_obj_obj_add(j_syscall, "sync-system-calls-per-process", (j_syscall_infos = j_obj_new_array()));
+		for (l = sorted.head; l; l = l->next) {
+			info = (syscall_sync_info_t *)l->data;
+			j_syscall_info = j_obj_new_obj();
+			j_obj_new_int32_add(j_syscall_info, "pid", info->pid);
+			j_obj_new_int64_add(j_syscall_info, "fdatasync-call-count", info->fdatasync_count);
+			j_obj_new_double_add(j_syscall_info, "fdatasync-call-rate", (double)info->fdatasync_count / duration);
+			j_obj_new_int64_add(j_syscall_info, "fsync-call-count", info->fsync_count);
+			j_obj_new_double_add(j_syscall_info, "fsync-call-rate", (double)info->fsync_count / duration);
+			j_obj_new_int64_add(j_syscall_info, "sync-call-count", info->sync_count);
+			j_obj_new_double_add(j_syscall_info, "sync-call-rate", (double)info->sync_count / duration);
+			j_obj_new_int64_add(j_syscall_info, "syncfs-call-count", info->syncfs_count);
+			j_obj_new_double_add(j_syscall_info, "syncfs-call-rate", (double)info->syncfs_count / duration);
+			j_obj_array_add(j_syscall_infos, j_syscall_info);
+		}
+	}
+#endif
+	if (sync_filenames) {
+		printf("Files Sync'd:\n");
+		printf("  PID   syscall    # sync's filename\n");
+		for (l = sorted.head; l; l = l->next) {
+			link_t *ll;
+			info = (syscall_sync_info_t *)l->data;
+
+			for (ll = info->sync_file.head; ll; ll = ll->next) {
+				char tmp[64];
+
+				syscall_sync_file_t *f = (syscall_sync_file_t *)ll->data;
+				syscall_name(f->syscall, tmp, sizeof(tmp));
+				printf(" %5i  %-10.10s %8" PRIu64 " %s\n",
+					info->pid, tmp, f->count, f->filename);
+			}
+		}
+		printf("\n");
+	}
+#ifdef JSON_OUTPUT
+	if (j_tests) {
+		json_object *j_syscall, *j_syscall_infos, *j_syscall_info;
+
+		j_obj_obj_add(j_tests, "files-synced", (j_syscall = j_obj_new_obj()));
+                j_obj_obj_add(j_syscall, "file-sync-per-process", (j_syscall_infos = j_obj_new_array()));
+		for (l = sorted.head; l; l = l->next) {
+			link_t *ll;
+			info = (syscall_sync_info_t *)l->data;
+
+			for (ll = info->sync_file.head; ll; ll = ll->next) {
+				info = (syscall_sync_info_t *)l->data;
+				char tmp[64];
+
+				syscall_sync_file_t *f = (syscall_sync_file_t *)ll->data;
+				syscall_name(f->syscall, tmp, sizeof(tmp));
+
+				j_syscall_info = j_obj_new_obj();
+				j_obj_new_int32_add(j_syscall_info, "pid", info->pid);
+				j_obj_new_string_add(j_syscall_info, "syscall", tmp);
+				j_obj_new_int64_add(j_syscall_info, "call-count", f->count);
+				j_obj_new_double_add(j_syscall_info, "call-rate", (double)f->count / duration);
+				j_obj_new_string_add(j_syscall_info, "filename", f->filename);
+				j_obj_array_add(j_syscall_infos, j_syscall_info);
+			}
+		}
+	}
+#endif
+	list_free(&sorted, NULL);
+}
 
 /*
  *  syscall_wakelock_cmp()
@@ -1548,7 +1771,7 @@ static int syscall_handle_stop(syscall_context_t *ctxt, const int status)
 {
 	int event = status >> 16;
 	int sig = WSTOPSIG(status);
-			
+
 	if (sig == SIGTRAP) {
 		if (event) {
 			syscall_handle_event(ctxt, event);
@@ -1623,7 +1846,7 @@ void *syscall_trace(void *arg)
 		ptrace_flags |= (PTRACE_O_TRACECLONE | PTRACE_O_TRACEFORK | PTRACE_O_TRACEVFORK);
 
 	for (l = syscall_contexts.head; l; l = l->next) {
-		ctxt = (syscall_context_t *)l->data;	
+		ctxt = (syscall_context_t *)l->data;
 		ptrace(PTRACE_ATTACH, ctxt->pid, 0, 0);
 		ptrace(PTRACE_SETOPTIONS, ctxt->pid, 0, ptrace_flags);
 		procs_traced++;
@@ -1661,7 +1884,7 @@ void *syscall_trace(void *arg)
 			}
 			ctxt->alive = false;
 			procs_traced--;
-		} 
+		}
 		else if (WIFSIGNALED(status)) {
 			/*
 			 *  In an ideal world we could find the final
@@ -1675,7 +1898,7 @@ void *syscall_trace(void *arg)
 				ctxt->alive = false;
 				procs_traced--;
 			}
-		} 
+		}
 #if SYSCALL_DEBUG
 		else if (WIFCONTINUED(status)) {
 			printf("Continued %d\n", ctxt->pid);
@@ -1702,6 +1925,7 @@ void syscall_init(void)
 {
 	list_init(&syscall_wakelocks);
 	list_init(&syscall_contexts);
+	list_init(&syscall_syncs);
 }
 
 void syscall_cleanup(void)
@@ -1711,6 +1935,7 @@ void syscall_cleanup(void)
 
 	list_free(&syscall_wakelocks, syscall_wakelock_free);
 	list_free(&syscall_contexts, free);
+	list_free(&syscall_syncs, free);
 	syscall_wakelock_fd_cache_free();
 	syscall_hashtable_free();
 }
@@ -1919,7 +2144,7 @@ syscall_t syscalls[] = {
 	SYSCALL(fcntl64),
 #endif
 #ifdef SYS_fdatasync
-	SYSCALL(fdatasync),
+	SYSCALL_CHKARGS(fdatasync, 0, syscall_fsync_generic_args, NULL),
 #endif
 #ifdef SYS_fgetxattr
 	SYSCALL(fgetxattr),
@@ -1958,7 +2183,7 @@ syscall_t syscalls[] = {
 	SYSCALL(fstatfs64),
 #endif
 #ifdef SYS_fsync
-	SYSCALL(fsync),
+	SYSCALL_CHKARGS(fsync, 0, syscall_fsync_generic_args, NULL),
 #endif
 #ifdef SYS_ftime
 	SYSCALL(ftime),
@@ -2738,13 +2963,13 @@ syscall_t syscalls[] = {
 	SYSCALL(symlinkat),
 #endif
 #ifdef SYS_sync
-	SYSCALL(sync),
+	SYSCALL_CHKARGS(sync, 0, syscall_sync_args, NULL),
 #endif
 #ifdef SYS_sync_file_range
 	SYSCALL(sync_file_range),
 #endif
 #ifdef SYS_syncfs
-	SYSCALL(syncfs),
+	SYSCALL_CHKARGS(syncfs, 0, syscall_fsync_generic_args, NULL),
 #endif
 #ifdef SYS__sysctl
 	SYSCALL(_sysctl),
