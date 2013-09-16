@@ -78,7 +78,7 @@ typedef struct syscall {
 	double		*threshold;	/* threshold - points to timeout array items indexed by syscall */
 	check_timeout_func_t check_func;/* timeout checking function, NULL means don't check */
 	check_return_func_t  check_ret; /* return checking function, NULL means don't check */
-	bool		do_accounting;	/* true if we should do accounting stats for this */
+	bool		do_poll_accounting;/* true if we should do polling accounting stats for this */
 } syscall_t;
 
 /* fd cache */

@@ -1447,7 +1447,8 @@ void syscall_dump_pollers(json_object *j_tests, const double duration)
 		syscall_info_t *s;
 
 		for (s = syscall_info[i]; s; s = s->next) {
-			if (syscalls[s->syscall].check_func) {
+			int syscall = s->syscall;
+			if (syscalls[syscall].check_func && syscalls[syscall].do_poll_accounting) {
 				list_add_ordered(&sorted, s, syscall_count_cmp);
 				break;
 			}
@@ -1658,38 +1659,37 @@ static syscall_info_t *syscall_count_usage(
 	if (!sc)
 		return NULL;
 
-	if (sc->do_accounting) {
-		*timeout = -1.0;
-		for (s = syscall_info[h]; s; s = s->next) {
-			if ((s->syscall == syscall) && (s->proc->pid == pid)) {
-				s->count++;
-				found = true;
-				break;
-			}
-		}
-
-		if (!found) {
-			/*
-			 *  Doesn't exist, create new one
-			 */
-			if ((s = calloc(1, sizeof(*s))) == NULL)
-				health_check_out_of_memory("allocating syscall hash item");
-			s->syscall = syscall;
-			s->proc = proc_cache_find_by_pid(pid);
-			s->count = 1;
-			s->poll_zero = 0;
-			s->poll_infinite = 0;
-			s->poll_count = 0;
-			s->poll_min = -1.0;
-			s->poll_max = -1.0;
-			s->poll_total = 0;
-			s->poll_too_low = 0;
-			list_init(&s->return_history);
-
-			s->next = syscall_info[h];
-			syscall_info[h] = s;
+	*timeout = -1.0;
+	for (s = syscall_info[h]; s; s = s->next) {
+		if ((s->syscall == syscall) && (s->proc->pid == pid)) {
+			s->count++;
+			found = true;
+			break;
 		}
 	}
+
+	if (!found) {
+		/*
+		 *  Doesn't exist, create new one
+		 */
+		if ((s = calloc(1, sizeof(*s))) == NULL)
+			health_check_out_of_memory("allocating syscall hash item");
+		s->syscall = syscall;
+		s->proc = proc_cache_find_by_pid(pid);
+		s->count = 1;
+		s->poll_zero = 0;
+		s->poll_infinite = 0;
+		s->poll_count = 0;
+		s->poll_min = -1.0;
+		s->poll_max = -1.0;
+		s->poll_total = 0;
+		s->poll_too_low = 0;
+		list_init(&s->return_history);
+
+		s->next = syscall_info[h];
+		syscall_info[h] = s;
+	}
+
 	if (sc->check_func) {
 		if (++syscall_count >= opt_max_syscalls)
 			keep_running = false;
@@ -2045,7 +2045,7 @@ syscall_t syscalls[] = {
 	SYSCALL_CHKARGS(close, 0, syscall_close_args, NULL),
 #endif
 #ifdef SYS_connect
-	SYSCALL_TIMEOUT(connect, 0, syscall_connect, syscall_connect_ret),
+	SYSCALL_CHKARGS(connect, 0, syscall_connect, syscall_connect_ret),
 #endif
 #ifdef SYS_creat
 	SYSCALL(creat),
