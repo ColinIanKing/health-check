@@ -31,7 +31,7 @@
 #include "ctxt-switch.h"
 #include "health-check.h"
 
-static list_t ctxt_switch_info_old, ctxt_switch_info_new;
+static list_t ctxt_switch_info_start, ctxt_switch_info_finish;
 
 /*
  *  ctxt_switch_cmp()
@@ -56,7 +56,7 @@ void ctxt_switch_get_by_proc(proc_info_t *proc, proc_state state)
 	FILE *fp;
 	ctxt_switch_info_t *info;
 	list_t *ctxt_switches =
-		(state == PROC_START) ? &ctxt_switch_info_old : &ctxt_switch_info_new;
+		(state == PROC_START) ? &ctxt_switch_info_start : &ctxt_switch_info_finish;
 
 	snprintf(path, sizeof(path), "/proc/%i/status", proc->pid);
 	if ((fp = fopen(path, "r")) == NULL)
@@ -171,7 +171,7 @@ void ctxt_switch_dump_diff(json_object *j_tests, const double duration)
 #endif
 	printf("Context Switches:\n");
 	list_init(&sorted);
-	for (l = ctxt_switch_info_new.head; l; l = l->next) {
+	for (l = ctxt_switch_info_finish.head; l; l = l->next) {
 		ctxt_switch_info_t *new_info, *info = (ctxt_switch_info_t *)l->data;
 
 		if (!info->valid)
@@ -181,7 +181,7 @@ void ctxt_switch_dump_diff(json_object *j_tests, const double duration)
 			health_check_out_of_memory("allocating context switch information");
 		new_info->proc = info->proc;
 		ctxt_switch_delta(info,
-			&ctxt_switch_info_old,
+			&ctxt_switch_info_start,
 			&new_info->total,
 			&new_info->voluntary,
 			&new_info->involuntary);
@@ -273,8 +273,8 @@ void ctxt_switch_dump_diff(json_object *j_tests, const double duration)
  */
 void ctxt_switch_init(void)
 {
-	list_init(&ctxt_switch_info_old);
-	list_init(&ctxt_switch_info_new);
+	list_init(&ctxt_switch_info_start);
+	list_init(&ctxt_switch_info_finish);
 }
 
 /*
@@ -283,6 +283,6 @@ void ctxt_switch_init(void)
  */
 void ctxt_switch_cleanup(void)
 {
-	list_free(&ctxt_switch_info_old, free);
-	list_free(&ctxt_switch_info_new, free);
+	list_free(&ctxt_switch_info_start, free);
+	list_free(&ctxt_switch_info_finish, free);
 }
