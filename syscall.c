@@ -816,7 +816,7 @@ static void syscall_timeout_millisec(
  *  syscall_peek_data()
  *	peek data
  */
-#ifdef SYS_write
+#if defined(SYS_write) && defined(SYS_close)
 static void *syscall_peek_data(const pid_t pid, const unsigned long addr, const size_t len)
 {
 	unsigned *data;
@@ -905,34 +905,6 @@ static void syscall_close_args(
 }
 
 /*
- *  syscall_exit_args()
- *	keep track of exit calls
- */
-static void syscall_exit_args(
-	const syscall_t *sc,
-	syscall_info_t *s,
-	const pid_t pid,
-	const double threshold,
-	double *ret_timeout)
-{
-	(void)s;
-	(void)sc;
-	(void)threshold;
-	(void)ret_timeout;
-
-	/*
-	 *  Before we exit we need to gather the
-	 *  final accounting stats for the process
-	 */
-	proc_info_t *proc = proc_cache_find_by_pid(pid);
-	if (proc) {
-		cpustat_get_by_proc(proc, PROC_FINISH);
-		ctxt_switch_get_by_proc(proc, PROC_FINISH);
-		mem_get_by_proc(proc, PROC_FINISH);
-	}
-}
-
-/*
  *  syscall_write_args()
  *	keep track of wakelock writes
  */
@@ -1011,6 +983,36 @@ static void syscall_write_args(
 		list_append(&syscall_wakelocks, info);
 	}
 	pthread_mutex_unlock(&fc->mutex);
+}
+#endif
+
+#ifdef SYS_exit
+/*
+ *  syscall_exit_args()
+ *	keep track of exit calls
+ */
+static void syscall_exit_args(
+	const syscall_t *sc,
+	syscall_info_t *s,
+	const pid_t pid,
+	const double threshold,
+	double *ret_timeout)
+{
+	(void)s;
+	(void)sc;
+	(void)threshold;
+	(void)ret_timeout;
+
+	/*
+	 *  Before we exit we need to gather the
+	 *  final accounting stats for the process
+	 */
+	proc_info_t *proc = proc_cache_find_by_pid(pid);
+	if (proc) {
+		cpustat_get_by_proc(proc, PROC_FINISH);
+		ctxt_switch_get_by_proc(proc, PROC_FINISH);
+		mem_get_by_proc(proc, PROC_FINISH);
+	}
 }
 #endif
 
