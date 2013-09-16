@@ -129,7 +129,7 @@ static int mem_get_entry(FILE *fp, mem_info_t *mem)
  *  mem_get_by_proc()
  *	get mem info for a specific proc
  */
-void mem_get_by_proc(proc_info_t *p, proc_state state)
+void mem_get_by_proc(proc_info_t *p, const proc_state state)
 {
 	FILE *fp;
 	char path[PATH_MAX];
@@ -159,7 +159,7 @@ void mem_get_by_proc(proc_info_t *p, proc_state state)
  *  mem_get_all_pids()
  *	scan mem and get mmap info
  */
-void mem_get_all_pids(const list_t *pids, proc_state state)
+void mem_get_all_pids(const list_t *pids, const proc_state state)
 {
 	link_t *l;
 

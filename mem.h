@@ -46,8 +46,8 @@ typedef struct mem_info_t {
 
 void mem_init(void);
 void mem_cleanup(void);
-void mem_get_all_pids(const list_t *pids, proc_state state);
-void mem_get_by_proc(proc_info_t *p, proc_state state);
+void mem_get_all_pids(const list_t *pids, const proc_state state);
+void mem_get_by_proc(proc_info_t *p, const proc_state state);
 
 void mem_get(const list_t *pids, list_t *mem);
 void mem_dump_diff(json_object *j_tests, const double duration);
