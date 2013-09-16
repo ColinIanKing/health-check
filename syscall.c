@@ -1613,17 +1613,17 @@ void *syscall_trace(void *arg)
 	syscall_context_t *ctxt;
 	int status;
 	link_t *l;
+	unsigned long ptrace_flags = PTRACE_O_TRACESYSGOOD;
 
 	(void)arg;
+
+	if (opt_flags & OPT_FOLLOW_NEW_PROCS)
+		ptrace_flags |= (PTRACE_O_TRACECLONE | PTRACE_O_TRACEFORK | PTRACE_O_TRACEVFORK);
 
 	for (l = syscall_contexts.head; l; l = l->next) {
 		ctxt = (syscall_context_t *)l->data;	
 		ptrace(PTRACE_ATTACH, ctxt->pid, 0, 0);
-		ptrace(PTRACE_SETOPTIONS, ctxt->pid, 0,
-			PTRACE_O_TRACESYSGOOD |
-			PTRACE_O_TRACECLONE | 
-			PTRACE_O_TRACEFORK |
-			PTRACE_O_TRACEVFORK);
+		ptrace(PTRACE_SETOPTIONS, ctxt->pid, 0, ptrace_flags);
 		procs_traced++;
 	}
 

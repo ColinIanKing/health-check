@@ -41,10 +41,15 @@ Show help
 Brief (terse) output for quick overview.
 .TP
 .B \-c 
-Find and monitor all child and threads of a given set of processes.
+Find and monitor all child and threads of a given set of processes. This
+option is only useful when attaching to already running processes using
+the \-p option.
 .TP
 .B \-d 
 Specify analysis duration in seconds. Default is 60 seconds.
+.TP
+.B \-f
+Follow fork, vfork and clone system calls.
 .TP
 .B \-p pid[,pid]
 Specify which processes to analyse. Can be process ID or process name.

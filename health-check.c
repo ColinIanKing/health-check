@@ -98,11 +98,15 @@ static void show_usage(void)
 	printf("Usage: %s [options] [command [options]]\n", APP_NAME);
 	printf("Options are:\n");
 	printf("  -b		brief (terse) output\n");
-	printf("  -c            find all child and threads\n");
+	printf("  -c            find all child processes on start-up\n");
+	printf("                (only useful with -p option)\n");
 	printf("  -d            specify the analysis duration in seconds\n");
+	printf("                (default is 60 seconds)\n");
+	printf("  -f		follow fork/vfork/clone system calls\n");
 	printf("  -h            show this help\n");
-	printf("  -p pid[,pid]  specify process id(s) or process name(s)\n");
+	printf("  -p pid[,pid]  specify process id(s) or process name(s) to be traced\n");
 	printf("  -m max        specify maximum number of system calls to trace\n");
+	printf("		(default is 1000000)\n");
 #ifdef JSON_OUTPUT
 	printf("  -o file       output results to a json data file\n");
 #endif
@@ -356,7 +360,7 @@ int main(int argc, char **argv)
 	signal(SIGCHLD, SIG_DFL);
 
 	for (;;) {
-		int c = getopt(argc, argv, "+bcd:hp:m:o:ru:vwW");
+		int c = getopt(argc, argv, "+bcd:fhp:m:o:ru:vwW");
 		if (c == -1)
 			break;
 		switch (c) {
@@ -365,6 +369,9 @@ int main(int argc, char **argv)
 			break;
 		case 'c':
 			opt_flags |= OPT_GET_CHILDREN;
+			break;
+		case 'f':
+			opt_flags |= OPT_FOLLOW_NEW_PROCS;
 			break;
 		case 'h':
 			show_usage();
