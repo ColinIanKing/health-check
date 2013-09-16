@@ -24,7 +24,7 @@
 #include "json.h"
 
 extern int net_connection_pids(list_t *pids);
-extern int net_connection_pid(pid_t);
+extern int net_connection_pid(const pid_t);
 extern int net_connection_dump(json_object *j_tests);
 extern void net_connection_init(void);
 extern void net_connection_cleanup(void);

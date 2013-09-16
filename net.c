@@ -91,7 +91,7 @@ static inline unsigned long net_hash(const uint64_t inode)
  *  net_hash_add()
  *	add inode, pid and fd to inode hash table
  */
-static void net_hash_add(uint64_t inode, pid_t pid, uint32_t fd)
+static void net_hash_add(const uint64_t inode, const pid_t pid, const uint32_t fd)
 {
 	net_hash_t *n;
 	link_t *l;
@@ -444,7 +444,7 @@ int net_connection_pids(list_t *pids)
  *	find network inodes assocated with given
  *	pids and find network addresses
  */
-int net_connection_pid(pid_t pid)
+int net_connection_pid(const pid_t pid)
 {
 	net_cache_inodes_pid(pid);
 	if (net_parse(NET_TCP) < 0)
