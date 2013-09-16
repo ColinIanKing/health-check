@@ -1,3 +1,16 @@
+health-check (0.01.29) saucy; urgency=low
+
+  * Makefile: bump version once more
+  * constify net funcs
+  * constify mem_* funcs
+  * Rename event vars to something more sensible
+  * Rename ctxt-switch vars to something more sensible
+  * Rename CPU stat vars to something more sensible
+  * Fix alloc helper
+  * Add extra \n for "None." messages
+
+ -- Colin King <colin.king@canonical.com>  Mon, 16 Sep 2013 23:22:11 +0100
+
 health-check (0.01.28) saucy; urgency=low
 
   * Makefile: bump version
