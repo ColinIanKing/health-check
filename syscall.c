@@ -1943,12 +1943,14 @@ void *syscall_trace(void *arg)
 
 	for (l = syscall_contexts.head; l; l = l->next) {
 		ctxt = (syscall_context_t *)l->data;
+		printf("Here: %d %d\n", ctxt->pid, ctxt->alive);
 		if (ctxt->alive) {
-			ptrace(PTRACE_CONT, ctxt->pid, 0, 0);
+			kill(ctxt->pid, SIGSTOP);
+			waitpid(ctxt->pid, &status, __WALL);
 			ptrace(PTRACE_DETACH, ctxt->pid, 0, 0);
+			kill(ctxt->pid, SIGCONT);
 		}
 	}
-
 	keep_running = false;
 	pthread_exit(0);
 }
@@ -1960,11 +1962,13 @@ void syscall_init(void)
 	list_init(&syscall_syncs);
 }
 
+void syscall_stop(void)
+{
+	pthread_join(syscall_tracer, NULL);
+}
+
 void syscall_cleanup(void)
 {
-	pthread_cancel(syscall_tracer);
-	pthread_join(syscall_tracer, NULL);
-
 	list_free(&syscall_wakelocks, syscall_wakelock_free);
 	list_free(&syscall_contexts, free);
 	list_free(&syscall_syncs, syscall_sync_free_item);

@@ -565,6 +565,7 @@ int main(int argc, char **argv)
 	mem_get_all_pids(&pids, PROC_FINISH);
 	ctxt_switch_get_all_pids(&pids, PROC_FINISH);
 	event_stop();
+	syscall_stop();
 
 	signal(SIGINT, SIG_DFL);
 
