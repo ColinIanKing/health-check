@@ -1943,7 +1943,6 @@ void *syscall_trace(void *arg)
 
 	for (l = syscall_contexts.head; l; l = l->next) {
 		ctxt = (syscall_context_t *)l->data;
-		printf("Here: %d %d\n", ctxt->pid, ctxt->alive);
 		if (ctxt->alive) {
 			kill(ctxt->pid, SIGSTOP);
 			waitpid(ctxt->pid, &status, __WALL);
