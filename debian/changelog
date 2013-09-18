@@ -1,3 +1,10 @@
+health-check (0.01.31) saucy; urgency=low
+
+  * Makefile: bump version
+  * Remove some debug cruft
+
+ -- Colin King <colin.king@canonical.com>  Wed, 18 Sep 2013 23:51:11 +0100
+
 health-check (0.01.30) saucy; urgency=low
 
   * Makefile: bump version
