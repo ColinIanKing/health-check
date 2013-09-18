@@ -1,3 +1,10 @@
+health-check (0.01.30) saucy; urgency=low
+
+  * Makefile: bump version
+  * Fix ptrace detaching issues
+
+ -- Colin King <colin.king@canonical.com>  Wed, 18 Sep 2013 10:44:22 +0100
+
 health-check (0.01.29) saucy; urgency=low
 
   * Makefile: bump version once more
