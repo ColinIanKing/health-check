@@ -1103,7 +1103,7 @@ static void syscall_brk_args(
 }
 #endif
 
-#ifdef SYS_mmap
+#if defined(SYS_mmap) || defined(SYS_mmap2)
 static void syscall_mmap_args(
 	const syscall_t *sc,
 	syscall_info_t *s,
