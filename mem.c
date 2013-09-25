@@ -146,7 +146,7 @@ void mem_dump_mmap(json_object *j_tests, const double duration)
 		int64_t delta = info->mmap_length - info->munmap_length;
 		double rate = ((double)delta) / duration;
 
-		printf(" %5d %-20.20s %8" PRIu64 " %8" PRIu64 "    %td      %8.2f (%s)\n",
+		printf(" %5d %-20.20s %8" PRIu64 " %8" PRIu64 "    %8" PRIi64 "      %8.2f (%s)\n",
 			info->pid, p ? p->cmdline : "",
 			info->mmap_count, info->munmap_count,
 			delta / 1024, rate / 1024.0, mem_loading(rate));
