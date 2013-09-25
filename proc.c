@@ -39,6 +39,10 @@ static proc_info_t *proc_cache_hash[HASH_TABLE_SIZE];
 static pthread_mutex_t pids_mutex = PTHREAD_MUTEX_INITIALIZER;
 static pthread_mutex_t proc_cache_mutex = PTHREAD_MUTEX_INITIALIZER;
 
+/*
+ *  proc_cache_hash_pid()
+ *	hash a process id
+ */
 static inline unsigned long proc_cache_hash_pid(const pid_t pid)
 {
 	unsigned long h = (unsigned long)pid;
