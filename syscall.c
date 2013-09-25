@@ -287,6 +287,10 @@ static void syscall_poll_generic_ret(json_object *j_obj, const syscall_t *sc, co
 #endif
 
 #if defined(SYS_semtimedop)
+/*
+ *  syscall_semtimedop_ret()
+ *	handler for return for semtimedop syscall
+ */
 static void syscall_semtimedop_ret(json_object *j_obj, const syscall_t *sc, const syscall_info_t *s)
 {
 	(void)j_obj,
@@ -297,6 +301,10 @@ static void syscall_semtimedop_ret(json_object *j_obj, const syscall_t *sc, cons
 #endif
 
 #if defined(SYS_mq_timedreceive)
+/*
+ *  syscall_mq_timedreceive_ret()
+ *	handler for return for mq_timedreceive syscall
+ */
 static void syscall_mq_timedreceive_ret(json_object *j_obj, const syscall_t *sc, const syscall_info_t *s)
 {
 	(void)j_obj,
@@ -307,6 +315,10 @@ static void syscall_mq_timedreceive_ret(json_object *j_obj, const syscall_t *sc,
 #endif
 
 #if defined(SYS_mq_timedsend)
+/*
+ *  syscall_mq_timedsend_ret()
+ *	handler for return for mq_timedsend syscall
+ */
 static void syscall_mq_timedsend_ret(json_object *j_obj, const syscall_t *sc, const syscall_info_t *s)
 {
 	(void)j_obj,
@@ -867,6 +879,12 @@ static void syscall_wakelock_fd_cache_free(void)
 	}
 }
 
+/*
+ *  syscall_fd_cache_lookup()
+ *	lookup a fd cache item based on the pid and file descriptor
+ *	if it does not exist, create a new entry. if it was previously
+ *	closed re-load the cache item for this fd.
+ */
 static fd_cache_t *syscall_fd_cache_lookup(const pid_t pid, const int fd)
 {
 	fd_cache_t *fc;
@@ -1053,8 +1071,8 @@ static syscall_sync_info_t *syscall_sync_info_find_by_pid(const pid_t pid)
 
 #if defined(SYS_fsync) || defined(SYS_fdatasync) || defined(SYS_syncfs)
 /*
- *
- *
+ *  syscall_account_sync_file()
+ *	accounting for fsync, fdatasync and syncfs system calls
  */
 static void syscall_account_sync_file(syscall_sync_info_t *info, const int syscall, const int pid, const int fd)
 {
@@ -1082,6 +1100,10 @@ static void syscall_account_sync_file(syscall_sync_info_t *info, const int sysca
 }
 
 #ifdef SYS_brk
+/*
+ *  syscall_account_sync_file()
+ *	accounting for brk system call
+ */
 static void syscall_brk_args(
 	const syscall_t *sc,
 	syscall_info_t *s,
@@ -1104,6 +1126,10 @@ static void syscall_brk_args(
 #endif
 
 #if defined(SYS_mmap) || defined(SYS_mmap2)
+/*
+ *  syscall_mmap_args()
+ *	accounting for mmap and mmap2 system calls
+ */
 static void syscall_mmap_args(
 	const syscall_t *sc,
 	syscall_info_t *s,
@@ -1124,6 +1150,10 @@ static void syscall_mmap_args(
 #endif
 
 #ifdef SYS_munmap
+/*
+ *  syscall_munmap_args()
+ *	accounting for munmap system call
+ */
 static void syscall_munmap_args(
 	const syscall_t *sc,
 	syscall_info_t *s,
@@ -1354,6 +1384,10 @@ static inline double syscall_timeval_to_double(struct timeval *tv)
 }
 
 
+/*
+ *  syscall_wakelock_names_by_pid()
+ *	update wakelock_names list for a new wakelock for a given pid
+ */
 void syscall_wakelock_names_by_pid(pid_t pid, list_t *wakelock_names)
 {
 	link_t *l, *ln;
@@ -1794,6 +1828,10 @@ static syscall_info_t *syscall_count_usage(
 	return s;
 }
 
+/*
+ *  syscall_handle_syscall()
+ *	system call entry or exit handling
+ */
 static void syscall_handle_syscall(syscall_context_t *ctxt)
 {
 	if (syscall_is_call_entry(ctxt->pid)) {
@@ -1815,6 +1853,10 @@ static void syscall_handle_syscall(syscall_context_t *ctxt)
 	}
 }
 
+/*
+ *  syscall_handle_event()
+ *	handle a ptrace event (clone, fork, vfork)
+ */
 static void syscall_handle_event(syscall_context_t *ctxt, int event)
 {
 	if (event == PTRACE_EVENT_CLONE ||
@@ -1846,6 +1888,10 @@ static void syscall_handle_event(syscall_context_t *ctxt, int event)
 	}
 }
 
+/*
+ *  syscall_handle_trap()
+ *	handle ptrace trap
+ */
 static void syscall_handle_trap(syscall_context_t *ctxt)
 {
 	siginfo_t siginfo;
@@ -1862,6 +1908,10 @@ static void syscall_handle_trap(syscall_context_t *ctxt)
 	}
 }
 
+/*
+ *  syscall_handle_stop
+ *	handle a ptrace stop
+ */
 static int syscall_handle_stop(syscall_context_t *ctxt, const int status)
 {
 	int event = status >> 16;
@@ -1897,6 +1947,12 @@ static syscall_context_t *syscall_context_find_by_pid(const pid_t pid)
 	return NULL;
 }
 
+/*
+ *  syscall_get_context()
+ *	each ptraced thread or process has a ptrace state context,
+ *	this function looks this up via the pid. If it does not
+ *	already exist, create a new context.
+ */
 static syscall_context_t *syscall_get_context(pid_t pid)
 {
 	syscall_context_t *ctxt;
@@ -2035,6 +2091,10 @@ void *syscall_trace(void *arg)
 	pthread_exit(0);
 }
 
+/*
+ *  syscall_init()
+ *	initialize
+ */
 void syscall_init(void)
 {
 	list_init(&syscall_wakelocks);
@@ -2042,12 +2102,20 @@ void syscall_init(void)
 	list_init(&syscall_syncs);
 }
 
+/*
+ *  syscall_stop()
+ *	stop the ptrace thread
+ */
 void syscall_stop(void)
 {
 	pthread_cancel(syscall_tracer);
 	pthread_join(syscall_tracer, NULL);
 }
 
+/*
+ *  syscall_cleanup()
+ *	free up memory
+ */
 void syscall_cleanup(void)
 {
 	list_free(&syscall_wakelocks, syscall_wakelock_free);
@@ -2057,6 +2125,10 @@ void syscall_cleanup(void)
 	syscall_hashtable_free();
 }
 
+/*
+ *  syscall_trace_proc()
+ *	kick off ptrace thread 
+ */
 int syscall_trace_proc(list_t *pids)
 {
 	link_t *l;
@@ -2075,7 +2147,9 @@ int syscall_trace_proc(list_t *pids)
 	return 0;
 }
 
-/* system call table */
+/*
+ *  The system call table
+ */
 syscall_t syscalls[] = {
 #ifdef SYS_setup
 	SYSCALL(setup),
