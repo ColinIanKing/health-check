@@ -73,7 +73,7 @@ static const char *mem_loading(const double mem_rate)
 	return buffer;
 }
 
-void mem_mmap_account(const pid_t pid, size_t length, bool mmap)
+void mem_mmap_account(const pid_t pid, const size_t length, const bool mmap)
 {
 	link_t *l;
 	bool found = false;
@@ -186,7 +186,7 @@ void mem_dump_mmap(json_object *j_tests, const double duration)
  *  mem_brk_account()
  *	sys_brk memory accouting, used in syscall.c
  */
-void mem_brk_account(const pid_t pid, void *addr)
+void mem_brk_account(const pid_t pid, const void *addr)
 {
 	link_t *l;
 
@@ -311,7 +311,7 @@ static int mem_cmp(const void *data1, const void *data2)
  *  mem_get_size()
  *	parse proc sizes in K bytes
  */
-static int mem_get_size(FILE *fp, char *field, uint64_t *size)
+static int mem_get_size(FILE *fp, const char *field, uint64_t *size)
 {
 	char tmp[4096];
 	uint64_t size_k;
