@@ -31,12 +31,154 @@
 #include "health-check.h"
 
 static list_t mem_info_old, mem_info_new;
+static list_t mem_brk_info;
 
 static const char *mem_types[] = {
 	"Stack",
 	"Heap",
 	"Mapped",
 };
+
+/*
+ *  mem_loading()
+ *	convert heath growth rate into human readable form
+ */
+static const char *mem_loading(const double mem_rate)
+{
+	char *verb, *adverb;
+	static char buffer[64];
+	double rate = mem_rate;
+
+	if (rate == 0.0)
+		return "no change";
+	if (rate < 0) {
+		verb = "shrinking";
+		rate = -mem_rate;
+	} else
+		verb = "growing";
+
+	if (rate < 1024.0)
+		adverb = " slowly";
+	else if (rate >= 2.0 * 1024.0  * 1024.0)
+		adverb = " very fast";
+	else if (rate >= 256.0 * 1024.0)
+		adverb = " fast";
+	else if (rate >= 8.0 * 1024.0)
+		adverb = " moderately fast";
+	else
+		adverb = "";
+
+	sprintf(buffer, "%s%s", verb, adverb);
+	return buffer;
+}
+
+/*
+ *  mem_brk_account()
+ *	sys_brk memory accouting, used in syscall.c
+ */
+void mem_brk_account(const pid_t pid, void *addr)
+{
+	link_t *l;
+
+	mem_brk_info_t *info = NULL;
+
+	for (l = mem_brk_info.head; l; l = l->next) {
+		info = (mem_brk_info_t *)l->data;
+		if (info->pid == pid) {
+			info->brk_current = addr;
+			info->brk_count++;
+			return;
+		}
+	}
+
+	if ((info = calloc(1, sizeof(*info))) == NULL)
+		health_check_out_of_memory("allocating memory tracking brk() information");
+	info->pid = pid;
+	info->brk_start = addr;
+	info->brk_current = addr;
+	info->brk_count = 1;
+	list_append(&mem_brk_info, info);
+}
+
+/*
+ *  mem_brk_cmp()
+ *	list sorting based on total brk size
+ */
+static int mem_brk_cmp(const void *data1, const void *data2)
+{
+	mem_brk_info_t *m1 = (mem_brk_info_t *)data1;
+	mem_brk_info_t *m2 = (mem_brk_info_t *)data2;
+
+	ptrdiff_t p1 = m1->brk_current - m1->brk_start;
+	ptrdiff_t p2 = m2->brk_current - m2->brk_start;
+
+	return p2 - p1;
+}
+
+/*
+ *  mem_dump_brk()
+ *	dump brk heap changes
+ */
+void mem_dump_brk(json_object *j_tests, const double duration)
+{
+	list_t sorted;
+	link_t *l;
+	mem_brk_info_t *info;
+
+	printf("Heap Change via brk():\n");
+	if (mem_brk_info.head == NULL) {
+		printf(" None.\n\n");
+		return;
+	}
+	list_init(&sorted);
+
+	for (l = mem_brk_info.head; l; l = l->next) {
+		info = (mem_brk_info_t *)l->data;
+		list_add_ordered(&sorted, info, mem_brk_cmp);
+	}
+
+	printf("  PID                        brk Count  Change (K)  Rate (K/second)\n");
+	for (l = sorted.head; l; l = l->next) {
+		info = (mem_brk_info_t *)l->data;
+		proc_info_t *p = proc_cache_find_by_pid(info->pid);
+		ptrdiff_t delta = (info->brk_current - info->brk_start);
+		double rate = ((double)delta) / duration;
+
+		printf(" %5d %-20.20s   %8" PRIu64 "        %td      %8.2f (%s)\n",
+			info->pid,
+			p ? p->cmdline : "", info->brk_count,
+			delta / 1024,
+			rate / 1024.0, mem_loading(rate));
+	}
+	printf("\n");
+
+#ifdef JSON_OUTPUT
+	if (j_tests) {
+		json_object *j_mem_test, *j_mem_infos, *j_mem_info;
+
+		j_obj_obj_add(j_tests, "heap-usage-via-brk", (j_mem_test = j_obj_new_obj()));
+		j_obj_obj_add(j_mem_test, "heap-usage-via-brk-per-process", (j_mem_infos = j_obj_new_array()));
+		for (l = sorted.head; l; l = l->next) {
+			info = (mem_brk_info_t *)l->data;
+			proc_info_t *p = proc_cache_find_by_pid(info->pid);
+			ptrdiff_t delta = (info->brk_current - info->brk_start);
+
+			j_mem_info = j_obj_new_obj();
+			j_obj_new_int32_add(j_mem_info, "pid", info->pid);
+			if (p) {
+				j_obj_new_int32_add(j_mem_info, "ppid", p->ppid);
+				j_obj_new_int32_add(j_mem_info, "is-thread", p->is_thread);
+				j_obj_new_string_add(j_mem_info, "name", p->cmdline);
+			}
+			j_obj_new_int64_add(j_mem_info, "brk-count", info->brk_count);
+			j_obj_new_int64_add(j_mem_info, "brk-size-Kbytes", (uint64_t)delta / 1024);
+			j_obj_new_double_add(j_mem_info, "brk-size-Kbytes-rate", ((double)delta / 1024.0) / duration );
+			j_obj_array_add(j_mem_infos, j_mem_info);
+		}
+	}
+#endif
+	list_free(&sorted, NULL);
+}
 
 /*
  *  mem_cmp()
@@ -51,7 +193,7 @@ static int mem_cmp(const void *data1, const void *data2)
 		return 0;
 	else if (m2->total > m1->total)
 		return 1;
-	else 
+	else
 		return 0;
 }
 
@@ -108,7 +250,7 @@ static int mem_get_entry(FILE *fp, mem_info_t *mem)
 		type = MEM_STACK;
 	else if (!*path && addr_offset == 0 && major == 0 && minor == 0)
 		type = MEM_HEAP;
-	else 
+	else
 		type = MEM_MAPPED;
 
 	if (mem_get_size(fp, "Size", &size) < 0)
@@ -167,39 +309,6 @@ void mem_get_all_pids(const list_t *pids, const proc_state state)
 		proc_info_t *p = (proc_info_t *)l->data;
 		mem_get_by_proc(p, state);
 	}
-}
-
-/*
- *  mem_loading()
- *	convert heath growth rate into human readable form
- */
-static const char *mem_loading(const double mem_rate)
-{
-	char *verb, *adverb;
-	static char buffer[64];
-	double rate = mem_rate;
-
-	if (rate == 0.0)
-		return "no change";
-	if (rate < 0) {
-		verb = "shrinking";
-		rate = -mem_rate;
-	} else 
-		verb = "growing";
-
-	if (rate < 1024.0)
-		adverb = " slowly";
-	else if (rate >= 2.0 * 1024.0  * 1024.0)
-		adverb = " very fast";
-	else if (rate >= 256.0 * 1024.0)
-		adverb = " fast";
-	else if (rate >= 8.0 * 1024.0)
-		adverb = " moderately fast";
-	else
-		adverb = "";
-
-	sprintf(buffer, "%s%s", verb, adverb);
-	return buffer;
 }
 
 /*
@@ -337,14 +446,13 @@ void mem_dump_diff(
 				/* Size */
 				snprintf(label, sizeof(label), "%s-size-Kbytes", mem_types[type]);
 				j_obj_new_int64_add(j_mem_info, label, delta->size[type] / 1024);
-				j_obj_array_add(j_mem_infos, j_mem_info);
 				/* RSS */
 				snprintf(label, sizeof(label), "%s-rss-Kbytes", mem_types[type]);
 				j_obj_new_int64_add(j_mem_info, label, delta->rss[type] / 1024);
-				j_obj_array_add(j_mem_infos, j_mem_info);
 				/* PSS */
 				snprintf(label, sizeof(label), "%s-pss-Kbytes", mem_types[type]);
 				j_obj_new_int64_add(j_mem_info, label, delta->pss[type] / 1024);
+
 				j_obj_array_add(j_mem_infos, j_mem_info);
 			}
 		}
@@ -368,7 +476,6 @@ void mem_dump_diff(
 				j_obj_new_double_add(j_mem_info, label, rate);
 				snprintf(label, sizeof(label), "%s-change-size-Kbytes-hint", mem_types[type]);
 				j_obj_new_string_add(j_mem_info, label, mem_loading(rate));
-				j_obj_array_add(j_mem_infos, j_mem_info);
 				/* RSS */
 				rate = (double)(delta->rss[type] / 1024.0) / duration;
 				snprintf(label, sizeof(label), "%s-change-rss-Kbytes", mem_types[type]);
@@ -377,7 +484,6 @@ void mem_dump_diff(
 				j_obj_new_double_add(j_mem_info, label, rate);
 				snprintf(label, sizeof(label), "%s-change-rss-Kbytes-hint", mem_types[type]);
 				j_obj_new_string_add(j_mem_info, label, mem_loading(rate));
-				j_obj_array_add(j_mem_infos, j_mem_info);
 				/* PSS */
 				rate = (double)(delta->pss[type] / 1024.0) / duration;
 				snprintf(label, sizeof(label), "%s-change-pss-Kbytes", mem_types[type]);
@@ -386,6 +492,7 @@ void mem_dump_diff(
 				j_obj_new_double_add(j_mem_info, label, rate);
 				snprintf(label, sizeof(label), "%s-change-pss-Kbytes-hint", mem_types[type]);
 				j_obj_new_string_add(j_mem_info, label, mem_loading(rate));
+
 				j_obj_array_add(j_mem_infos, j_mem_info);
 			}
 		}
@@ -403,6 +510,7 @@ void mem_init(void)
 {
 	list_init(&mem_info_old);
         list_init(&mem_info_new);
+	list_init(&mem_brk_info);
 }
 
 /*
@@ -413,4 +521,5 @@ void mem_cleanup(void)
 {
 	list_free(&mem_info_old, free);
 	list_free(&mem_info_new, free);
+	list_free(&mem_brk_info, free);
 }

@@ -579,6 +579,7 @@ int main(int argc, char **argv)
 	syscall_dump_pollers(json_tests, actual_duration);
 	syscall_dump_sync(json_tests, actual_duration);
 	mem_dump_diff(json_tests, actual_duration);
+	mem_dump_brk(json_tests, actual_duration);
 	net_connection_dump(json_tests);
 
 #ifdef FNOTIFY

@@ -44,13 +44,22 @@ typedef struct mem_info_t {
 	int64_t		total[MEM_MAX];
 } mem_info_t;
 
-void mem_init(void);
-void mem_cleanup(void);
-void mem_get_all_pids(const list_t *pids, const proc_state state);
-void mem_get_by_proc(proc_info_t *p, const proc_state state);
+typedef struct {
+	pid_t		pid;
+	void		*brk_start;
+	void		*brk_current;
+	uint64_t	brk_count;
+} mem_brk_info_t;
 
-void mem_get(const list_t *pids, list_t *mem);
-void mem_dump_diff(json_object *j_tests, const double duration);
+extern void mem_init(void);
+extern void mem_cleanup(void);
+extern void mem_get_all_pids(const list_t *pids, const proc_state state);
+extern void mem_get_by_proc(proc_info_t *p, const proc_state state);
+extern void mem_brk_account(const pid_t pid, void *addr);
+extern void mem_dump_brk(json_object *j_tests, const double duration);
+
+extern void mem_get(const list_t *pids, list_t *mem);
+extern void mem_dump_diff(json_object *j_tests, const double duration);
 
 
 #endif

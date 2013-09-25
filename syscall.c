@@ -1081,6 +1081,28 @@ static void syscall_account_sync_file(syscall_sync_info_t *info, const int sysca
 	list_append(&info->sync_file, f);
 }
 
+#ifdef SYS_brk
+static void syscall_brk_args(
+	const syscall_t *sc,
+	syscall_info_t *s,
+	const pid_t pid,
+	const double threshold,
+	double *ret_timeout)
+{
+	unsigned long args[sc->arg + 1];
+	void *addr;
+
+	(void)s;
+	(void)threshold;
+	(void)ret_timeout;
+
+	syscall_get_args(pid, sc->arg, args);
+	addr = (void *)args[0];
+
+	mem_brk_account(pid, addr);
+}
+#endif
+
 /*
  *  syscall_fsync_generic_args()
  *	keep track of fsync, fdatasync and syncfs calls
@@ -2055,7 +2077,7 @@ syscall_t syscalls[] = {
 	SYSCALL(break),
 #endif
 #ifdef SYS_brk
-	SYSCALL(brk),
+	SYSCALL_CHKARGS(brk, 0, syscall_brk_args, NULL),
 #endif
 #ifdef SYS_capget
 	SYSCALL(capget),
