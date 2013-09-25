@@ -1,3 +1,12 @@
+health-check (0.01.32) saucy; urgency=low
+
+  * Makefile: bump version
+  * mem: add mmap accounting
+  * mem: add brk heap tracing
+  * syscall: use thread cancellation to tidy up when stopped
+
+ -- Colin King <colin.king@canonical.com>  Wed, 25 Sep 2013 16:30:57 +0100
+
 health-check (0.01.31) saucy; urgency=low
 
   * Makefile: bump version
