@@ -349,6 +349,7 @@ int main(int argc, char **argv)
 	json_object *json_obj = NULL;
 #endif
 	json_object *json_tests = NULL;
+	struct sigaction new_action, old_action;
 
 	list_init(&pids);
 	proc_cache_init();
@@ -357,7 +358,13 @@ int main(int argc, char **argv)
 	proc_cache_get();
 	proc_cache_get_pthreads();
 
-	signal(SIGCHLD, SIG_DFL);
+	sigaction(SIGCHLD, NULL, &old_action);
+	if (old_action.sa_handler != SIG_DFL) {
+		new_action.sa_handler = SIG_DFL;
+		sigemptyset(&new_action.sa_mask);
+		new_action.sa_flags = 0;	
+		sigaction(SIGCHLD, &new_action, NULL);
+	}
 
 	for (;;) {
 		int c = getopt(argc, argv, "+bcd:fhp:m:o:ru:vwW");
@@ -489,7 +496,11 @@ int main(int argc, char **argv)
 	if (ret != 0 || buffer == NULL)
 		health_check_out_of_memory("cannot allocate 4K aligned buffer");
 
-	signal(SIGINT, &handle_sigint);
+	new_action.sa_handler = handle_sigint;
+	sigemptyset(&new_action.sa_mask);
+	new_action.sa_flags = 0;	
+	sigaction(SIGINT, &new_action, &old_action);
+	
 	syscall_init();
 	syscall_trace_proc(&pids);
 
@@ -567,7 +578,7 @@ int main(int argc, char **argv)
 	event_stop();
 	syscall_stop();
 
-	signal(SIGINT, SIG_DFL);
+	sigaction(SIGINT, &old_action, NULL);
 
 	cpustat_dump_diff(json_tests, actual_duration);
 	event_dump_diff(json_tests, actual_duration);
