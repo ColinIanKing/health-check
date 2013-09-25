@@ -1,3 +1,16 @@
+health-check (0.01.35) saucy; urgency=low
+
+  * Makefile: bump version
+  * syscall.c: Add some more comments
+  * proc.c: Add some more comments
+  * mem: Add some more comments
+  * mem: constify a bit more
+  * fnotify.c: add some more comments
+  * ctxt-switch: add some more comments
+  * Fix copy-n-paste error on man page
+
+ -- Colin King <colin.king@canonical.com>  Wed, 25 Sep 2013 20:25:20 +0100
+
 health-check (0.01.34) saucy; urgency=low
 
   * Makefile: bump version
