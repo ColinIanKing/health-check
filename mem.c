@@ -73,6 +73,10 @@ static const char *mem_loading(const double mem_rate)
 	return buffer;
 }
 
+/*
+ *  mem_mmap_account()
+ *	do mmap/munmap accounting on pid of map size length.
+ */
 void mem_mmap_account(const pid_t pid, const size_t length, const bool mmap)
 {
 	link_t *l;
