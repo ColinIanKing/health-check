@@ -34,6 +34,7 @@
 #include <errno.h>
 #include <linux/ptrace.h>
 #include <limits.h>
+#include <pthread.h>
 
 #include "syscall.h"
 #include "proc.h"
@@ -1862,6 +1863,29 @@ static syscall_context_t *syscall_get_context(pid_t pid)
 }
 
 /*
+ *  syscall_trace_cleanup()
+ *	clean up tracing
+ */
+static void syscall_trace_cleanup(void *arg)
+{
+	link_t *l;
+
+	(void)arg;
+	for (l = syscall_contexts.head; l; l = l->next) {
+		syscall_context_t *ctxt = (syscall_context_t *)l->data;
+		if (ctxt->alive) {
+			int status;
+
+			kill(ctxt->pid, SIGSTOP);
+			waitpid(ctxt->pid, &status, __WALL);
+			ptrace(PTRACE_DETACH, ctxt->pid, 0, 0);
+			kill(ctxt->pid, SIGCONT);
+		}
+	}
+	keep_running = false;
+}
+
+/*
  *  syscall_trace()
  *	syscall tracer, run in a pthread
  */
@@ -1873,6 +1897,9 @@ void *syscall_trace(void *arg)
 	unsigned long ptrace_flags = PTRACE_O_TRACESYSGOOD;
 
 	(void)arg;
+
+	pthread_cleanup_push(syscall_trace_cleanup, arg);
+	pthread_setcancelstate(PTHREAD_CANCEL_ENABLE, NULL);
 
 	if (opt_flags & OPT_FOLLOW_NEW_PROCS)
 		ptrace_flags |= (PTRACE_O_TRACECLONE | PTRACE_O_TRACEFORK | PTRACE_O_TRACEVFORK);
@@ -1890,7 +1917,7 @@ void *syscall_trace(void *arg)
 
 		errno = 0;
 		if ((pid = waitpid(-1, &status, __WALL)) == -1) {
-			if (errno == ECHILD)
+			if (errno == EINTR || errno == ECHILD)
 				break;
 		}
 
@@ -1941,16 +1968,8 @@ void *syscall_trace(void *arg)
 		ptrace(PTRACE_SYSCALL, ctxt->pid, 0, sig);
 	}
 
-	for (l = syscall_contexts.head; l; l = l->next) {
-		ctxt = (syscall_context_t *)l->data;
-		if (ctxt->alive) {
-			kill(ctxt->pid, SIGSTOP);
-			waitpid(ctxt->pid, &status, __WALL);
-			ptrace(PTRACE_DETACH, ctxt->pid, 0, 0);
-			kill(ctxt->pid, SIGCONT);
-		}
-	}
-	keep_running = false;
+	syscall_trace_cleanup(NULL);
+	pthread_cleanup_pop(NULL);
 	pthread_exit(0);
 }
 
@@ -1963,6 +1982,7 @@ void syscall_init(void)
 
 void syscall_stop(void)
 {
+	pthread_cancel(syscall_tracer);
 	pthread_join(syscall_tracer, NULL);
 }
 
