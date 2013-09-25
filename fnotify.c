@@ -110,6 +110,11 @@ void fnotify_event_free(void *data)
 	free(fileinfo);
 }
 
+/*
+ *  fnotify_get_filename()
+ *	look up a in-use file descriptor from a given pid
+ *	and find the associated filename
+ */
 char *fnotify_get_filename(const pid_t pid, const int fd)
 {
 	char 	buf[256];
