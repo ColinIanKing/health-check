@@ -32,6 +32,7 @@
 
 static list_t mem_info_old, mem_info_new;
 static list_t mem_brk_info;
+static list_t mem_mmap_info;
 
 static const char *mem_types[] = {
 	"Stack",
@@ -70,6 +71,117 @@ static const char *mem_loading(const double mem_rate)
 
 	sprintf(buffer, "%s%s", verb, adverb);
 	return buffer;
+}
+
+void mem_mmap_account(const pid_t pid, size_t length, bool mmap)
+{
+	link_t *l;
+	bool found = false;
+
+	mem_mmap_info_t *info = NULL;
+
+	printf("MMAP: %d %d\n", pid, (int)length);
+
+	for (l = mem_mmap_info.head; l; l = l->next) {
+		info = (mem_mmap_info_t *)l->data;
+		if (info->pid == pid) {
+			found = true;
+			break;
+		}
+	}
+	if (!found) {
+		if ((info = calloc(1, sizeof(*info))) == NULL)
+			health_check_out_of_memory("allocating memory tracking brk() information");
+		info->pid = pid;
+		list_append(&mem_mmap_info, info);
+	}
+
+	if (mmap) {
+		info->mmap_count++;
+		info->mmap_length += length;
+	} else {
+		info->munmap_count++;
+		info->munmap_length += length;
+	}
+}
+
+/*
+ *  mem_mmap_cmp()
+ *	list sorting based on total mmap size
+ */
+static int mem_mmap_cmp(const void *data1, const void *data2)
+{
+	mem_mmap_info_t *m1 = (mem_mmap_info_t *)data1;
+	mem_mmap_info_t *m2 = (mem_mmap_info_t *)data2;
+	int64_t d1 = m1->mmap_length - m1->munmap_length;
+	int64_t d2 = m2->mmap_length - m2->munmap_length;
+
+	return d2 - d1;
+}
+
+/*
+ *  mem_dump_mmap()
+ *	dump mmap changes
+ */
+void mem_dump_mmap(json_object *j_tests, const double duration)
+{
+	list_t sorted;
+	link_t *l;
+	mem_mmap_info_t *info;
+
+	printf("Memory Change via mmap() and munmap():\n");
+	if (mem_mmap_info.head == NULL) {
+		printf(" None.\n\n");
+		return;
+	}
+	list_init(&sorted);
+
+	for (l = mem_mmap_info.head; l; l = l->next) {
+		info = (mem_mmap_info_t *)l->data;
+		list_add_ordered(&sorted, info, mem_mmap_cmp);
+	}
+
+	printf("  PID                          mmaps  munmaps   Change (K)  Rate (K/second)\n");
+	for (l = sorted.head; l; l = l->next) {
+		info = (mem_mmap_info_t *)l->data;
+		proc_info_t *p = proc_cache_find_by_pid(info->pid);
+		int64_t delta = info->mmap_length - info->munmap_length;
+		double rate = ((double)delta) / duration;
+
+		printf(" %5d %-20.20s %8" PRIu64 " %8" PRIu64 "    %td      %8.2f (%s)\n",
+			info->pid, p ? p->cmdline : "",
+			info->mmap_count, info->munmap_count,
+			delta / 1024, rate / 1024.0, mem_loading(rate));
+	}
+	printf("\n");
+
+#ifdef JSON_OUTPUT
+	if (j_tests) {
+		json_object *j_mem_test, *j_mem_infos, *j_mem_info;
+
+		j_obj_obj_add(j_tests, "memory-usage-via-mmap", (j_mem_test = j_obj_new_obj()));
+		j_obj_obj_add(j_mem_test, "memory-usage-via-mmap-per-process", (j_mem_infos = j_obj_new_array()));
+		for (l = sorted.head; l; l = l->next) {
+			info = (mem_mmap_info_t *)l->data;
+			proc_info_t *p = proc_cache_find_by_pid(info->pid);
+			int64_t delta = info->mmap_length - info->munmap_length;
+
+			j_mem_info = j_obj_new_obj();
+			j_obj_new_int32_add(j_mem_info, "pid", info->pid);
+			if (p) {
+				j_obj_new_int32_add(j_mem_info, "ppid", p->ppid);
+				j_obj_new_int32_add(j_mem_info, "is-thread", p->is_thread);
+				j_obj_new_string_add(j_mem_info, "name", p->cmdline);
+			}
+			j_obj_new_int64_add(j_mem_info, "mmap-count", info->mmap_count);
+			j_obj_new_int64_add(j_mem_info, "munmap-count", info->munmap_count);
+			j_obj_new_int64_add(j_mem_info, "mmap-total-Kbytes", (uint64_t)delta / 1024);
+			j_obj_new_double_add(j_mem_info, "mmap-total-Kbytes-rate", ((double)delta / 1024.0) / duration );
+			j_obj_array_add(j_mem_infos, j_mem_info);
+		}
+	}
+#endif
+	list_free(&sorted, NULL);
 }
 
 /*
@@ -511,6 +623,7 @@ void mem_init(void)
 	list_init(&mem_info_old);
         list_init(&mem_info_new);
 	list_init(&mem_brk_info);
+	list_init(&mem_mmap_info);
 }
 
 /*
@@ -522,4 +635,5 @@ void mem_cleanup(void)
 	list_free(&mem_info_old, free);
 	list_free(&mem_info_new, free);
 	list_free(&mem_brk_info, free);
+	list_free(&mem_mmap_info, free);
 }

@@ -1103,6 +1103,46 @@ static void syscall_brk_args(
 }
 #endif
 
+#ifdef SYS_mmap
+static void syscall_mmap_args(
+	const syscall_t *sc,
+	syscall_info_t *s,
+	const pid_t pid,
+	const double threshold,
+	double *ret_timeout)
+{
+	unsigned long args[sc->arg + 2];
+
+	(void)s;
+	(void)threshold;
+	(void)ret_timeout;
+
+	syscall_get_args(pid, sc->arg, args);
+
+	mem_mmap_account(pid, (size_t)args[1], true);
+}
+#endif
+
+#ifdef SYS_munmap
+static void syscall_munmap_args(
+	const syscall_t *sc,
+	syscall_info_t *s,
+	const pid_t pid,
+	const double threshold,
+	double *ret_timeout)
+{
+	unsigned long args[sc->arg + 2];
+
+	(void)s;
+	(void)threshold;
+	(void)ret_timeout;
+
+	syscall_get_args(pid, sc->arg, args);
+
+	mem_mmap_account(pid, (size_t)args[1], false);
+}
+#endif
+
 /*
  *  syscall_fsync_generic_args()
  *	keep track of fsync, fdatasync and syncfs calls
@@ -2536,10 +2576,10 @@ syscall_t syscalls[] = {
 	SYSCALL(mlockall),
 #endif
 #ifdef SYS_mmap
-	SYSCALL(mmap),
+	SYSCALL_CHKARGS(mmap, 1, syscall_mmap_args, NULL),
 #endif
 #ifdef SYS_mmap2
-	SYSCALL(mmap2),
+	SYSCALL_CHKARGS(mmap2, 1, syscall_mmap_args, NULL),
 #endif
 #ifdef SYS_modify_ldt
 	SYSCALL(modify_ldt),
@@ -2599,7 +2639,7 @@ syscall_t syscalls[] = {
 	SYSCALL(munlockall),
 #endif
 #ifdef SYS_munmap
-	SYSCALL(munmap),
+	SYSCALL_CHKARGS(munmap, 1, syscall_munmap_args, NULL),
 #endif
 #ifdef SYS_name_to_handle_at
 	SYSCALL(name_to_handle_at),
