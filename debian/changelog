@@ -1,3 +1,10 @@
+health-check (0.01.33) saucy; urgency=low
+
+  * Makefile: bump version again
+  * mem.c: Remove some debugging cruft
+
+ -- Colin King <colin.king@canonical.com>  Wed, 25 Sep 2013 14:58:49 +0100
+
 health-check (0.01.32) saucy; urgency=low
 
   * Makefile: bump version
@@ -5,7 +12,7 @@ health-check (0.01.32) saucy; urgency=low
   * mem: add brk heap tracing
   * syscall: use thread cancellation to tidy up when stopped
 
- -- Colin King <colin.king@canonical.com>  Wed, 25 Sep 2013 16:30:57 +0100
+ -- Colin King <colin.king@canonical.com>  Wed, 25 Sep 2013 14:30:57 +0100
 
 health-check (0.01.31) saucy; urgency=low
 
