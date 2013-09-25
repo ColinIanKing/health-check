@@ -80,8 +80,6 @@ void mem_mmap_account(const pid_t pid, size_t length, bool mmap)
 
 	mem_mmap_info_t *info = NULL;
 
-	printf("MMAP: %d %d\n", pid, (int)length);
-
 	for (l = mem_mmap_info.head; l; l = l->next) {
 		info = (mem_mmap_info_t *)l->data;
 		if (info->pid == pid) {
