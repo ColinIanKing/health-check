@@ -106,7 +106,7 @@ void ctxt_switch_get_all_pids(const list_t *pids, proc_state state)
 
 /*
  *  ctxt_switch_loading()
- *
+ *	context switch rate to some human understandable text
  */
 static const char *ctxt_switch_loading(const double rate)
 {
