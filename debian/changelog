@@ -1,3 +1,11 @@
+health-check (0.01.34) saucy; urgency=low
+
+  * Makefile: bump version
+  * Fix ARM builds that don't have mmap2
+  * Fix 32 bit arm warnings
+
+ -- Colin King <colin.king@canonical.com>  Wed, 25 Sep 2013 15:31:35 +0100
+
 health-check (0.01.33) saucy; urgency=low
 
   * Makefile: bump version again
