@@ -589,7 +589,10 @@ static int syscall_count_cmp(const void *data1, const void *data2)
 	syscall_info_t *s1 = (syscall_info_t *)data1;
 	syscall_info_t *s2 = (syscall_info_t *)data2;
 
-	return s2->count - s1->count;
+	if (s1->proc->pid == s2->proc->pid)
+		return s2->count - s1->count;
+	else
+		return s1->proc->pid - s2->proc->pid;
 }
 
 /*
