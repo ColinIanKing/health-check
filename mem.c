@@ -303,12 +303,7 @@ static int mem_cmp(const void *data1, const void *data2)
 	mem_info_t *m1 = (mem_info_t *)data1;
 	mem_info_t *m2 = (mem_info_t *)data2;
 
-	if (m2->total == m1->total)
-		return 0;
-	else if (m2->total > m1->total)
-		return 1;
-	else
-		return 0;
+	return m2->grand_total - m1->grand_total;
 }
 
 /*
@@ -484,7 +479,12 @@ void mem_dump_diff(
 	list_init(&sorted_delta);
 
 	for (l = mem_info_new.head; l; l = l->next) {
+		mem_type_t type;
 		mem_info_t *mem_new = (mem_info_t *)l->data;
+
+		for (type = MEM_STACK; type < MEM_MAX; type++)
+			mem_new->grand_total += mem_new->total[type];
+
 		list_add_ordered(&sorted, mem_new, mem_cmp);
 	}
 

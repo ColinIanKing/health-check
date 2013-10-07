@@ -42,6 +42,7 @@ typedef struct mem_info_t {
 	int64_t		rss[MEM_MAX];
 	int64_t		pss[MEM_MAX];
 	int64_t		total[MEM_MAX];
+	int64_t		grand_total;
 } mem_info_t;
 
 typedef struct {
