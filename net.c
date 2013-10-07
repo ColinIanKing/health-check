@@ -49,6 +49,7 @@ typedef struct {
 typedef enum {
 	NET_TCP,
 	NET_UDP,
+	NET_UNIX,
 } net_type_t;
 
 typedef struct {
@@ -56,6 +57,7 @@ typedef struct {
 	union {
 		struct sockaddr_in  addr4;
 		struct sockaddr_in6 addr6;
+		char path[PATH_MAX + 1];
 	} u;
 	int family;
 	proc_info_t *proc;
@@ -63,11 +65,12 @@ typedef struct {
 
 static const char *net_types[] = {
 	"TCP",
-	"UDP"
+	"UDP",
+	"UNIX",
 };
 
 /*
- *  Cache of addresses used by the applications. 
+ *  Cache of addresses used by the applications.
  *  This shouldn't be too large, so O(n) lookup is
  *  just bearable for now.
  */
@@ -315,27 +318,42 @@ void net_connection_dump(json_object *j_tests)
 	}
 #endif
 
-	printf("  PID  Process             Proto  Address:Port\n");
+	printf("  PID  Process             Proto  Address\n");
 	for (l = net_cached_addrs.head; l; l = l->next) {
 		net_addr_info_t *addr_info = (net_addr_info_t *)l->data;
 		in_port_t port;
+		char tmp[256];
+		char *addr;
 
-		switch (addr_info->family) {
-		case AF_INET6:
-			net_inet6_resolve(buf, sizeof(buf), &addr_info->u.addr6);
-			port = addr_info->u.addr6.sin6_port;
+		switch (addr_info->type) {
+		case NET_TCP:
+		case NET_UDP:
+			switch (addr_info->family) {
+			case AF_INET6:
+				net_inet6_resolve(buf, sizeof(buf), &addr_info->u.addr6);
+				port = addr_info->u.addr6.sin6_port;
+				break;
+			case AF_INET:
+				net_inet4_resolve(buf, sizeof(buf), &addr_info->u.addr4);
+				port = addr_info->u.addr4.sin_port;
+				break;
+			default:
+				/* No idea what it is */
+				continue;
+			}
+			snprintf(tmp, sizeof(tmp), "%s:%d", buf, port);
+			addr = tmp;
 			break;
-		case AF_INET:
-			net_inet4_resolve(buf, sizeof(buf), &addr_info->u.addr4);
-			port = addr_info->u.addr4.sin_port;
+		case NET_UNIX:
+			addr = addr_info->u.path;
 			break;
 		default:
-			/* No idea what it is */
 			continue;
 		}
-		printf("%6u %-20.20s %s   %s:%d\n", 
+
+		printf("%6u %-20.20s %-4.4s  %s\n",
 			addr_info->proc->pid, addr_info->proc->cmdline,
-			net_types[addr_info->type], buf, port);
+			net_types[addr_info->type], addr);
 
 #ifdef JSON_OUTPUT
 		if (j_tests) {
@@ -345,8 +363,7 @@ void net_connection_dump(json_object *j_tests)
 			j_obj_new_int32_add(j_net_info, "is-thread", addr_info->proc->is_thread);
 			j_obj_new_string_add(j_net_info, "name", addr_info->proc->cmdline);
 			j_obj_new_string_add(j_net_info, "protocol", net_types[addr_info->type]);
-			j_obj_new_string_add(j_net_info, "address", buf);
-			j_obj_new_int32_add(j_net_info, "port", (int32_t)port);
+			j_obj_new_string_add(j_net_info, "address", addr);
 			j_obj_array_add(j_net_infos, j_net_info);
 		}
 #endif
@@ -355,11 +372,51 @@ void net_connection_dump(json_object *j_tests)
 }
 
 /*
- *  net_parse()
+ *  net_unix_parse()
+ *	parse /proc/net/unix and cache data
+ */
+static int net_unix_parse(void)
+{
+	FILE *fp;
+	char buf[4096];
+	int i;
+
+	if ((fp = fopen("/proc/net/unix", "r")) == NULL) {
+		fprintf(stderr, "Cannot open /proc/net/unix\n");
+		return -1;
+	}
+
+	for (i = 0; fgets(buf, sizeof(buf), fp) != NULL; i++) {
+		uint64_t inode;
+		char path[4096];
+		net_addr_info_t new_addr;
+		net_hash_t *nh;
+
+		if (i == 0)  /* Skip header */
+			continue;
+
+		sscanf(buf, "%*x: %*x %*x %*x %*x %*x %" SCNu64 " %s\n",
+			&inode, path);
+
+		if ((nh = net_hash_find_inode(inode)) == NULL)
+			continue;
+
+		new_addr.proc = nh->proc;
+		new_addr.type = NET_UNIX;
+		strncpy(new_addr.u.path, path, PATH_MAX);
+		net_addr_add(&new_addr);
+	}
+	fclose(fp);
+
+	return 0;
+}
+
+/*
+ *  net_tcp_udp_parse()
  *	parse /proc/net/{tcp,udp} and cache data for
  *	faster lookup
  */
-static int net_parse(const net_type_t type)
+static int net_tcp_udp_parse(const net_type_t type)
 {
 	FILE *fp;
 	char *procfile;
@@ -368,7 +425,6 @@ static int net_parse(const net_type_t type)
 	in_port_t port;
 	int i;
 	uint64_t inode;
-	net_hash_t *nh;
 
 	switch (type) {
 	case NET_TCP:
@@ -389,6 +445,7 @@ static int net_parse(const net_type_t type)
 
 	for (i = 0; fgets(buf, sizeof(buf), fp) != NULL; i++) {
 		net_addr_info_t new_addr;
+		net_hash_t *nh;
 
 		if (i == 0)  /* Skip header */
 			continue;
@@ -424,16 +481,16 @@ static int net_parse(const net_type_t type)
 }
 
 /*
- *  net_connection_pids()
- *	find network inodes assocated with given
- *	pids and find network addresses
+ *  net_parse()
+ *	parse various /proc net files
  */
-int net_connection_pids(list_t *pids)
+static int net_parse(void)
 {
-	net_cache_inodes(pids);
-	if (net_parse(NET_TCP) < 0)
+	if (net_tcp_udp_parse(NET_TCP) < 0)
 		return -1;
-	if (net_parse(NET_UDP) < 0)
+	if (net_tcp_udp_parse(NET_UDP) < 0)
+		return -1;
+	if (net_unix_parse() < 0)
 		return -1;
 
 	return 0;
@@ -444,15 +501,21 @@ int net_connection_pids(list_t *pids)
  *	find network inodes assocated with given
  *	pids and find network addresses
  */
+int net_connection_pids(list_t *pids)
+{
+	net_cache_inodes(pids);
+	return net_parse();
+}
+
+/*
+ *  net_connection_pids()
+ *	find network inodes assocated with given
+ *	pids and find network addresses
+ */
 int net_connection_pid(const pid_t pid)
 {
 	net_cache_inodes_pid(pid);
-	if (net_parse(NET_TCP) < 0)
-		return -1;
-	if (net_parse(NET_UDP) < 0)
-		return -1;
-
-	return 0;
+	return net_parse();
 }
 
 /*
