@@ -30,7 +30,6 @@ extern char *get_pid_comm(const pid_t pid);
 extern char *get_pid_cmdline(const pid_t pid);
 extern bool pid_exists(const pid_t pid);
 extern bool pid_list_find(pid_t pid, list_t *list);
-extern void pid_get_children(pid_t pid, list_t *children);
-extern void pid_list_get_children(list_t *pids);
+extern int pid_list_get_children(list_t *pids);
 
 #endif

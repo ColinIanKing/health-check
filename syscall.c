@@ -156,7 +156,7 @@ static void syscall_connect_ret(json_object *j_obj, const syscall_t *sc, const s
 	(void)j_obj;
 	(void)sc;
 
-	net_connection_pid(s->proc->pid);
+	(void)net_connection_pid(s->proc->pid);
 }
 #endif
 
@@ -190,8 +190,12 @@ static void syscall_nanosleep_generic_ret(json_object *j_obj, const syscall_t *s
 		if (j_obj) {
 			json_object *j_nanosleep_error, *j_error;
 
-			j_obj_array_add(j_obj, (j_nanosleep_error= j_obj_new_obj()));
-			j_obj_obj_add(j_nanosleep_error, "nanosleep-error", (j_error = j_obj_new_obj()));
+			if ((j_nanosleep_error= j_obj_new_obj()) == NULL)
+				return;
+			j_obj_array_add(j_obj, j_nanosleep_error);
+			if ((j_error = j_obj_new_obj()) == NULL)
+				return;
+			j_obj_obj_add(j_nanosleep_error, "nanosleep-error", j_error);
 			j_obj_new_int32_add(j_error, "pid", s->proc->pid);
 			j_obj_new_int32_add(j_error, "ppid", s->proc->ppid);
 			j_obj_new_int32_add(j_error, "is-thread", s->proc->is_thread);
@@ -269,9 +273,12 @@ static void syscall_poll_generic_ret(json_object *j_obj, const syscall_t *sc, co
 	if (j_obj) {
 		json_object *j_timeout, *j_poll;
 
-		j_obj_array_add(j_obj, (j_timeout = j_obj_new_obj()));
-		j_obj_obj_add(j_timeout, "polling-timeout", (j_poll = j_obj_new_obj()));
-
+		if ((j_timeout = j_obj_new_obj()) == NULL)
+			return;
+		j_obj_array_add(j_obj, j_timeout);
+		if ((j_poll = j_obj_new_obj()) == NULL)
+			return;
+		j_obj_obj_add(j_timeout, "polling-timeout", j_poll);
 		j_obj_new_int32_add(j_poll, "pid", s->proc->pid);
 		j_obj_new_int32_add(j_poll, "ppid", s->proc->ppid);
 		j_obj_new_int32_add(j_poll, "is-thread", s->proc->is_thread);
@@ -639,7 +646,8 @@ void syscall_dump_hashtable(json_object *j_tests, const double duration)
 		syscall_info_t *s;
 
 		for (s = syscall_info[i]; s; s = s->next)
-			list_add_ordered(&sorted, s, syscall_count_cmp);
+			if (list_add_ordered(&sorted, s, syscall_count_cmp) == NULL)
+				goto out;
 	}
 
 	printf("System calls traced:\n");
@@ -664,14 +672,19 @@ void syscall_dump_hashtable(json_object *j_tests, const double duration)
 	if (j_tests) {
 		json_object *j_syscall, *j_syscall_infos, *j_syscall_info;
 
-		j_obj_obj_add(j_tests, "system-calls", (j_syscall = j_obj_new_obj()));
-                j_obj_obj_add(j_syscall, "system-calls-per-process", (j_syscall_infos = j_obj_new_array()));
+		if ((j_syscall = j_obj_new_obj()) == NULL)
+			goto out;
+		j_obj_obj_add(j_tests, "system-calls", j_syscall);
+		if ((j_syscall_infos = j_obj_new_array()) == NULL)
+			goto out;
+                j_obj_obj_add(j_syscall, "system-calls-per-process", j_syscall_infos);
 		for (total = 0, l = sorted.head; l; l = l->next) {
 			char name[64];
 			syscall_info_t *s = (syscall_info_t *)l->data;
 
 			syscall_name(s->syscall, name, sizeof(name));
-			j_syscall_info = j_obj_new_obj();
+			if ((j_syscall_info = j_obj_new_obj()) == NULL)
+				goto out;
 			j_obj_new_int32_add(j_syscall_info, "pid", s->proc->pid);
 			j_obj_new_int32_add(j_syscall_info, "ppid", s->proc->ppid);
 			j_obj_new_int32_add(j_syscall_info, "is-thread", s->proc->is_thread);
@@ -683,13 +696,16 @@ void syscall_dump_hashtable(json_object *j_tests, const double duration)
 			j_obj_array_add(j_syscall_infos, j_syscall_info);
 			total += s->count;
 		}
-		j_obj_obj_add(j_syscall, "system-calls-total", (j_syscall_info = j_obj_new_obj()));
+		if ((j_syscall_info = j_obj_new_obj()) == NULL)
+			goto out;
+		j_obj_obj_add(j_syscall, "system-calls-total", j_syscall_info);
 		j_obj_new_int64_add(j_syscall_info, "system-call-count-total", total);
 		j_obj_new_double_add(j_syscall_info, "system-call-count-rate-total",
 			(double)total / duration);
 	}
 #endif
 
+out:
 	list_free(&sorted, NULL);
 }
 
@@ -839,8 +855,10 @@ static void *syscall_peek_data(const pid_t pid, const unsigned long addr, const 
 	unsigned *data;
 	size_t i, n = (len + sizeof(unsigned long) - 1) / sizeof(unsigned long);
 
-	if ((data = calloc(sizeof(unsigned long), n + 1)) == NULL)
+	if ((data = calloc(sizeof(unsigned long), n + 1)) == NULL) {
 		health_check_out_of_memory("allocating syscall peek buffer");
+		return NULL;
+	}
 
 	for (i = 0; i < n; i++)
 		data[i] = ptrace(PTRACE_PEEKDATA, pid,
@@ -898,13 +916,18 @@ static fd_cache_t *syscall_fd_cache_lookup(const pid_t pid, const int fd)
 			break;
 	}
 	if (fc == NULL) {
-		if ((fc = calloc(1, sizeof(*fc))) == NULL)
+		if ((fc = calloc(1, sizeof(*fc))) == NULL) {
 			health_check_out_of_memory("allocating file descriptor cache item");
+			return NULL;
+		}
 		fc->pid = pid;
 		fc->fd = fd;
 		fc->filename = fnotify_get_filename(pid, fd);
-		if (fc->filename == NULL)
+		if (fc->filename == NULL) {
 			health_check_out_of_memory("allocating filename");
+			free(fc);
+			return NULL;
+		}
 		pthread_mutex_init(&fc->mutex, NULL);
 		fc->next = fd_cache[h];
 		fd_cache[h] = fc;
@@ -919,6 +942,8 @@ static fd_cache_t *syscall_fd_cache_lookup(const pid_t pid, const int fd)
 			if (fc->filename == NULL) {
 				pthread_mutex_unlock(&fc->mutex);
 				health_check_out_of_memory("allocating filename");
+				free(fc);
+				return NULL;
 			}
 		}
 		pthread_mutex_unlock(&fc->mutex);
@@ -990,19 +1015,26 @@ static void syscall_write_args(
 
 	syscall_get_args(pid, sc->arg, args);
 	fd = (int)args[0];
-	fc = syscall_fd_cache_lookup(pid, fd);
+	if ((fc = syscall_fd_cache_lookup(pid, fd)) == NULL)
+		return;
 
 	pthread_mutex_lock(&fc->mutex);
 	if (!strcmp(fc->filename, "/sys/power/wake_lock") ||
 	    !strcmp(fc->filename, "/sys/power/wake_unlock")) {
 		unsigned long addr = args[1];
 		size_t count = (size_t)args[2];
-		char *lockname = syscall_peek_data(pid, addr, count);
+		char *lockname;
 		syscall_wakelock_info_t *info;
 
-		if ((info = calloc(1, sizeof(*info))) == NULL) {
+		if ((lockname = syscall_peek_data(pid, addr, count)) == NULL) {
 			pthread_mutex_unlock(&fc->mutex);
+			return;
+		}
+		if ((info = calloc(1, sizeof(*info))) == NULL) {
 			health_check_out_of_memory("allocating wakelock information");
+			pthread_mutex_unlock(&fc->mutex);
+			free(lockname);
+			return;
 		}
 
 		info->pid = pid;
@@ -1010,7 +1042,9 @@ static void syscall_write_args(
 		info->locked = strcmp(fc->filename, "/sys/power/wake_unlock");
 		gettimeofday(&info->tv, NULL);
 
-		list_append(&syscall_wakelocks, info);
+		if (list_append(&syscall_wakelocks, info) == NULL) {
+			free(info);
+		}
 	}
 	pthread_mutex_unlock(&fc->mutex);
 }
@@ -1039,9 +1073,9 @@ static void syscall_exit_args(
 	 */
 	proc_info_t *proc = proc_cache_find_by_pid(pid);
 	if (proc) {
-		cpustat_get_by_proc(proc, PROC_FINISH);
-		ctxt_switch_get_by_proc(proc, PROC_FINISH);
-		mem_get_by_proc(proc, PROC_FINISH);
+		(void)cpustat_get_by_proc(proc, PROC_FINISH);
+		(void)ctxt_switch_get_by_proc(proc, PROC_FINISH);
+		(void)mem_get_by_proc(proc, PROC_FINISH);
 	}
 }
 #endif
@@ -1062,11 +1096,16 @@ static syscall_sync_info_t *syscall_sync_info_find_by_pid(const pid_t pid)
 			return info;
 	}
 
-	if ((info = calloc(1, sizeof(*info))) == NULL)
+	if ((info = calloc(1, sizeof(*info))) == NULL) {
 		health_check_out_of_memory("allocating file sync accounting info");
+		return NULL;
+	}
 
 	info->pid = pid;
-	list_append(&syscall_syncs, info);
+	if (list_append(&syscall_syncs, info) == NULL) {
+		free(info);
+		return NULL;
+	}
 
 	return info;
 }
@@ -1083,7 +1122,9 @@ static void syscall_account_sync_file(syscall_sync_info_t *info, const int sysca
 	fd_cache_t *fc;
 	link_t *l;
 
-	fc = syscall_fd_cache_lookup(pid, fd);
+	if ((fc = syscall_fd_cache_lookup(pid, fd)) == NULL)
+		return;
+
 	for (l = info->sync_file.head; l; l = l->next) {
 		f = (syscall_sync_file_t *)l->data;
 		if ((f->syscall == syscall) && !strcmp(f->filename, fc->filename)) {
@@ -1092,14 +1133,19 @@ static void syscall_account_sync_file(syscall_sync_info_t *info, const int sysca
 		}
 	}
 
-	if ((f = calloc(1, sizeof(*f))) == NULL)
+	if ((f = calloc(1, sizeof(*f))) == NULL) {
 		health_check_out_of_memory("allocating file sync filename info");
+		return;
+	}
 
 	f->filename = strdup(fc->filename);
 	f->syscall = syscall;
 	f->count = 1;
 
-	list_append(&info->sync_file, f);
+	if (list_append(&info->sync_file, f) == NULL) {
+		free(f->filename);
+		free(f);
+	}
 }
 
 #ifdef SYS_brk
@@ -1124,7 +1170,7 @@ static void syscall_brk_args(
 	syscall_get_args(pid, sc->arg, args);
 	addr = (void *)args[0];
 
-	mem_brk_account(pid, addr);
+	(int)mem_brk_account(pid, addr);
 }
 #endif
 
@@ -1148,7 +1194,7 @@ static void syscall_mmap_args(
 
 	syscall_get_args(pid, sc->arg, args);
 
-	mem_mmap_account(pid, (size_t)args[1], true);
+	(void)mem_mmap_account(pid, (size_t)args[1], true);
 }
 #endif
 
@@ -1188,13 +1234,15 @@ static void syscall_fsync_generic_args(
 	double *ret_timeout)
 {
 	unsigned long args[sc->arg + 1];
+	syscall_sync_info_t *info;
 
 	(void)s;
 	(void)threshold;
 	(void)ret_timeout;
 
 	syscall_get_args(pid, sc->arg, args);
-	syscall_sync_info_t *info = syscall_sync_info_find_by_pid(pid);
+	if ((info = syscall_sync_info_find_by_pid(pid)) == NULL)
+		return;
 	info->fsync_count++;
 	info->total_count++;
 	syscall_account_sync_file(info, sc->syscall, pid, (int)args[0]);
@@ -1213,12 +1261,15 @@ static void syscall_sync_args(
 	const double threshold,
 	double *ret_timeout)
 {
+	syscall_sync_info_t *info;
+
 	(void)sc;
 	(void)s;
 	(void)threshold;
 	(void)ret_timeout;
 
-	syscall_sync_info_t *info = syscall_sync_info_find_by_pid(pid);
+	if ((info = syscall_sync_info_find_by_pid(pid)) == NULL)
+		return;
 	info->sync_count++;
 	info->total_count++;
 }
@@ -1279,7 +1330,8 @@ void syscall_dump_sync(json_object *j_tests, double duration)
 
 	list_init(&sorted);
 	for (l = syscall_syncs.head; l; l = l->next) {
-		list_add_ordered(&sorted, l->data, syscall_sync_cmp);
+		if (list_add_ordered(&sorted, l->data, syscall_sync_cmp) == NULL)
+			goto out;
 	}
 
 	printf("  PID   fdatasync    fsync     sync   syncfs    total   total (Rate)\n");
@@ -1364,6 +1416,8 @@ void syscall_dump_sync(json_object *j_tests, double duration)
 		}
 	}
 #endif
+
+out:
 	list_free(&sorted, NULL);
 }
 
@@ -1407,7 +1461,7 @@ void syscall_wakelock_names_by_pid(pid_t pid, list_t *wakelock_names)
 				}
 			}
 			if (!found)
-				list_add_ordered(wakelock_names, info->lockname, syscall_wakelock_cmp);
+				(void)list_add_ordered(wakelock_names, info->lockname, syscall_wakelock_cmp);
 		}
 	}
 }
@@ -1581,7 +1635,9 @@ void syscall_dump_pollers(json_object *j_tests, const double duration)
 		for (s = syscall_info[i]; s; s = s->next) {
 			int syscall = s->syscall;
 			if (syscalls[syscall].check_func && syscalls[syscall].do_poll_accounting) {
-				list_add_ordered(&sorted, s, syscall_count_cmp);
+				if (list_add_ordered(&sorted, s, syscall_count_cmp) == NULL) {
+					goto out;
+				}
 				break;
 			}
 		}
@@ -1639,15 +1695,20 @@ void syscall_dump_pollers(json_object *j_tests, const double duration)
 			if (j_tests) {
 				json_object *j_syscall, *j_syscall_infos, *j_syscall_info;
 
-				j_obj_obj_add(j_tests, "polling-system-calls", (j_syscall = j_obj_new_obj()));
-                		j_obj_obj_add(j_syscall, "polling-system-calls-per-process", (j_syscall_infos = j_obj_new_array()));
+				if ((j_syscall = j_obj_new_obj()) == NULL)
+					goto out;
+				j_obj_obj_add(j_tests, "polling-system-calls", j_syscall);
+				if ((j_syscall_infos = j_obj_new_array()) == NULL)
+					goto out;
+				j_obj_obj_add(j_syscall, "polling-system-calls-per-process", j_syscall_infos);
 				for (count = 0, l = sorted.head; l; l = l->next) {
 					syscall_info_t *s = (syscall_info_t *)l->data;
 					syscall_name(s->syscall, tmp, sizeof(tmp));
 					double rate = (double)s->count / duration;
 					count += s->count;
 
-					j_syscall_info = j_obj_new_obj();
+					if ((j_syscall_info = j_obj_new_obj()) == NULL)
+						goto out;
 					j_obj_new_int32_add(j_syscall_info, "pid", s->proc->pid);
 					j_obj_new_int32_add(j_syscall_info, "ppid", s->proc->ppid);
 					j_obj_new_int32_add(j_syscall_info, "is_thread", s->proc->is_thread);
@@ -1662,14 +1723,15 @@ void syscall_dump_pollers(json_object *j_tests, const double duration)
 					j_obj_new_double_add(j_syscall_info, "poll-average-timeout-millisecs", s->poll_total / (double)s->count);
 					j_obj_array_add(j_syscall_infos, j_syscall_info);
 				}
-				j_obj_obj_add(j_syscall, "polling-system-calls-total", (j_syscall_info = j_obj_new_obj()));
+				if ((j_syscall_info = j_obj_new_obj()) == NULL)
+					goto out;
+				j_obj_obj_add(j_syscall, "polling-system-calls-total", j_syscall_info);
 				j_obj_new_int64_add(j_syscall_info, "system-call-count-total", count);
 				j_obj_new_double_add(j_syscall_info, "system-call-rate-total", (double)count / duration);
 				j_obj_new_int64_add(j_syscall_info, "poll-count-infinite-total", (int64_t)poll_infinite);
 				j_obj_new_int64_add(j_syscall_info, "poll-count-zero-total", poll_zero);
 			}
 #endif
-
 			printf("\nDistribution of poll timeout times:\n");
 
 			printf("%50.50s", "");
@@ -1721,8 +1783,12 @@ void syscall_dump_pollers(json_object *j_tests, const double duration)
 
 #ifdef JSON_OUTPUT
 		if (j_tests) {
-			j_obj_obj_add(j_tests, "polling-system-call-returns", (j_poll_test = j_obj_new_obj()));
-                	j_obj_obj_add(j_poll_test, "polling-system-call-returns-per-process", (j_pollers = j_obj_new_array()));
+			if ((j_poll_test = j_obj_new_obj()) == NULL)
+				goto out;
+			j_obj_obj_add(j_tests, "polling-system-call-returns", j_poll_test);
+			if ((j_pollers = j_obj_new_array()) == NULL)
+				goto out;
+			j_obj_obj_add(j_poll_test, "polling-system-call-returns-per-process", j_pollers);
 		}
 #endif
 		printf("Polling system call analysis:\n");
@@ -1738,6 +1804,7 @@ void syscall_dump_pollers(json_object *j_tests, const double duration)
 			printf(" No bad polling discovered.\n");
 		printf("\n");
 	}
+out:
 	list_free(&sorted, NULL);
 }
 
@@ -1763,11 +1830,15 @@ static void syscall_account_return(
 				return;
 
 			if (s) {
-				if ((info = (syscall_return_info_t *)calloc(1, sizeof(*info))) == NULL)
+				if ((info = (syscall_return_info_t *)calloc(1, sizeof(*info))) == NULL) {
 					health_check_out_of_memory("allocating syscall accounting information");
+					return;
+				}
 				info->timeout = timeout;
 				info->ret = ret;
-				list_append(&s->return_history, info);
+				if (list_append(&s->return_history, info) == NULL) {
+					free(info);
+				}
 			}
 		}
 	}
@@ -1804,8 +1875,10 @@ static syscall_info_t *syscall_count_usage(
 		/*
 		 *  Doesn't exist, create new one
 		 */
-		if ((s = calloc(1, sizeof(*s))) == NULL)
+		if ((s = calloc(1, sizeof(*s))) == NULL) {
 			health_check_out_of_memory("allocating syscall hash item");
+			return NULL;
+		}
 		s->syscall = syscall;
 		s->proc = proc_cache_find_by_pid(pid);
 		s->count = 1;
@@ -1882,12 +1955,12 @@ static void syscall_handle_event(syscall_context_t *ctxt, int event)
 #endif
 
 		if ((p = proc_cache_add(child, 0, event == PTRACE_EVENT_CLONE)) != NULL) {
-			proc_pids_add_proc(__pids, p);
-			mem_get_by_proc(p, PROC_START);
-			cpustat_get_by_proc(p, PROC_START);
-			ctxt_switch_get_by_proc(p, PROC_START);
+			(void)proc_pids_add_proc(__pids, p);
+			(void)mem_get_by_proc(p, PROC_START);
+			(void)cpustat_get_by_proc(p, PROC_START);
+			(void)ctxt_switch_get_by_proc(p, PROC_START);
 		}
-		net_connection_pid(child);	/* Update net connections on new process */
+		(void)net_connection_pid(child);	/* Update net connections on new process */
 	}
 }
 
@@ -1975,9 +2048,12 @@ static syscall_context_t *syscall_get_context(pid_t pid)
 		ctxt->alive = true;
 
 		/* Add to fast look up cache and list */
+		if (list_append(&syscall_contexts, ctxt) == NULL) {
+			free(ctxt);
+			return NULL;
+		}
 		ctxt->next = syscall_contexts_cache[h];
 		syscall_contexts_cache[h] = ctxt;
-		list_append(&syscall_contexts, ctxt);
 		procs_traced++;
 	}
 	return ctxt;
@@ -2057,9 +2133,9 @@ void *syscall_trace(void *arg)
 				 *  disappear too early.
 				 */
 				/*
-				cpustat_get_by_proc(ctxt->proc, PROC_FINISH);
-				ctxt_switch_get_by_proc(ctxt->proc, PROC_FINISH);
-				mem_get_by_proc(ctxt->proc, PROC_FINISH);
+				(void)cpustat_get_by_proc(ctxt->proc, PROC_FINISH);
+				(void)ctxt_switch_get_by_proc(ctxt->proc, PROC_FINISH);
+				(void)mem_get_by_proc(ctxt->proc, PROC_FINISH);
 				*/
 			}
 			ctxt->alive = false;

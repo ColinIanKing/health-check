@@ -53,7 +53,7 @@ typedef struct {
 } io_ops_t;
 
 extern int fnotify_event_init(void);
-extern void fnotify_event_add(const list_t *pids, const struct fanotify_event_metadata *metadata);
+extern int fnotify_event_add(const list_t *pids, const struct fanotify_event_metadata *metadata);
 extern void fnotify_dump_events(json_object *j_tests, const double duration, const list_t *pids);
 extern void fnotify_dump_wakelocks(json_object *j_tests, const double duration);
 extern char *fnotify_get_filename(const pid_t pid, const int fd);

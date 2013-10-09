@@ -49,7 +49,7 @@ static int ctx_switch_cmp(const void *data1, const void *data2)
  *  ctxt_switch_get_by_proc()
  *	get context switch info for a specific process
  */
-void ctxt_switch_get_by_proc(proc_info_t *proc, proc_state state)
+int ctxt_switch_get_by_proc(proc_info_t *proc, proc_state state)
 {
 	char path[PATH_MAX];
 	char buf[4096];
@@ -60,11 +60,12 @@ void ctxt_switch_get_by_proc(proc_info_t *proc, proc_state state)
 
 	snprintf(path, sizeof(path), "/proc/%i/status", proc->pid);
 	if ((fp = fopen(path, "r")) == NULL)
-		return;
+		return 0;
 
 	if ((info = calloc(1, sizeof(*info))) == NULL) {
-		fclose(fp);
 		health_check_out_of_memory("allocating context switch information");
+		fclose(fp);
+		return -1;
 	}
 	info->voluntary = 0;
 	info->involuntary = 0;
@@ -87,21 +88,28 @@ void ctxt_switch_get_by_proc(proc_info_t *proc, proc_state state)
 	info->total = info->voluntary + info->involuntary;
 	info->valid = true;
 
-	list_append(ctxt_switches, info);
+	if (list_append(ctxt_switches, info) == NULL) {
+		free(info);
+		return -1;
+	}
+
+	return 0;
 }
 
 /*
  *  ctxt_switch_get_all_pids()
  *	scan /proc/pid/status for context switch data
  */
-void ctxt_switch_get_all_pids(const list_t *pids, proc_state state)
+int ctxt_switch_get_all_pids(const list_t *pids, proc_state state)
 {
 	link_t *l;
 
 	for (l = pids->head; l; l = l->next) {
 		proc_info_t *p = (proc_info_t *)l->data;
-		ctxt_switch_get_by_proc(p, state);
+		if (ctxt_switch_get_by_proc(p, state) < 0)
+			return -1;
 	}
+	return 0;
 }
 
 /*
@@ -177,15 +185,20 @@ void ctxt_switch_dump_diff(json_object *j_tests, const double duration)
 		if (!info->valid)
 			continue;
 
-		if ((new_info = calloc(1, sizeof(*info))) == NULL)
+		if ((new_info = calloc(1, sizeof(*info))) == NULL) {
 			health_check_out_of_memory("allocating context switch information");
+			goto out;
+		}
 		new_info->proc = info->proc;
 		ctxt_switch_delta(info,
 			&ctxt_switch_info_start,
 			&new_info->total,
 			&new_info->voluntary,
 			&new_info->involuntary);
-		list_add_ordered(&sorted, new_info, ctx_switch_cmp);
+		if (list_add_ordered(&sorted, new_info, ctx_switch_cmp) == NULL) {
+			free(new_info);
+			goto out;
+		}
 	}
 
 	if (sorted.head) {
@@ -236,14 +249,19 @@ void ctxt_switch_dump_diff(json_object *j_tests, const double duration)
 		uint64_t total = 0;
 		double total_rate;
 
-		j_obj_obj_add(j_tests, "context-switches", (j_ctxt_switch_test = j_obj_new_obj()));
-		j_obj_obj_add(j_ctxt_switch_test, "context-switches-per-process", (j_ctxt_switches = j_obj_new_array()));
+		if ((j_ctxt_switch_test = j_obj_new_obj()) == NULL)
+			goto out;
+		j_obj_obj_add(j_tests, "context-switches", j_ctxt_switch_test);
+		if ((j_ctxt_switches = j_obj_new_array()) == NULL)
+			goto out;
+		j_obj_obj_add(j_ctxt_switch_test, "context-switches-per-process", j_ctxt_switches);
 
 		for (l = sorted.head; l; l = l->next) {
 			ctxt_switch_info_t *info = (ctxt_switch_info_t *)l->data;
 
 			total += (double)info->total;
-			j_ctxt_switch = j_obj_new_obj();
+			if ((j_ctxt_switch = j_obj_new_obj()) == NULL)
+				goto out;
 			j_obj_new_int32_add(j_ctxt_switch, "pid", info->proc->pid);
 			j_obj_new_int32_add(j_ctxt_switch, "ppid", info->proc->ppid);
 			j_obj_new_int32_add(j_ctxt_switch, "is-thread", info->proc->is_thread);
@@ -258,12 +276,16 @@ void ctxt_switch_dump_diff(json_object *j_tests, const double duration)
 			j_obj_array_add(j_ctxt_switches, j_ctxt_switch);
 		}
 		total_rate = (double)total / duration;
-		j_obj_obj_add(j_ctxt_switch_test, "context-switches-total", (j_ctxt_switch = j_obj_new_obj()));
+		if ((j_ctxt_switch = j_obj_new_obj()) == NULL)
+			goto out;
+		j_obj_obj_add(j_ctxt_switch_test, "context-switches-total", j_ctxt_switch);
 		j_obj_new_int64_add(j_ctxt_switch, "context-switch-total", total);
 		j_obj_new_double_add(j_ctxt_switch, "context-switch-rate-total", total_rate);
 		j_obj_new_string_add(j_ctxt_switch, "load-hint-total", ctxt_switch_loading(total_rate));
 	}
 #endif
+
+out:
 	list_free(&sorted, free);
 }
 

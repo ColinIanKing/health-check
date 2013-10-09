@@ -160,14 +160,14 @@ char *fnotify_get_filename(const pid_t pid, const int fd)
  *  fnotify_event_add()
  *	add a new fnotify event
  */
-void fnotify_event_add(
+int fnotify_event_add(
 	const list_t *pids,
 	const struct fanotify_event_metadata *metadata)
 {
 	link_t *l;
 
 	if ((metadata->fd == FAN_NOFD) && (metadata->fd < 0))
-		return;
+		return 0;
 
 	for (l = pids->head; l; l = l->next) {
 		 proc_info_t *p = (proc_info_t*)l->data;
@@ -175,8 +175,11 @@ void fnotify_event_add(
 		if (metadata->pid == p->pid) {
 			char 	*filename = fnotify_get_filename(-1, metadata->fd);
 
-			if (filename == NULL)
+			if (filename == NULL) {
 				health_check_out_of_memory("allocating fnotify filename");
+				close(metadata->fd);
+				return -1;
+			}
 			if ((opt_flags & OPT_WAKELOCKS_LIGHT) &&
 			    (metadata->mask & (FAN_MODIFY | FAN_CLOSE_WRITE)) &&
 			    (!strcmp(filename, "/sys/power/wake_lock") ||
@@ -194,13 +197,21 @@ void fnotify_event_add(
 				}
 
 				if (!found) {
-					if ((wakelock_info = calloc(1, sizeof(*wakelock_info))) == NULL)
+					if ((wakelock_info = calloc(1, sizeof(*wakelock_info))) == NULL) {
 						health_check_out_of_memory("allocating wakelock information");
+						free(filename);
+						close(metadata->fd);
+						return -1;
+					}
 					wakelock_info->proc = p;
 					wakelock_info->locked = 0;
 					wakelock_info->unlocked = 0;
 					wakelock_info->total = 0;
-					list_append(&fnotify_wakelocks, wakelock_info);
+					if (list_append(&fnotify_wakelocks, wakelock_info) == NULL) {
+						free(filename);
+						close(metadata->fd);
+						return -1;
+					}
 				}
 
 				if (strcmp(filename, "/sys/power/wake_unlock"))
@@ -225,13 +236,21 @@ void fnotify_event_add(
 				}
 
 				if (!found) {
-					if ((fileinfo = calloc(1, sizeof(*fileinfo))) == NULL)
+					if ((fileinfo = calloc(1, sizeof(*fileinfo))) == NULL) {
 						health_check_out_of_memory("allocating fnotify file information");
+						free(filename);
+						close(metadata->fd);
+						return -1;
+					}
 					fileinfo->filename = filename;
 					fileinfo->mask = metadata->mask;
 					fileinfo->proc = p;
 					fileinfo->count = 0;
-					list_append(&fnotify_files, fileinfo);
+					if (list_append(&fnotify_files, fileinfo) == NULL) {
+						free(filename);
+						close(metadata->fd);
+						return -1;
+					}
 				} else {
 					free(filename);
 				}
@@ -240,6 +259,8 @@ void fnotify_event_add(
 		}
 	}
 	close(metadata->fd);
+
+	return 0;
 }
 
 /*
@@ -329,7 +350,8 @@ static void fnotify_dump_files(
 	list_init(&sorted);
 	for (l = fnotify_files.head; l; l = l->next) {
 		fnotify_fileinfo_t *info = (fnotify_fileinfo_t *)l->data;
-		list_add_ordered(&sorted, info, fnotify_event_cmp_count);
+		if (list_add_ordered(&sorted, info, fnotify_event_cmp_count) == NULL)
+			goto out;
 	}
 	if (fnotify_files.head && !(opt_flags & OPT_BRIEF)) {
 		printf("  PID  Process               Count  Op  Filename\n");
@@ -353,13 +375,18 @@ static void fnotify_dump_files(
 	if (j_tests) {
 		json_object *j_fnotify_test, *j_accesses, *j_access;
 
-		j_obj_obj_add(j_tests, "file-access", (j_fnotify_test = j_obj_new_obj()));
-		j_obj_obj_add(j_fnotify_test, "file-access-per-process", (j_accesses = j_obj_new_array()));
+		if ((j_fnotify_test = j_obj_new_obj()) == NULL)
+			goto out;
+		j_obj_obj_add(j_tests, "file-access", j_fnotify_test);
+		if ((j_accesses = j_obj_new_array()) == NULL)
+			goto out;
+		j_obj_obj_add(j_fnotify_test, "file-access-per-process", j_accesses);
 
 		for (count = 0, total = 0, l = sorted.head; l; l = l->next) {
 			fnotify_fileinfo_t *info = (fnotify_fileinfo_t *)l->data;
 
-			j_access = j_obj_new_obj();
+			if ((j_access = j_obj_new_obj()) == NULL)
+				goto out;
                         j_obj_new_int32_add(j_access, "pid", info->proc->pid);
                         j_obj_new_int32_add(j_access, "ppid", info->proc->ppid);
                         j_obj_new_int32_add(j_access, "is-thread", info->proc->is_thread);
@@ -371,12 +398,17 @@ static void fnotify_dump_files(
 			j_obj_array_add(j_accesses, j_access);
 			total += info->count;
 		}
-		j_obj_obj_add(j_fnotify_test, "file-access-total", (j_access = j_obj_new_obj()));
+		if ((j_access = j_obj_new_obj()) == NULL)
+			goto out;
+		j_obj_obj_add(j_fnotify_test, "file-access-total", j_access);
 		j_obj_new_int64_add(j_access, "access-count-total", total);
 		j_obj_new_int64_add(j_access, "access-count-rate-total", (double)total / duration);
 	}
 #endif
+
+out:
 	list_free(&sorted, NULL);
+
 }
 
 /*
@@ -424,10 +456,15 @@ static void fnotify_dump_io_ops(
 		if (io_ops.total) {
 			io_ops_t *new_io_ops;
 
-			if ((new_io_ops = calloc(1, sizeof(*new_io_ops))) == NULL)
+			if ((new_io_ops = calloc(1, sizeof(*new_io_ops))) == NULL) {
 				health_check_out_of_memory("allocating fnotify I/O ops information");
+				goto out;
+			}
 			*new_io_ops = io_ops;
-			list_add_ordered(&sorted, new_io_ops, fnotify_event_cmp_io_ops);
+			if (list_add_ordered(&sorted, new_io_ops, fnotify_event_cmp_io_ops) == NULL) {
+				free(new_io_ops);
+				goto out;
+			}
 		}
 	}
 
@@ -482,13 +519,18 @@ static void fnotify_dump_io_ops(
 	if (j_tests) {
 		json_object *j_fnotify_test, *j_io_ops, *j_io_op;
 
-		j_obj_obj_add(j_tests, "file-io-operations", (j_fnotify_test = j_obj_new_obj()));
-		j_obj_obj_add(j_fnotify_test, "file-io-operations-per-process", (j_io_ops = j_obj_new_array()));
+		if ((j_fnotify_test = j_obj_new_obj()) == NULL)
+			goto out;
+		j_obj_obj_add(j_tests, "file-io-operations", j_fnotify_test);
+		if ((j_io_ops = j_obj_new_array()) == NULL)
+			goto out;
+		j_obj_obj_add(j_fnotify_test, "file-io-operations-per-process", j_io_ops);
 
 		for (count = 0, l = sorted.head; l; l = l->next) {
 			io_ops_t *io_ops = (io_ops_t *)l->data;
 
-			j_io_op = j_obj_new_obj();
+			if ((j_io_op = j_obj_new_obj()) == NULL)
+				goto out;
                         j_obj_new_int32_add(j_io_op, "pid", io_ops->proc->pid);
                         j_obj_new_int32_add(j_io_op, "ppid", io_ops->proc->ppid);
                         j_obj_new_int32_add(j_io_op, "is-thread", io_ops->proc->is_thread);
@@ -507,7 +549,9 @@ static void fnotify_dump_io_ops(
 				(double)io_ops->write_total / duration);
 			j_obj_array_add(j_io_ops, j_io_op);
 		}
-		j_obj_obj_add(j_fnotify_test, "file-io-operations-total", (j_io_op = j_obj_new_obj()));
+		if ((j_io_op = j_obj_new_obj()) == NULL)
+			goto out;
+		j_obj_obj_add(j_fnotify_test, "file-io-operations-total", j_io_op);
 		j_obj_new_double_add(j_io_op, "open-call-rate-total",
 			(double)open_total / duration);
 		j_obj_new_double_add(j_io_op, "close-call-rate-total",
@@ -518,6 +562,8 @@ static void fnotify_dump_io_ops(
 			(double)write_total / duration);
 	}
 #endif
+
+out:
 	list_free(&sorted, free);
 }
 
@@ -547,7 +593,8 @@ void fnotify_dump_wakelocks(
 	list_init(&sorted);
 	for (l = fnotify_wakelocks.head; l; l = l->next) {
 		fnotify_wakelock_info_t *info = (fnotify_wakelock_info_t *)l->data;
-		list_add_ordered(&sorted, info, fnotify_wakelock_cmp_count);
+		if (list_add_ordered(&sorted, info, fnotify_wakelock_cmp_count) == NULL)
+			goto out;
 	}
 
 	if (fnotify_wakelocks.head && !(opt_flags & OPT_BRIEF)) {
@@ -562,6 +609,7 @@ void fnotify_dump_wakelocks(
 	}
 	printf("\n");
 
+out:
 	list_free(&sorted, NULL);
 }
 

@@ -94,7 +94,7 @@ static inline unsigned long net_hash(const uint64_t inode)
  *  net_hash_add()
  *	add inode, pid and fd to inode hash table
  */
-static void net_hash_add(const uint64_t inode, const pid_t pid, const uint32_t fd)
+static int net_hash_add(const uint64_t inode, const pid_t pid, const uint32_t fd)
 {
 	net_hash_t *n;
 	link_t *l;
@@ -104,17 +104,24 @@ static void net_hash_add(const uint64_t inode, const pid_t pid, const uint32_t f
 	for (l = net_hash_table[h].head; l; l = l->next) {
 		n = (net_hash_t *)l->data;
 		if (n->proc->pid == pid && n->inode == inode)
-			return;
+			return 0;
 	}
 
-	if ((n = calloc(1, sizeof(*n))) == NULL)
+	if ((n = calloc(1, sizeof(*n))) == NULL) {
 		health_check_out_of_memory("allocating net hash data");
+		return -1;
+	}
 
 	n->inode = inode;
 	n->proc = proc_cache_find_by_pid(pid);
 	n->fd = fd;
 
-	list_append(&net_hash_table[h], n);
+	if (list_append(&net_hash_table[h], n) == NULL) {
+		free(n);
+		return -1;
+	}
+
+	return 0;
 }
 
 /*
@@ -185,7 +192,10 @@ static int net_cache_inodes_pid(const pid_t pid)
 
 		if (net_get_inode(link, &inode) != -1) {
 			sscanf(d->d_name, "%" SCNu32, &fd);
-			net_hash_add(inode, pid, fd);
+			if (net_hash_add(inode, pid, fd) < 0) {
+				closedir(fds);
+				return -1;
+			}
 		}
 	}
 	closedir(fds);
@@ -198,14 +208,16 @@ static int net_cache_inodes_pid(const pid_t pid)
  *	given a list of pidis, find all the network inodes associated
  *	with the processes' current file descriptors
  */
-static void net_cache_inodes(list_t *pids)
+static int net_cache_inodes(list_t *pids)
 {
 	link_t *l;
 
 	for (l = pids->head; l; l = l->next) {
 		proc_info_t *p = (proc_info_t *)l->data;
-		net_cache_inodes_pid(p->pid);
+		if (net_cache_inodes_pid(p->pid) < 0)
+			return -1;
 	}
+	return 0;
 }
 
 /*
@@ -285,10 +297,13 @@ static void net_addr_add(net_addr_info_t *addr)
 			return;		/* Duplicate, ignore */
 	}
 
-	if ((new_addr = calloc(1, sizeof(*new_addr))) == NULL)
+	if ((new_addr = calloc(1, sizeof(*new_addr))) == NULL) {
 		health_check_out_of_memory("allocating net address information");
+		return;
+	}
 	memcpy(new_addr, addr, sizeof(*addr));
-	list_add_ordered(&net_cached_addrs, new_addr, net_pid_cmp);
+	if (list_add_ordered(&net_cached_addrs, new_addr, net_pid_cmp) == NULL)
+		free(new_addr);
 }
 
 /*
@@ -313,8 +328,12 @@ void net_connection_dump(json_object *j_tests)
 
 #ifdef JSON_OUTPUT
 	if (j_tests) {
-		j_obj_obj_add(j_tests, "network-connections", (j_net_test = j_obj_new_obj()));
-		j_obj_obj_add(j_net_test, "network-connections-per-process", (j_net_infos = j_obj_new_array()));
+		if ((j_net_test = j_obj_new_obj()) == NULL)
+			goto out;
+		j_obj_obj_add(j_tests, "network-connections", j_net_test);
+		if ((j_net_infos = j_obj_new_array()) == NULL)
+			goto out;
+		j_obj_obj_add(j_net_test, "network-connections-per-process", j_net_infos);
 	}
 #endif
 
@@ -357,7 +376,8 @@ void net_connection_dump(json_object *j_tests)
 
 #ifdef JSON_OUTPUT
 		if (j_tests) {
-			j_net_info = j_obj_new_obj();
+			if ((j_net_info = j_obj_new_obj()) == NULL)
+				goto out;
 			j_obj_new_int32_add(j_net_info, "pid", addr_info->proc->pid);
 			j_obj_new_int32_add(j_net_info, "ppid", addr_info->proc->ppid);
 			j_obj_new_int32_add(j_net_info, "is-thread", addr_info->proc->is_thread);
@@ -369,6 +389,8 @@ void net_connection_dump(json_object *j_tests)
 #endif
 	}
 	printf("\n");
+out:
+	return;
 }
 
 /*
@@ -503,7 +525,8 @@ static int net_parse(void)
  */
 int net_connection_pids(list_t *pids)
 {
-	net_cache_inodes(pids);
+	if (net_cache_inodes(pids) < 0)
+		return -1;
 	return net_parse();
 }
 
@@ -514,7 +537,8 @@ int net_connection_pids(list_t *pids)
  */
 int net_connection_pid(const pid_t pid)
 {
-	net_cache_inodes_pid(pid);
+	if (net_cache_inodes_pid(pid) < 0)
+		return -1;
 	return net_parse();
 }
 

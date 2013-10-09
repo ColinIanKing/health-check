@@ -77,7 +77,7 @@ static const char *mem_loading(const double mem_rate)
  *  mem_mmap_account()
  *	do mmap/munmap accounting on pid of map size length.
  */
-void mem_mmap_account(const pid_t pid, const size_t length, const bool mmap)
+int mem_mmap_account(const pid_t pid, const size_t length, const bool mmap)
 {
 	link_t *l;
 	bool found = false;
@@ -92,10 +92,15 @@ void mem_mmap_account(const pid_t pid, const size_t length, const bool mmap)
 		}
 	}
 	if (!found) {
-		if ((info = calloc(1, sizeof(*info))) == NULL)
+		if ((info = calloc(1, sizeof(*info))) == NULL) {
 			health_check_out_of_memory("allocating memory tracking brk() information");
+			return -1;
+		}
 		info->pid = pid;
-		list_append(&mem_mmap_info, info);
+		if (list_append(&mem_mmap_info, info) == NULL) {
+			free(info);
+			return -1;
+		}
 	}
 
 	if (mmap) {
@@ -105,6 +110,7 @@ void mem_mmap_account(const pid_t pid, const size_t length, const bool mmap)
 		info->munmap_count++;
 		info->munmap_length += length;
 	}
+	return 0;
 }
 
 /*
@@ -140,7 +146,8 @@ void mem_dump_mmap(json_object *j_tests, const double duration)
 
 	for (l = mem_mmap_info.head; l; l = l->next) {
 		info = (mem_mmap_info_t *)l->data;
-		list_add_ordered(&sorted, info, mem_mmap_cmp);
+		if (list_add_ordered(&sorted, info, mem_mmap_cmp) == NULL)
+			goto out;
 	}
 
 	printf("  PID                          mmaps  munmaps   Change (K)  Rate (K/second)\n");
@@ -161,14 +168,19 @@ void mem_dump_mmap(json_object *j_tests, const double duration)
 	if (j_tests) {
 		json_object *j_mem_test, *j_mem_infos, *j_mem_info;
 
-		j_obj_obj_add(j_tests, "memory-usage-via-mmap", (j_mem_test = j_obj_new_obj()));
-		j_obj_obj_add(j_mem_test, "memory-usage-via-mmap-per-process", (j_mem_infos = j_obj_new_array()));
+		if ((j_mem_test = j_obj_new_obj()) == NULL)
+			goto out;
+		j_obj_obj_add(j_tests, "memory-usage-via-mmap", j_mem_test);
+		if ((j_mem_infos = j_obj_new_obj()) == NULL)
+			goto out;
+		j_obj_obj_add(j_mem_test, "memory-usage-via-mmap-per-process", j_mem_infos);
 		for (l = sorted.head; l; l = l->next) {
 			info = (mem_mmap_info_t *)l->data;
 			proc_info_t *p = proc_cache_find_by_pid(info->pid);
 			int64_t delta = info->mmap_length - info->munmap_length;
 
-			j_mem_info = j_obj_new_obj();
+			if ((j_mem_info = j_obj_new_obj()) == NULL)
+				goto out;
 			j_obj_new_int32_add(j_mem_info, "pid", info->pid);
 			if (p) {
 				j_obj_new_int32_add(j_mem_info, "ppid", p->ppid);
@@ -183,6 +195,8 @@ void mem_dump_mmap(json_object *j_tests, const double duration)
 		}
 	}
 #endif
+
+out:
 	list_free(&sorted, NULL);
 }
 
@@ -190,7 +204,7 @@ void mem_dump_mmap(json_object *j_tests, const double duration)
  *  mem_brk_account()
  *	sys_brk memory accouting, used in syscall.c
  */
-void mem_brk_account(const pid_t pid, const void *addr)
+int mem_brk_account(const pid_t pid, const void *addr)
 {
 	link_t *l;
 
@@ -201,17 +215,24 @@ void mem_brk_account(const pid_t pid, const void *addr)
 		if (info->pid == pid) {
 			info->brk_current = addr;
 			info->brk_count++;
-			return;
+			return 0;
 		}
 	}
 
-	if ((info = calloc(1, sizeof(*info))) == NULL)
+	if ((info = calloc(1, sizeof(*info))) == NULL) {
 		health_check_out_of_memory("allocating memory tracking brk() information");
+		return -1;
+	}
 	info->pid = pid;
 	info->brk_start = addr;
 	info->brk_current = addr;
 	info->brk_count = 1;
-	list_append(&mem_brk_info, info);
+	if (list_append(&mem_brk_info, info) == NULL) {
+		free(info);
+		return -1;
+	}
+
+	return 0;
 }
 
 /*
@@ -248,7 +269,8 @@ void mem_dump_brk(json_object *j_tests, const double duration)
 
 	for (l = mem_brk_info.head; l; l = l->next) {
 		info = (mem_brk_info_t *)l->data;
-		list_add_ordered(&sorted, info, mem_brk_cmp);
+		if (list_add_ordered(&sorted, info, mem_brk_cmp) == NULL)
+			goto out;
 	}
 
 	printf("  PID                        brk Count  Change (K)  Rate (K/second)\n");
@@ -270,14 +292,19 @@ void mem_dump_brk(json_object *j_tests, const double duration)
 	if (j_tests) {
 		json_object *j_mem_test, *j_mem_infos, *j_mem_info;
 
-		j_obj_obj_add(j_tests, "heap-usage-via-brk", (j_mem_test = j_obj_new_obj()));
-		j_obj_obj_add(j_mem_test, "heap-usage-via-brk-per-process", (j_mem_infos = j_obj_new_array()));
+		if ((j_mem_test = j_obj_new_obj()) == NULL)
+			goto out;
+		j_obj_obj_add(j_tests, "heap-usage-via-brk", j_mem_test);
+		if ((j_mem_infos = j_obj_new_array()) == NULL)
+			goto out;
+		j_obj_obj_add(j_mem_test, "heap-usage-via-brk-per-process", j_mem_infos);
 		for (l = sorted.head; l; l = l->next) {
 			info = (mem_brk_info_t *)l->data;
 			proc_info_t *p = proc_cache_find_by_pid(info->pid);
 			ptrdiff_t delta = (info->brk_current - info->brk_start);
 
-			j_mem_info = j_obj_new_obj();
+			if ((j_mem_info = j_obj_new_obj()) == NULL)
+				goto out;
 			j_obj_new_int32_add(j_mem_info, "pid", info->pid);
 			if (p) {
 				j_obj_new_int32_add(j_mem_info, "ppid", p->ppid);
@@ -291,6 +318,8 @@ void mem_dump_brk(json_object *j_tests, const double duration)
 		}
 	}
 #endif
+
+out:
 	list_free(&sorted, NULL);
 }
 
@@ -380,7 +409,7 @@ static int mem_get_entry(FILE *fp, mem_info_t *mem)
  *  mem_get_by_proc()
  *	get mem info for a specific proc
  */
-void mem_get_by_proc(proc_info_t *p, const proc_state state)
+int mem_get_by_proc(proc_info_t *p, const proc_state state)
 {
 	FILE *fp;
 	char path[PATH_MAX];
@@ -388,36 +417,48 @@ void mem_get_by_proc(proc_info_t *p, const proc_state state)
 	list_t *mem = (state == PROC_START) ? &mem_info_old : &mem_info_new;
 
 	if (p->is_thread)
-		return;
+		return 0;
 
 	snprintf(path, sizeof(path), "/proc/%i/smaps", p->pid);
 
 	if ((fp = fopen(path, "r")) == NULL)
-		return;
+		return 0;
 
-	if ((m = calloc(1, sizeof(*m))) == NULL)
+	if ((m = calloc(1, sizeof(*m))) == NULL) {
 		health_check_out_of_memory("allocating memory tracking information");
+		fclose(fp);
+		return -1;
+	}
 	m->proc = p;
 
 	while (mem_get_entry(fp, m) != -1)
 		;
 
-	list_append(mem, m);
+	if (list_append(mem, m) == NULL) {
+		free(m);
+		fclose(fp);
+		return -1;
+	}
 	fclose(fp);
+
+	return 0;
 }
 
 /*
  *  mem_get_all_pids()
  *	scan mem and get mmap info
  */
-void mem_get_all_pids(const list_t *pids, const proc_state state)
+int mem_get_all_pids(const list_t *pids, const proc_state state)
 {
 	link_t *l;
 
 	for (l = pids->head; l; l = l->next) {
 		proc_info_t *p = (proc_info_t *)l->data;
-		mem_get_by_proc(p, state);
+		if (mem_get_by_proc(p, state) < 0) {
+			return -1;
+		}
 	}
+	return 0;
 }
 
 /*
@@ -430,8 +471,10 @@ static mem_info_t *mem_delta(mem_info_t *mem_new, const list_t *mem_old_list)
 	int i;
 	mem_info_t *delta;
 
-	if ((delta = calloc(1, sizeof(*delta))) == NULL)
+	if ((delta = calloc(1, sizeof(*delta))) == NULL) {
 		health_check_out_of_memory("allocating memory delta tracking information");
+		return NULL;
+	}
 
 	memset(delta, 0, sizeof(*delta));
 
@@ -457,7 +500,7 @@ static mem_info_t *mem_delta(mem_info_t *mem_new, const list_t *mem_old_list)
  *  mem_dump_diff()
  *	dump differences between old and new events
  */
-void mem_dump_diff(
+int mem_dump_diff(
 	json_object *j_tests,
 	const double duration)
 {
@@ -472,7 +515,7 @@ void mem_dump_diff(
 	if (mem_info_new.head == NULL) {
 		printf("Memory:\n");
 		printf(" No memory detected.\n\n");
-		return;
+		return 0;
 	}
 
 	list_init(&sorted);
@@ -485,14 +528,19 @@ void mem_dump_diff(
 		for (type = MEM_STACK; type < MEM_MAX; type++)
 			mem_new->grand_total += mem_new->total[type];
 
-		list_add_ordered(&sorted, mem_new, mem_cmp);
+		if (list_add_ordered(&sorted, mem_new, mem_cmp) == NULL)
+			goto out;
 	}
 
 	for (l = mem_info_new.head; l; l = l->next) {
 		mem_info_t *delta, *mem_new = (mem_info_t *)l->data;
 
-		delta = mem_delta(mem_new, &mem_info_old);
-		list_add_ordered(&sorted_delta, delta, mem_cmp);
+		if ((delta = mem_delta(mem_new, &mem_info_old)) == NULL)
+			return -1;
+		if (list_add_ordered(&sorted_delta, delta, mem_cmp) == NULL) {
+			free(delta);
+			goto out;
+		}
 	}
 
 	if (!(opt_flags & OPT_BRIEF)) {
@@ -546,13 +594,18 @@ void mem_dump_diff(
 		mem_type_t type;
 		double rate;
 
-		j_obj_obj_add(j_tests, "memory-usage", (j_mem_test = j_obj_new_obj()));
-		j_obj_obj_add(j_mem_test, "memory-usage-per-process", (j_mem_infos = j_obj_new_array()));
+		if ((j_mem_test = j_obj_new_obj()) == NULL)
+			goto out;
+		j_obj_obj_add(j_tests, "memory-usage", j_mem_test);
+		if ((j_mem_infos = j_obj_new_array()) == NULL)
+			goto out;
+		j_obj_obj_add(j_mem_test, "memory-usage-per-process", j_mem_infos);
 		for (l = sorted.head; l; l = l->next) {
 			mem_info_t *delta = (mem_info_t *)l->data;
 
 			for (type = MEM_STACK; type < MEM_MAX; type++) {
-				j_mem_info = j_obj_new_obj();
+				if ((j_mem_info = j_obj_new_obj()) == NULL)
+					goto out;
 				j_obj_new_int32_add(j_mem_info, "pid", delta->proc->pid);
 				j_obj_new_int32_add(j_mem_info, "ppid", delta->proc->ppid);
 				j_obj_new_int32_add(j_mem_info, "is-thread", delta->proc->is_thread);
@@ -571,13 +624,18 @@ void mem_dump_diff(
 			}
 		}
 
-		j_obj_obj_add(j_tests, "memory-change", (j_mem_test = j_obj_new_obj()));
-		j_obj_obj_add(j_mem_test, "memory-change-per-process", (j_mem_infos = j_obj_new_array()));
+		if ((j_mem_test = j_obj_new_obj()) == NULL)
+			goto out;
+		j_obj_obj_add(j_tests, "memory-change", j_mem_test);
+		if ((j_mem_infos = j_obj_new_array()) == NULL)
+			goto out;
+		j_obj_obj_add(j_mem_test, "memory-change-per-process", j_mem_infos);
 		for (l = sorted_delta.head; l; l = l->next) {
 			mem_info_t *delta = (mem_info_t *)l->data;
 
 			for (type = MEM_STACK; type < MEM_MAX; type++) {
-				j_mem_info = j_obj_new_obj();
+				if ((j_mem_info = j_obj_new_obj()) == NULL)
+					goto out;
 				j_obj_new_int32_add(j_mem_info, "pid", delta->proc->pid);
 				j_obj_new_int32_add(j_mem_info, "ppid", delta->proc->ppid);
 				j_obj_new_int32_add(j_mem_info, "is-thread", delta->proc->is_thread);
@@ -612,8 +670,12 @@ void mem_dump_diff(
 		}
 	}
 #endif
+
+out:
 	list_free(&sorted, NULL);
 	list_free(&sorted_delta, free);
+
+	return 0;
 }
 
 /*

@@ -85,7 +85,6 @@ void health_check_exit(const int status)
 void health_check_out_of_memory(const char *msg)
 {
 	fprintf(stderr, "Out of memory: %s.\n", msg);
-	health_check_exit(EXIT_FAILURE);
 }
 
 /*
@@ -140,7 +139,8 @@ static int parse_pid_list(char *arg, list_t *pids)
 				fprintf(stderr, "Cannot find process with PID %i.\n", pid);
 				return -1;
 			}
-			proc_pids_add_proc(pids, p);
+			if (proc_pids_add_proc(pids, p) < 0)
+				return -1;
 		} else {
 			if (proc_cache_find_by_procname(pids, token) < 0) {
 				return -1;
@@ -342,7 +342,7 @@ int main(int argc, char **argv)
 #endif
 	list_t pids;
 	link_t *l;
-	void *buffer;
+	void *buffer = NULL;
 	char *opt_username = NULL;
 #ifdef JSON_OUTPUT
 	char *opt_json_file = NULL;
@@ -355,8 +355,10 @@ int main(int argc, char **argv)
 	proc_cache_init();
 
 	/* Get a cached view of current process state */
-	proc_cache_get();
-	proc_cache_get_pthreads();
+	if (proc_cache_get() < 0)
+		goto out;
+	if (proc_cache_get_pthreads() < 0)
+		goto out;
 
 	sigaction(SIGCHLD, NULL, &old_action);
 	if (old_action.sa_handler != SIG_DFL) {
@@ -446,11 +448,15 @@ int main(int argc, char **argv)
 			proc_info_t *p;
 			if ((p = proc_cache_add(pid, 0, false)) == NULL) {
 				fprintf(stderr, "Cannot find process with PID %i\n", pid);
-				return -1;
+				goto out;
 			}
 			free(p->cmdline);
-			p->cmdline = strdup(basename(path));
-			proc_pids_add_proc(&pids, p);
+			if ((p->cmdline = strdup(basename(path))) == NULL) {
+				health_check_out_of_memory("cannot allocate process cmdline");
+				goto out;
+			}
+			if (proc_pids_add_proc(&pids, p) < 0)
+				goto out;
 		} else
 			health_check_exit(EXIT_FAILURE);
 	}
@@ -467,7 +473,8 @@ int main(int argc, char **argv)
 		}
 	}
 	if (opt_flags & OPT_GET_CHILDREN)
-		pid_list_get_children(&pids);
+		if (pid_list_get_children(&pids) < 0)
+			goto out;
 
 	if (opt_duration_secs < 0.5) {
 		fprintf(stderr, "Duration must 0.5 or more.\n");
@@ -475,14 +482,19 @@ int main(int argc, char **argv)
 	}
 
 	net_connection_init();
-	net_connection_pids(&pids);
+	if (net_connection_pids(&pids) < 0)
+		goto out;
 
 #ifdef JSON_OUTPUT
 	if (opt_json_file) {
-		if ((json_obj = json_object_new_object()) == NULL)
+		if ((json_obj = json_object_new_object()) == NULL) {
 			health_check_out_of_memory("cannot allocate JSON object");
-		if ((json_tests = json_object_new_object()) == NULL)
+			goto out;
+		}
+		if ((json_tests = json_object_new_object()) == NULL) {
 			health_check_out_of_memory("cannot allocate JSON array");
+			goto out;
+		}
 		json_object_object_add(json_obj, "health-check", json_tests);
 	}
 #endif
@@ -493,8 +505,10 @@ int main(int argc, char **argv)
 #endif
 
 	ret = posix_memalign(&buffer, 4096, 4096);
-	if (ret != 0 || buffer == NULL)
+	if (ret != 0 || buffer == NULL) {
 		health_check_out_of_memory("cannot allocate 4K aligned buffer");
+		goto out;
+	}
 
 	new_action.sa_handler = handle_sigint;
 	sigemptyset(&new_action.sa_mask);
@@ -515,10 +529,14 @@ int main(int argc, char **argv)
 	gettimeofday(&tv_start, NULL);
 	tv_end = timeval_add(&tv_start, &duration);
 
-	event_get_all_pids(&pids, PROC_START);
-	cpustat_get_all_pids(&pids, PROC_START);
-	mem_get_all_pids(&pids, PROC_START);
-	ctxt_switch_get_all_pids(&pids, PROC_START);
+	if (event_get_all_pids(&pids, PROC_START) < 0)
+		goto out;
+	if (cpustat_get_all_pids(&pids, PROC_START) < 0)
+		goto out;
+	if (mem_get_all_pids(&pids, PROC_START) < 0)
+		goto out;
+	if (ctxt_switch_get_all_pids(&pids, PROC_START) < 0)
+		goto out;
 
 	gettimeofday(&tv_now, NULL);
 	duration = timeval_sub(&tv_end, &tv_now);
@@ -547,7 +565,8 @@ int main(int argc, char **argv)
 					metadata = (struct fanotify_event_metadata *)buffer;
 
 					while (FAN_EVENT_OK(metadata, len)) {
-						fnotify_event_add(&pids, metadata);
+						if (fnotify_event_add(&pids, metadata) < 0)
+							goto out;
 						metadata = FAN_EVENT_NEXT(metadata, len);
 					}
 				}
@@ -571,10 +590,14 @@ int main(int argc, char **argv)
 	duration = timeval_sub(&tv_now, &tv_start);
 	actual_duration = timeval_to_double(&duration);
 
-	event_get_all_pids(&pids, PROC_FINISH);
-	cpustat_get_all_pids(&pids, PROC_FINISH);
-	mem_get_all_pids(&pids, PROC_FINISH);
-	ctxt_switch_get_all_pids(&pids, PROC_FINISH);
+	if (event_get_all_pids(&pids, PROC_FINISH) < 0)
+		goto out;
+	if (cpustat_get_all_pids(&pids, PROC_FINISH) < 0)
+		goto out;
+	if (mem_get_all_pids(&pids, PROC_FINISH) < 0)
+		goto out;
+	if (ctxt_switch_get_all_pids(&pids, PROC_FINISH) < 0)
+		goto out;
 	event_stop();
 	syscall_stop();
 
@@ -589,7 +612,8 @@ int main(int argc, char **argv)
 	syscall_dump_hashtable(json_tests, actual_duration);
 	syscall_dump_pollers(json_tests, actual_duration);
 	syscall_dump_sync(json_tests, actual_duration);
-	mem_dump_diff(json_tests, actual_duration);
+	if (mem_dump_diff(json_tests, actual_duration) < 0)
+		goto out;
 	mem_dump_brk(json_tests, actual_duration);
 	mem_dump_mmap(json_tests, actual_duration);
 	net_connection_dump(json_tests);
@@ -612,6 +636,7 @@ int main(int argc, char **argv)
 #endif
 
 out:
+	keep_running = false;	/* Force stop if we aborted */
 	mem_cleanup();
 	net_connection_cleanup();
 	syscall_cleanup();

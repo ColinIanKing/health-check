@@ -82,7 +82,7 @@ static int event_cmp(const void *data1, const void *data2)
  *  event_add()
  *	add event stats
  */
-static void event_add(
+static int event_add(
 	list_t *events,			/* event list */
 	const uint64_t count,		/* event count */
 	const pid_t pid,		/* PID of task */
@@ -96,7 +96,7 @@ static void event_add(
 
 	/* Does it exist? */
 	if ((p = proc_cache_find_by_pid(pid)) == NULL)
-		return;
+		return 0;
 
 	snprintf(ident, sizeof(ident), "%d:%s:%s:%s", pid, p->comm, func, callback);
 
@@ -104,14 +104,16 @@ static void event_add(
 		ev = (event_info_t *)l->data;
 		if (strcmp(ev->ident, ident) == 0) {
 			ev->count += count;
-			return;
+			return 0;
 		}
 	}
 
 	/* Not found, it is new! */
 
-	if ((ev = calloc(1, sizeof(event_info_t))) == NULL)
+	if ((ev = calloc(1, sizeof(event_info_t))) == NULL) {
 		health_check_out_of_memory("allocting event information");
+		return -1;
+	}
 
 	ev->proc = p;
 	ev->func = strdup(func);
@@ -119,13 +121,22 @@ static void event_add(
 	ev->ident = strdup(ident);
 	ev->count = count;
 
-	if (ev->proc == NULL ||
-	    ev->func == NULL ||
-	    ev->callback == NULL ||
-	    ev->ident == NULL)
+	if (ev->func == NULL || ev->callback == NULL || ev->ident == NULL) {
 		health_check_out_of_memory("allocting event information");
+		goto err;
+	}
 
-	list_add_ordered(events, ev, event_cmp);
+	if (list_add_ordered(events, ev, event_cmp) == NULL)
+		goto err;
+
+	return 0;
+err:
+	free(ev->func);
+	free(ev->callback);
+	free(ev->ident);
+	free(ev);
+
+	return -1;
 }
 
 /*
@@ -133,7 +144,7 @@ static void event_add(
  *	scan /proc/timer_stats and populate a timer stat hash table with
  *	unique events
  */
-void event_get_all_pids(const list_t *pids, proc_state state)
+int event_get_all_pids(const list_t *pids, proc_state state)
 {
 	FILE *fp;
 	char buf[4096];
@@ -141,7 +152,7 @@ void event_get_all_pids(const list_t *pids, proc_state state)
 
 	if ((fp = fopen(TIMER_STATS, "r")) == NULL) {
 		fprintf(stderr, "Cannot open %s.\n", TIMER_STATS);
-		return;
+		return 0;
 	}
 
 	while (!feof(fp)) {
@@ -180,13 +191,18 @@ void event_get_all_pids(const list_t *pids, proc_state state)
 		for (l = pids->head; l; l = l->next) {
 			proc_info_t *p = (proc_info_t *)l->data;
 			if (event_pid == p->pid) {
-				event_add(events, count, event_pid, func, timer);
+				if (event_add(events, count, event_pid, func, timer) < 0) {
+					fclose(fp);
+					return -1;
+				}
 				break;
 			}
 		}
 	}
 
 	fclose(fp);
+
+	return 0;
 }
 
 /*
@@ -291,8 +307,12 @@ void event_dump_diff(
 		uint64_t total_delta = 0;
 		double total_event_rate;
 
-		j_obj_obj_add(j_tests, "wakeup-events", (j_event_test = j_obj_new_obj()));
-		j_obj_obj_add(j_event_test, "wakeup-events-per-process", (j_events = j_obj_new_array()));
+		if ((j_event_test = j_obj_new_obj()) == NULL)
+			goto out;
+		j_obj_obj_add(j_tests, "wakeup-events", j_event_test);
+		if ((j_events = j_obj_new_array()) == NULL)
+			goto out;
+		j_obj_obj_add(j_event_test, "wakeup-events-per-process", j_events);
 
 		for (l = event_info_finish.head; l; l = l->next) {
 			event_info_t *event = (event_info_t *)l->data;
@@ -301,7 +321,8 @@ void event_dump_diff(
 			total_delta += delta;
 
 			/* We may as well dump everything */
-			j_event = j_obj_new_obj();
+			if ((j_event = j_obj_new_obj()) == NULL)
+				goto out;
 			j_obj_new_int32_add(j_event, "pid", event->proc->pid);
 			j_obj_new_int32_add(j_event, "ppid", event->proc->ppid);
 			j_obj_new_int32_add(j_event, "is-thread", event->proc->is_thread);
@@ -315,12 +336,16 @@ void event_dump_diff(
 		}
 
 		total_event_rate = (double)total_delta / duration;
-		j_obj_obj_add(j_event_test, "wakeup-events-total", (j_event = j_obj_new_obj()));
+		if ((j_event = j_obj_new_obj()) == NULL)
+			goto out;
+		j_obj_obj_add(j_event_test, "wakeup-events-total", j_event);
 		j_obj_new_int64_add(j_event, "wakeup-total", total_delta);
 		j_obj_new_double_add(j_event, "wakeup-rate-total", total_event_rate);
 		j_obj_new_string_add(j_event, "load-hint-total", event_loading(total_event_rate));
 	}
 #endif
+out:
+	return;
 }
 
 /*

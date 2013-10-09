@@ -62,8 +62,10 @@ static proc_info_t *proc_cache_add_at_hash_index(
 {
 	proc_info_t *p;
 
-	if ((p = calloc(1, sizeof(*p))) == NULL)
+	if ((p = calloc(1, sizeof(*p))) == NULL) {
 		health_check_out_of_memory("allocating proc cache");
+		return NULL;
+	}
 
 	p->pid  = pid;
 	p->ppid = ppid;
@@ -72,7 +74,12 @@ static proc_info_t *proc_cache_add_at_hash_index(
 	p->is_thread = is_thread;
 
 	pthread_mutex_lock(&proc_cache_mutex);
-	list_append(&proc_cache_list, p);
+	if (list_append(&proc_cache_list, p) == NULL) {
+		pthread_mutex_unlock(&proc_cache_mutex);
+		free(p->cmdline);
+		free(p);
+		return NULL;
+	}
 	p->next = proc_cache_hash[h];
 	proc_cache_hash[h] = p;
 	pthread_mutex_unlock(&proc_cache_mutex);
@@ -166,7 +173,7 @@ int proc_cache_get(void)
 			char comm[64];
 			/* 3173 (a.out) R 3093 3173 3093 34818 3173 4202496 165 0 0 0 3194 0 */
 			if (fscanf(fp, "%d (%[^)]) %*c %i", &pid, comm, &ppid) == 3)
-				proc_cache_add(pid, ppid, false);
+				(void)proc_cache_add(pid, ppid, false);
 			fclose(fp);
 		}
 	}
@@ -208,7 +215,7 @@ int proc_cache_get_pthreads(void)
 		if ((taskdir = opendir(path)) == NULL)
 			continue;
 
-		proc_cache_add(ppid, 0, false);
+		(void)proc_cache_add(ppid, 0, false);
 
 		while ((taskentry = readdir(taskdir)) != NULL) {
 			pid_t pid;
@@ -217,7 +224,11 @@ int proc_cache_get_pthreads(void)
 			pid = atoi(taskentry->d_name);
 			if (pid == ppid)
 				continue;
-			proc_cache_add(pid, ppid, true);
+			if (proc_cache_add(pid, ppid, true) == NULL) {
+				closedir(taskdir);
+				closedir(procdir);
+				return -1;
+			}
 		}
 		closedir(taskdir);
 	}
@@ -243,8 +254,10 @@ static void proc_cache_info_free(void *data)
  *  proc_pids_add_proc()
  *	add a process to pid list if it is sensible
  */
-void proc_pids_add_proc(list_t *pids, proc_info_t *p)
+int proc_pids_add_proc(list_t *pids, proc_info_t *p)
 {
+	int rc = 0;
+
 	if (p->pid == 1) {
 		fprintf(stderr, "Cannot run health-check on init. Aborting.\n");
 		health_check_exit(EXIT_FAILURE);
@@ -254,8 +267,11 @@ void proc_pids_add_proc(list_t *pids, proc_info_t *p)
 		health_check_exit(EXIT_FAILURE);
 	}
 	pthread_mutex_lock(&pids_mutex);
-	list_append(pids, p);
+	if (list_append(pids, p) == NULL)
+		rc = -1;
 	pthread_mutex_unlock(&pids_mutex);
+
+	return rc;
 }
 
 /*

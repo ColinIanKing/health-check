@@ -77,10 +77,11 @@ static int cpustat_cmp(const void *data1, const void *data2)
  *  cpustat_dump_diff()
  *	dump difference in CPU loading between two snapshots in time
  */
-void cpustat_dump_diff(json_object *j_tests, const double duration)
+int cpustat_dump_diff(json_object *j_tests, const double duration)
 {
 	double nr_ticks = (double)sysconf(_SC_CLK_TCK) * duration;
 	double utime_total = 0.0, stime_total = 0.0, ttime_total = 0.0;
+	int rc = 0;
 	int count = 0;
 	link_t *lo, *ln;
 	list_t	sorted;
@@ -98,8 +99,10 @@ void cpustat_dump_diff(json_object *j_tests, const double duration)
 			if (cin->proc->pid == cio->proc->pid) {
 				cpustat_info_t *cpustat;
 
-				if ((cpustat = calloc(1, sizeof(*cpustat))) == NULL)
+				if ((cpustat = calloc(1, sizeof(*cpustat))) == NULL) {
 					health_check_out_of_memory("cannot allocate cpustat information");
+					goto out;
+				}
 				cpustat->proc  = cio->proc;
 				cpustat->utime = cin->utime - cio->utime;
 				cpustat->stime = cin->stime - cio->stime;
@@ -107,7 +110,10 @@ void cpustat_dump_diff(json_object *j_tests, const double duration)
 				cpustat->duration = 
 					timeval_to_double(&cin->whence) -
 					timeval_to_double(&cio->whence);
-				list_add_ordered(&sorted, cpustat, cpustat_cmp);
+				if (list_add_ordered(&sorted, cpustat, cpustat_cmp) == NULL) {
+					free(cpustat);
+					goto out;
+				}
 
 				/* We calculate this in terms of ticks and duration of each process */
 				utime_total += (double)cpustat->utime / nr_ticks;
@@ -155,13 +161,18 @@ void cpustat_dump_diff(json_object *j_tests, const double duration)
 	if (j_tests) {
 		json_object *j_cpustat, *j_cpuload, *j_cpu;
 
-		j_obj_obj_add(j_tests, "cpu-load", (j_cpustat = j_obj_new_obj()));
-		j_obj_obj_add(j_cpustat, "cpu-load-per-process", (j_cpuload = j_obj_new_array()));
+		if ((j_cpustat = j_obj_new_obj()) == NULL)
+			goto out;
+		j_obj_obj_add(j_tests, "cpu-load", j_cpustat);
+		if ((j_cpuload = j_obj_new_array()) == NULL)
+			goto out;
+		j_obj_obj_add(j_cpustat, "cpu-load-per-process", j_cpuload);
 
 		for (ln = sorted.head; ln; ln = ln->next) {
 			cin = (cpustat_info_t*)ln->data;
 
-			j_cpu = j_obj_new_obj();
+			if ((j_cpu = j_obj_new_obj()) == NULL)
+				goto out;
 			j_obj_new_int32_add(j_cpu, "pid", cin->proc->pid);
 			j_obj_new_int32_add(j_cpu, "ppid", cin->proc->ppid);
 			j_obj_new_int32_add(j_cpu, "is-thread", cin->proc->is_thread);
@@ -180,23 +191,26 @@ void cpustat_dump_diff(json_object *j_tests, const double duration)
 			j_obj_array_add(j_cpuload, j_cpu);
 		}
 
-		j_obj_obj_add(j_cpustat, "cpu-load-total", (j_cpu = j_obj_new_obj()));
+		if ((j_cpu = j_obj_new_obj()) == NULL)
+			goto out;
+		j_obj_obj_add(j_cpustat, "cpu-load-total", j_cpu);
 		j_obj_new_double_add(j_cpu, "cpu-load-total", 100.0 * utime_total);
 		j_obj_new_double_add(j_cpu, "user-cpu-percent", 100.0 * stime_total);
 		j_obj_new_double_add(j_cpu, "system-cpu-percent", 100.0 * ttime_total);
 	}
 #endif
-
+	printf("\n");
+out:
 	list_free(&sorted, free);
 
-	printf("\n");
+	return rc;
 }
 
 /*
  *  cpustat_get_by_proc()
  *	get CPU stats for a process
  */
-void cpustat_get_by_proc(proc_info_t *proc, proc_state state)
+int cpustat_get_by_proc(proc_info_t *proc, proc_state state)
 {
 	char filename[PATH_MAX];
 	FILE *fp;
@@ -214,18 +228,26 @@ void cpustat_get_by_proc(proc_info_t *proc, proc_state state)
 			cpustat_info_t *info;
 
 			info = calloc(1, sizeof(*info));
-			if (info == NULL)
+			if (info == NULL) {
 				health_check_out_of_memory("allocating cpustat information");
+				fclose(fp);
+				return -1;
+			}
 			info->proc  = proc;
 			info->utime = utime;
 			info->stime = stime;
 			info->ttime = utime + stime;
 			gettimeofday(&info->whence, NULL);
 			info->duration = 0.0;
-			list_append(cpustat, info);
+			if (list_append(cpustat, info) == NULL) {
+				free(info);
+				fclose(fp);
+				return -1;
+			}
 		}
 		fclose(fp);
 	}
+	return 0;
 }
 
 /*
@@ -242,9 +264,9 @@ int cpustat_get_all_pids(const list_t *pids, proc_state state)
 		if (p->is_thread)
 			continue;
 
-		cpustat_get_by_proc(p, state);
+		if (cpustat_get_by_proc(p, state) < 0)
+			return -1;
 	}
-
 	return 0;
 }
 

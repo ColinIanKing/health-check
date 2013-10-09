@@ -130,7 +130,7 @@ bool pid_list_find(
  *	get all the children from the given pid, add
  *	to children list
  */
-void pid_get_children(
+static int pid_get_children(
 	const pid_t pid,
 	list_t *children)
 {
@@ -139,10 +139,13 @@ void pid_get_children(
 	for (l = proc_cache_list.head; l; l = l->next) {
 		proc_info_t *p = (proc_info_t*)l->data;
 		if (p->ppid == pid) {
-			list_append(children, p);
+			if (list_append(children, p) == NULL) {
+				return -1;
+			}
 			pid_get_children(p->pid, children);
 		}
 	}
+	return 0;
 }
 
 /*
@@ -150,7 +153,7 @@ void pid_get_children(
  *	get all the chindren in the given pid list
  *	and add this to the list
  */
-void pid_list_get_children(list_t *pids)
+int pid_list_get_children(list_t *pids)
 {
 	link_t *l;
 	list_t children;
@@ -160,14 +163,16 @@ void pid_list_get_children(list_t *pids)
 
 	for (l = pids->head; l; l = l->next) {
 		p = (proc_info_t *)l->data;
-		pid_get_children(p->pid, &children);
+		if (pid_get_children(p->pid, &children) < 0)
+			return -1;
 	}
 
 	/*  Append the children onto the pid list */
 	for (l = children.head; l; l = l->next) {
 		p = (proc_info_t *)l->data;
 		if (!pid_list_find(p->pid, pids))
-			list_append(pids, p);
+			if (list_append(pids, p) == NULL)
+				return -1;
 	}
 
 	/*  Free the children list, not the data */
@@ -175,4 +180,6 @@ void pid_list_get_children(list_t *pids)
 
 	for (l = pids->head; l; l = l->next)
 		p = (proc_info_t *)l->data;
+
+	return 0;
 }
