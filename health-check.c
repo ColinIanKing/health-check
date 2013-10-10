@@ -53,6 +53,7 @@
 
 #define APP_NAME			"health-check"
 
+static bool caught_sigint = false;
 volatile bool keep_running = true;
 int opt_flags;
 int opt_max_syscalls = 1000000;
@@ -66,6 +67,7 @@ static void handle_sigint(int dummy)
 	(void)dummy;    /* Stop unused parameter warning with -Wextra */
 
 	keep_running = false;
+	caught_sigint = true;
 }
 
 /*
@@ -602,6 +604,9 @@ int main(int argc, char **argv)
 	syscall_stop();
 
 	sigaction(SIGINT, &old_action, NULL);
+
+	if (caught_sigint)
+		putchar('\n');
 
 	cpustat_dump_diff(json_tests, actual_duration);
 	event_dump_diff(json_tests, actual_duration);
