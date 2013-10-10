@@ -124,7 +124,7 @@ int cpustat_dump_diff(json_object *j_tests, const double duration)
 		}
 	}
 
-	printf("CPU usage:\n");
+	printf("CPU usage (in terms of 1 CPU):\n");
 	if (sorted.head == NULL) {
 		printf(" Nothing measured.\n");
 	} else {
