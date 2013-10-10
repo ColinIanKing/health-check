@@ -503,7 +503,7 @@ int main(int argc, char **argv)
 #ifdef FNOTIFY
 	fnotify_init();
 	if ((fan_fd = fnotify_event_init()) < 0)
-		health_check_exit(EXIT_FAILURE);
+		goto out;
 #endif
 
 	ret = posix_memalign(&buffer, 4096, 4096);
