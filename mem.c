@@ -171,7 +171,7 @@ void mem_dump_mmap(json_object *j_tests, const double duration)
 		if ((j_mem_test = j_obj_new_obj()) == NULL)
 			goto out;
 		j_obj_obj_add(j_tests, "memory-usage-via-mmap", j_mem_test);
-		if ((j_mem_infos = j_obj_new_obj()) == NULL)
+		if ((j_mem_infos = j_obj_new_array()) == NULL)
 			goto out;
 		j_obj_obj_add(j_mem_test, "memory-usage-via-mmap-per-process", j_mem_infos);
 		for (l = sorted.head; l; l = l->next) {
