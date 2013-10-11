@@ -609,6 +609,7 @@ int main(int argc, char **argv)
 		putchar('\n');
 
 	cpustat_dump_diff(json_tests, actual_duration);
+	pagefault_dump_diff(json_tests, actual_duration);
 	event_dump_diff(json_tests, actual_duration);
 	ctxt_switch_dump_diff(json_tests, actual_duration);
 #ifdef FNOTIFY

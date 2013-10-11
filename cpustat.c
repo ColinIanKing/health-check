@@ -107,7 +107,7 @@ int cpustat_dump_diff(json_object *j_tests, const double duration)
 				cpustat->utime = cin->utime - cio->utime;
 				cpustat->stime = cin->stime - cio->stime;
 				cpustat->ttime = cin->ttime - cio->ttime;
-				cpustat->duration = 
+				cpustat->duration =
 					timeval_to_double(&cin->whence) -
 					timeval_to_double(&cio->whence);
 				if (list_add_ordered(&sorted, cpustat, cpustat_cmp) == NULL) {
@@ -207,6 +207,113 @@ out:
 }
 
 /*
+ *  pagefault_cmp()
+ *	pagefault list sort comparitor
+ */
+static int pagefault_cmp(const void *data1, const void *data2)
+{
+	cpustat_info_t	*cpustat1 = (cpustat_info_t *)data1;
+	cpustat_info_t	*cpustat2 = (cpustat_info_t *)data2;
+
+	return (cpustat2->major_fault + cpustat2->minor_fault) -
+	       (cpustat1->major_fault + cpustat1->minor_fault);
+}
+
+/*
+ *  pagefault_dump_diff()
+ *	dump difference in pagefaults between two snapshots in time
+ */
+int pagefault_dump_diff(json_object *j_tests, const double duration)
+{
+	int rc = 0;
+	link_t *lo, *ln;
+	list_t	sorted;
+	cpustat_info_t *cio, *cin;
+#ifndef JSON_OUTPUT
+	(void)j_tests;
+#endif
+	list_init(&sorted);
+	for (ln = cpustat_info_finish.head; ln; ln = ln->next) {
+		cin = (cpustat_info_t*)ln->data;
+
+		for (lo = cpustat_info_start.head; lo; lo = lo->next) {
+			cio = (cpustat_info_t*)lo->data;
+
+			if (cin->proc->pid == cio->proc->pid) {
+				cpustat_info_t *cpustat;
+
+				if ((cpustat = calloc(1, sizeof(*cpustat))) == NULL) {
+					health_check_out_of_memory("cannot allocate cpustat information");
+					goto out;
+				}
+				cpustat->proc  = cio->proc;
+				cpustat->major_fault = cin->major_fault - cio->major_fault;
+				cpustat->minor_fault = cin->minor_fault - cio->minor_fault;
+				cpustat->duration =
+					timeval_to_double(&cin->whence) -
+					timeval_to_double(&cio->whence);
+				if (list_add_ordered(&sorted, cpustat, pagefault_cmp) == NULL) {
+					free(cpustat);
+					goto out;
+				}
+			}
+		}
+	}
+
+	printf("Page Faults:\n");
+	if (sorted.head == NULL) {
+		printf(" Nothing measured.\n");
+	} else {
+		printf("  PID  Process                 Minor/sec    Major/sec    Total/sec\n");
+		for (ln = sorted.head; ln; ln = ln->next) {
+			cin = (cpustat_info_t*)ln->data;
+			printf(" %5d %-20.20s %12.2f %12.2f %12.2f\n",
+				cin->proc->pid,
+				cin->proc->cmdline,
+				(double)cin->minor_fault / duration,
+				(double)cin->major_fault / duration,
+				(double)(cin->minor_fault + cin->major_fault) / duration);
+		}
+	}
+
+#ifdef JSON_OUTPUT
+	if (j_tests) {
+		json_object *j_fault_info, *j_faults, *j_fault;
+
+		if ((j_fault_info = j_obj_new_obj()) == NULL)
+			goto out;
+		j_obj_obj_add(j_tests, "page-faults", j_fault_info);
+		if ((j_faults = j_obj_new_array()) == NULL)
+			goto out;
+		j_obj_obj_add(j_fault_info, "page-faults-per-process", j_faults);
+
+		for (ln = sorted.head; ln; ln = ln->next) {
+			cin = (cpustat_info_t*)ln->data;
+
+			if ((j_fault = j_obj_new_obj()) == NULL)
+				goto out;
+			j_obj_new_int32_add(j_fault, "pid", cin->proc->pid);
+			j_obj_new_int32_add(j_fault, "ppid", cin->proc->ppid);
+			j_obj_new_int32_add(j_fault, "is-thread", cin->proc->is_thread);
+			j_obj_new_string_add(j_fault, "name", cin->proc->cmdline);
+			j_obj_new_int64_add(j_fault, "minor-page-faults", cin->minor_fault);
+			j_obj_new_int64_add(j_fault, "major-page-faults", cin->major_fault);
+			j_obj_new_int64_add(j_fault, "total-page-faults", cin->minor_fault + cin->major_fault);
+			j_obj_new_double_add(j_fault, "minor-page-faults-rate", (double)cin->minor_fault / duration);
+			j_obj_new_double_add(j_fault, "major-page-faults-rate", (double)cin->major_fault / duration);
+			j_obj_new_double_add(j_fault, "total-page-faults-rate", (double)(cin->minor_fault + cin->major_fault) / duration);
+			j_obj_array_add(j_faults, j_fault);
+		}
+	}
+#endif
+	printf("\n");
+out:
+	list_free(&sorted, free);
+
+	return rc;
+}
+
+/*
  *  cpustat_get_by_proc()
  *	get CPU stats for a process
  */
@@ -220,11 +327,13 @@ int cpustat_get_by_proc(proc_info_t *proc, proc_state state)
 	if ((fp = fopen(filename, "r")) != NULL) {
 		char comm[20];
 		uint64_t utime, stime;
+		uint64_t minor_fault, major_fault;
 		pid_t pid;
 
 		/* 3173 (a.out) R 3093 3173 3093 34818 3173 4202496 165 0 0 0 3194 0 */
-		if (fscanf(fp, "%d (%[^)]) %*c %*d %*d %*d %*d %*d %*u %*u %*u %*u %*u %" SCNu64 " %" SCNu64,
-			&pid, comm, &utime, &stime) == 4) {
+		if (fscanf(fp, "%d (%[^)]) %*c %*d %*d %*d %*d %*d %*u %" SCNu64
+			" %*u %" SCNu64 " %*u %" SCNu64 " %" SCNu64,
+			&pid, comm, &minor_fault, &major_fault, &utime, &stime) == 6) {
 			cpustat_info_t *info;
 
 			info = calloc(1, sizeof(*info));
@@ -237,6 +346,8 @@ int cpustat_get_by_proc(proc_info_t *proc, proc_state state)
 			info->utime = utime;
 			info->stime = stime;
 			info->ttime = utime + stime;
+			info->major_fault = major_fault;
+			info->minor_fault = minor_fault;
 			gettimeofday(&info->whence, NULL);
 			info->duration = 0.0;
 			if (list_append(cpustat, info) == NULL) {
