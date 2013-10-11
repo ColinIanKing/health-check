@@ -68,7 +68,6 @@ static fd_cache_t *fd_cache[HASH_TABLE_SIZE];
 /* hash table for cached context info, hased on pid */
 static syscall_context_t *syscall_contexts_cache[HASH_TABLE_SIZE];
 
-
 /* minimum allowed thresholds for poll'd system calls that have timeouts */
 static double syscall_timeout[] = {
 #ifdef SYS_clock_nanosleep
@@ -1384,6 +1383,50 @@ void syscall_dump_sync(json_object *j_tests, double duration)
 out:
 	list_free(&sorted, NULL);
 }
+
+#ifdef SYS_sendto
+/*
+ *  syscall_sendto_ret()
+ *	keep track of sendto returns
+ */
+static void syscall_sendto_ret(
+	const syscall_t *sc,
+	const syscall_info_t *s,
+	const int ret)
+{
+	unsigned long args[sc->arg + 1];
+	int sockfd;
+	pid_t pid = s->proc->pid;
+
+	syscall_get_args(pid, sc->arg, args);
+	sockfd = (int)args[0];
+
+	if (ret >= 0)
+		net_account_send(pid, sockfd, (size_t)ret);
+}
+#endif
+
+#ifdef SYS_recvfrom
+/*
+ *  syscall_recvfrom_ret()
+ *	keep track of recvfrom returns
+ */
+static void syscall_recvfrom_ret(
+	const syscall_t *sc,
+	const syscall_info_t *s,
+	const int ret)
+{
+	unsigned long args[sc->arg + 1];
+	int sockfd;
+	pid_t pid = s->proc->pid;
+
+	syscall_get_args(pid, sc->arg, args);
+	sockfd = (int)args[0];
+
+	if (ret >= 0)
+		net_account_recv(pid, sockfd, (size_t)ret);
+}
+#endif
 
 /*
  *  syscall_wakelock_cmp()
@@ -2894,7 +2937,7 @@ syscall_t syscalls[] = {
 	SYSCALL(reboot),
 #endif
 #ifdef SYS_recvfrom
-	SYSCALL(recvfrom),
+	SYSCALL_CHK(recvfrom, 6, NULL, syscall_recvfrom_ret),
 #endif
 #ifdef SYS_recvmmsg
 	SYSCALL_CHK_TIMEOUT(recvmmsg, 4, syscall_timespec_timeout, NULL),
@@ -3008,7 +3051,7 @@ syscall_t syscalls[] = {
 	SYSCALL(sendmsg),
 #endif
 #ifdef SYS_sendto
-	SYSCALL(sendto),
+	SYSCALL_CHK(sendto, 6, NULL, syscall_sendto_ret),
 #endif
 #ifdef SYS_setdomainname
 	SYSCALL(setdomainname),

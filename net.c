@@ -41,9 +41,16 @@
 #define NET_HASH_SIZE	(1993)
 
 typedef struct {
+	uint64_t        call_count;
+	uint64_t        data_total;
+} net_stats_t;
+
+typedef struct {
 	proc_info_t	*proc;
 	uint64_t	inode;
 	uint32_t	fd;
+	net_stats_t	send;
+	net_stats_t	recv;
 } net_hash_t;
 
 typedef enum {
@@ -60,8 +67,14 @@ typedef struct {
 		char path[PATH_MAX + 1];
 	} u;
 	int family;
-	proc_info_t *proc;
+	uint64_t  inode;
 } net_addr_info_t;
+
+typedef struct {
+	net_addr_info_t	*addr_info;
+	net_hash_t	*nh;
+	uint64_t	send_recv_total;
+} net_dump_info_t;
 
 static const char *net_types[] = {
 	"TCP",
@@ -94,7 +107,7 @@ static inline unsigned long net_hash(const uint64_t inode)
  *  net_hash_add()
  *	add inode, pid and fd to inode hash table
  */
-static int net_hash_add(const uint64_t inode, const pid_t pid, const uint32_t fd)
+static net_hash_t *net_hash_add(const uint64_t inode, const pid_t pid, const uint32_t fd)
 {
 	net_hash_t *n;
 	link_t *l;
@@ -104,12 +117,12 @@ static int net_hash_add(const uint64_t inode, const pid_t pid, const uint32_t fd
 	for (l = net_hash_table[h].head; l; l = l->next) {
 		n = (net_hash_t *)l->data;
 		if (n->proc->pid == pid && n->inode == inode)
-			return 0;
+			return n;
 	}
 
 	if ((n = calloc(1, sizeof(*n))) == NULL) {
 		health_check_out_of_memory("allocating net hash data");
-		return -1;
+		return NULL;
 	}
 
 	n->inode = inode;
@@ -118,10 +131,10 @@ static int net_hash_add(const uint64_t inode, const pid_t pid, const uint32_t fd
 
 	if (list_append(&net_hash_table[h], n) == NULL) {
 		free(n);
-		return -1;
+		return NULL;
 	}
 
-	return 0;
+	return n;
 }
 
 /*
@@ -162,6 +175,66 @@ static int net_get_inode(const char *str, uint64_t *inode)
 }
 
 /*
+ *  net_get_inode_by_path()
+ *	given a /proc/$pid/fd/fdnum path, look up a network inode
+ */
+static int net_get_inode_by_path(const char *path, uint64_t *inode)
+{
+	char link[PATH_MAX];
+	ssize_t len;
+
+	if ((len = readlink(path, link, sizeof(link) - 1)) < 0)
+		return -1;
+	link[len] = '\0';
+	return net_get_inode(link, inode);
+}
+
+/*
+ *  net_cache_inode_by_pid_and_fd()
+ *	get a net hash given a file's owner pid and the fd
+ */
+static net_hash_t *net_cache_inode_by_pid_and_fd(const pid_t pid, const int fd)
+{
+	char path[PATH_MAX];
+	uint64_t inode;
+	net_hash_t *nh = NULL;
+
+	snprintf(path, sizeof(path), "/proc/%i/fd/%i", pid, fd);
+	if (net_get_inode_by_path(path, &inode) != -1)
+		nh = net_hash_add(inode, pid, fd);
+
+	return nh;
+}
+
+/*
+ *  net_account_send()
+ *	account for net send transfers
+ */
+void net_account_send(const pid_t pid, const int fd, size_t size)
+{
+	net_hash_t *nh = net_cache_inode_by_pid_and_fd(pid, fd);
+
+	if (nh != NULL) {
+		nh->send.call_count++;
+		nh->send.data_total += size;
+	}
+}
+
+/*
+ *  net_account_recv()
+ *	account for net receive transfers
+ */
+void net_account_recv(const pid_t pid, const int fd, size_t size)
+{
+	net_hash_t *nh = net_cache_inode_by_pid_and_fd(pid, fd);
+
+	if (nh != NULL) {
+		nh->recv.call_count++;
+		nh->recv.data_total += size;
+	}
+}
+
+/*
  *  net_cache_inodes_pid()
  *	given a pid, find all the network inodes associated
  *	with it's current file descriptors
@@ -177,22 +250,19 @@ static int net_cache_inodes_pid(const pid_t pid)
 		return -1;
 
 	while ((d = readdir(fds)) != NULL) {
-		ssize_t len;
 		uint64_t inode;
 		char tmp[LINE_MAX];
-		char link[64];
 		uint32_t fd;
 
+		if (d->d_name[0] == '.')
+			continue;
 		if (strlen(path) + strlen(d->d_name) + 2 > sizeof(tmp))
 			continue;
 		snprintf(tmp, sizeof(tmp), "%s/%s", path, d->d_name);
-		if ((len = readlink(tmp, link, sizeof(link) - 1)) < 0)
-			continue;
-		link[len] = '\0';
 
-		if (net_get_inode(link, &inode) != -1) {
+		if (net_get_inode_by_path(tmp, &inode) != -1) {
 			sscanf(d->d_name, "%" SCNu32, &fd);
-			if (net_hash_add(inode, pid, fd) < 0) {
+			if (net_hash_add(inode, pid, fd) == NULL) {
 				closedir(fds);
 				return -1;
 			}
@@ -237,7 +307,6 @@ static void net_inet4_resolve(char *name, const size_t len, struct sockaddr_in *
 			return;
 		}
 	}
-
 	inet_ntop(AF_INET, &sin->sin_addr, name, len);
 
 	return;
@@ -267,19 +336,6 @@ static void net_inet6_resolve(char *name, const size_t len, struct sockaddr_in6 
 }
 
 /*
- *  net_pid_cmp()
- *	list sort compare, sort by pid
- */
-static int net_pid_cmp(const void *data1, const void *data2)
-{
-	net_addr_info_t *n1 = (net_addr_info_t *)data1;
-	net_addr_info_t *n2 = (net_addr_info_t *)data2;
-
-	return n1->proc->pid - n2->proc->pid;
-}
-
-
-/*
  *  net_addr_add()
  *	Add a new address to the cached list of addresses.
  *	This is an O(n) search and add, so we may need to
@@ -302,8 +358,110 @@ static void net_addr_add(net_addr_info_t *addr)
 		return;
 	}
 	memcpy(new_addr, addr, sizeof(*addr));
-	if (list_add_ordered(&net_cached_addrs, new_addr, net_pid_cmp) == NULL)
+	if (list_append(&net_cached_addrs, new_addr) == NULL)
 		free(new_addr);
+}
+
+/*
+ *  net_get_addr()
+ *	turn the addr info into human readable form
+ */
+static char *net_get_addr(net_addr_info_t *addr_info)
+{
+	static char tmp[256];
+	char buf[4096];
+	in_port_t port;
+
+	switch (addr_info->type) {
+	case NET_TCP:
+	case NET_UDP:
+		switch (addr_info->family) {
+		case AF_INET6:
+			net_inet6_resolve(buf, sizeof(buf), &addr_info->u.addr6);
+			port = addr_info->u.addr6.sin6_port;
+			break;
+		case AF_INET:
+			net_inet4_resolve(buf, sizeof(buf), &addr_info->u.addr4);
+			port = addr_info->u.addr4.sin_port;
+			break;
+		default:
+			/* No idea what it is */
+			return NULL;
+		}
+		snprintf(tmp, sizeof(tmp), "%s:%d", buf, port);
+		return tmp;
+	case NET_UNIX:
+		return addr_info->u.path;
+	default:
+		break;
+	}
+	return NULL;
+}
+
+/*
+ *  net_add_dump_info()
+ *	either accumulate existing send/recv net info, or add it if not
+ *	already unique
+ */
+static void net_add_dump_info(list_t *list, net_dump_info_t *new_dump_info)
+{
+	link_t *l;
+
+	for (l = list->head; l; l = l->next) {
+		net_dump_info_t *dump_info = (net_dump_info_t *)l->data;
+
+		if (dump_info->nh->proc == new_dump_info->nh->proc &&
+		    dump_info->addr_info->type == new_dump_info->addr_info->type &&
+		    memcmp(&dump_info->addr_info->u, &new_dump_info->addr_info->u, sizeof(dump_info->addr_info->u)) == 0 &&
+		    dump_info->addr_info->family == new_dump_info->addr_info->family) {
+			dump_info->nh->send.call_count += new_dump_info->nh->send.call_count;
+			dump_info->nh->send.data_total += new_dump_info->nh->send.data_total;
+			dump_info->nh->recv.call_count += new_dump_info->nh->recv.call_count;
+			dump_info->nh->recv.data_total += new_dump_info->nh->recv.data_total;
+			dump_info->send_recv_total += new_dump_info->send_recv_total;
+			free(new_dump_info);
+			return;
+		}
+	}
+	list_append(list, new_dump_info);
+}
+
+/*
+ *  net_dump_info_cmp()
+ *  	Sort for dumping net send/recv stats, sorted on total
+ *  	data send/recv and then if no difference on pid order
+ */
+static int net_dump_info_cmp(const void *p1, const void *p2)
+{
+	const net_dump_info_t *d1 = (const net_dump_info_t *)p1;
+	const net_dump_info_t *d2 = (const net_dump_info_t *)p2;
+	if (d2->send_recv_total - d1->send_recv_total == 0)
+		return d1->nh->proc->pid - d2->nh->proc->pid;
+	else
+		return d2->send_recv_total - d1->send_recv_total;
+
+}
+
+/*
+ *  net_size_to_str()
+ *	turn transfer size in bytes to a more human readable form
+ */
+static void net_size_to_str(char *buf, size_t buf_len, uint64_t size)
+{
+	double s;
+	char unit;
+
+	if (size < 1024) {
+ 		s = (double)size;
+		unit = 'B';
+	} else if (size < 1024 * 1024) {
+		s = (double)size / 1024.0;
+		unit = 'K';
+	} else {
+		s = (double)size / (1024 * 1024);
+		unit = 'M';
+	}
+	snprintf(buf, buf_len, "%7.2f %c", s, unit);
 }
 
 /*
@@ -313,7 +471,8 @@ static void net_addr_add(net_addr_info_t *addr)
 void net_connection_dump(json_object *j_tests)
 {
 	link_t *l;
-	char buf[4096];
+	list_t dump_info_list;
+	list_t sorted;
 #ifdef JSON_OUTPUT
 	json_object *j_net_test, *j_net_infos = NULL, *j_net_info;
 #else
@@ -326,6 +485,9 @@ void net_connection_dump(json_object *j_tests)
 		return;
 	}
 
+	list_init(&dump_info_list);
+	list_init(&sorted);
+
 #ifdef JSON_OUTPUT
 	if (j_tests) {
 		if ((j_net_test = j_obj_new_obj()) == NULL)
@@ -337,59 +499,86 @@ void net_connection_dump(json_object *j_tests)
 	}
 #endif
 
-	printf("  PID  Process             Proto  Address\n");
+	/*
+	 *   Collate data
+	 */
 	for (l = net_cached_addrs.head; l; l = l->next) {
 		net_addr_info_t *addr_info = (net_addr_info_t *)l->data;
-		in_port_t port;
-		char tmp[256];
-		char *addr;
+		link_t *ln;
+		unsigned long h;
 
-		switch (addr_info->type) {
-		case NET_TCP:
-		case NET_UDP:
-			switch (addr_info->family) {
-			case AF_INET6:
-				net_inet6_resolve(buf, sizeof(buf), &addr_info->u.addr6);
-				port = addr_info->u.addr6.sin6_port;
-				break;
-			case AF_INET:
-				net_inet4_resolve(buf, sizeof(buf), &addr_info->u.addr4);
-				port = addr_info->u.addr4.sin_port;
-				break;
-			default:
-				/* No idea what it is */
-				continue;
+		h = net_hash(addr_info->inode);
+		for (ln = net_hash_table[h].head; ln; ln = ln->next) {
+			net_hash_t *nh = (net_hash_t *)ln->data;
+			if (nh->inode == addr_info->inode) {
+				net_dump_info_t *dump_info;
+
+				/* Skip threads that do nothing */
+				if ((nh->send.data_total + nh->recv.data_total == 0) && nh->proc->is_thread)
+					continue;
+
+				if ((dump_info = calloc(1, sizeof(net_dump_info_t))) == NULL)
+					goto out;
+				dump_info->addr_info = addr_info;
+				dump_info->nh = nh;
+				dump_info->send_recv_total = nh->send.data_total + nh->recv.data_total;
+
+				net_add_dump_info(&dump_info_list, dump_info);
 			}
-			snprintf(tmp, sizeof(tmp), "%s:%d", buf, port);
-			addr = tmp;
-			break;
-		case NET_UNIX:
-			addr = addr_info->u.path;
-			break;
-		default:
-			continue;
 		}
+	}
 
-		printf("%6u %-20.20s %-4.4s  %s\n",
-			addr_info->proc->pid, addr_info->proc->cmdline,
-			net_types[addr_info->type], addr);
+	if (!dump_info_list.head) {
+		printf(" None.\n\n");
+		return;
+	}
+
+	/*
+	 *  We've now got a reduced list of useful data, so now sort it
+	 */
+	for (l = dump_info_list.head; l; l = l->next) {
+		net_dump_info_t *dump_info = l->data;
+		list_add_ordered(&sorted, dump_info, net_dump_info_cmp);
+	}
+
+	printf("  PID  Process             Proto       Send   Receive  Address\n");
+	for (l = sorted.head; l; l = l->next) {
+		net_dump_info_t *dump_info = (net_dump_info_t *)l->data;
+		char *addr = net_get_addr(dump_info->addr_info);
+		char sendbuf[64], recvbuf[64];
+
+		net_size_to_str(sendbuf, sizeof(sendbuf), dump_info->nh->send.data_total);
+		net_size_to_str(recvbuf, sizeof(recvbuf), dump_info->nh->recv.data_total);
+
+		printf(" %5i %-20.20s %-4.4s  %s %s  %s\n",
+			dump_info->nh->proc->pid,
+			dump_info->nh->proc->cmdline,
+			net_types[dump_info->addr_info->type],
+			sendbuf, recvbuf, addr);
 
 #ifdef JSON_OUTPUT
 		if (j_tests) {
 			if ((j_net_info = j_obj_new_obj()) == NULL)
 				goto out;
-			j_obj_new_int32_add(j_net_info, "pid", addr_info->proc->pid);
-			j_obj_new_int32_add(j_net_info, "ppid", addr_info->proc->ppid);
-			j_obj_new_int32_add(j_net_info, "is-thread", addr_info->proc->is_thread);
-			j_obj_new_string_add(j_net_info, "name", addr_info->proc->cmdline);
-			j_obj_new_string_add(j_net_info, "protocol", net_types[addr_info->type]);
+			j_obj_new_int32_add(j_net_info, "pid", dump_info->nh->proc->pid);
+			j_obj_new_int32_add(j_net_info, "ppid", dump_info->nh->proc->ppid);
+			j_obj_new_int32_add(j_net_info, "is-thread", dump_info->nh->proc->is_thread);
+			j_obj_new_string_add(j_net_info, "name", dump_info->nh->proc->cmdline);
+			j_obj_new_string_add(j_net_info, "protocol", net_types[dump_info->addr_info->type]);
 			j_obj_new_string_add(j_net_info, "address", addr);
+			j_obj_new_int64_add(j_net_info, "send", dump_info->nh->send.data_total);
+			j_obj_new_int64_add(j_net_info, "receive", dump_info->nh->recv.data_total);
+#if 0
+#endif
 			j_obj_array_add(j_net_infos, j_net_info);
 		}
 #endif
 	}
 	printf("\n");
 out:
+	list_free(&sorted, NULL);
+	list_free(&dump_info_list, free);
+
 	return;
 }
 
@@ -412,7 +601,6 @@ static int net_unix_parse(void)
 		uint64_t inode;
 		char path[4096];
 		net_addr_info_t new_addr;
-		net_hash_t *nh;
 
 		if (i == 0)  /* Skip header */
 			continue;
@@ -420,10 +608,8 @@ static int net_unix_parse(void)
 		sscanf(buf, "%*x: %*x %*x %*x %*x %*x %" SCNu64 " %s\n",
 			&inode, path);
 
-		if ((nh = net_hash_find_inode(inode)) == NULL)
-			continue;
-
-		new_addr.proc = nh->proc;
+		memset(&new_addr, 0, sizeof(new_addr));
+		new_addr.inode = inode;
 		new_addr.type = NET_UNIX;
 		strncpy(new_addr.u.path, path, PATH_MAX);
 		net_addr_add(&new_addr);
@@ -467,7 +653,6 @@ static int net_tcp_udp_parse(const net_type_t type)
 
 	for (i = 0; fgets(buf, sizeof(buf), fp) != NULL; i++) {
 		net_addr_info_t new_addr;
-		net_hash_t *nh;
 
 		if (i == 0)  /* Skip header */
 			continue;
@@ -477,10 +662,8 @@ static int net_tcp_udp_parse(const net_type_t type)
 			" %*X %*X:%*X %*X:%*X %*X %*d %*d %" SCNu64,
 			addr_str, &port, &inode);
 
-		if ((nh = net_hash_find_inode(inode)) == NULL)
-			continue;
-
-		new_addr.proc = nh->proc;
+		memset(&new_addr, 0, sizeof(new_addr));
+		new_addr.inode = inode;
 		new_addr.type = type;
 		if (strlen(addr_str) > 8) {
 			new_addr.family = new_addr.u.addr6.sin6_family = AF_INET6;
@@ -531,9 +714,9 @@ int net_connection_pids(list_t *pids)
 }
 
 /*
- *  net_connection_pids()
+ *  net_connection_pid()
  *	find network inodes assocated with given
- *	pids and find network addresses
+ *	pid and find network addresses
  */
 int net_connection_pid(const pid_t pid)
 {

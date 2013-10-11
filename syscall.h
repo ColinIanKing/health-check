@@ -128,6 +128,15 @@ typedef struct syscall_context {
 	struct syscall_context *next;
 } syscall_context_t;
 
+typedef struct socket_info {
+	pid_t		pid;
+	int		fd;
+	bool 		send;
+	uint64_t	count;
+	uint64_t	total;
+	struct socket_info *next;
+} socket_info_t;
+
 extern syscall_t syscalls[];
 extern size_t syscalls_len;
 extern int procs_traced;
