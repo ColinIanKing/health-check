@@ -1,3 +1,16 @@
+health-check (0.01.37) saucy; urgency=low
+
+  * Makefile: bump version
+  * net: fix per process network tracing and add data tx/rx stats
+  * mem.c: fix json obj bug
+  * syscall: re-work call/return callback functions
+  * fnotify abort should clean up rather than bail out on exit
+  * Emit newline if interrupted with SIGINT
+  * cpustat: explain CPU consumption a little better
+  * Rework out of memory error handling.
+
+ -- Colin King <colin.king@canonical.com>  Fri, 11 Oct 2013 17:46:11 +0100
+
 health-check (0.01.36) saucy; urgency=low
 
   * Makefile: bump version
