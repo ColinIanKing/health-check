@@ -2937,13 +2937,13 @@ syscall_t syscalls[] = {
 	SYSCALL(reboot),
 #endif
 #ifdef SYS_recvfrom
-	SYSCALL_CHK(recvfrom, 6, NULL, syscall_recvfrom_ret),
+	SYSCALL_CHK(recvfrom, 0, NULL, syscall_recvfrom_ret),
 #endif
 #ifdef SYS_recvmmsg
 	SYSCALL_CHK_TIMEOUT(recvmmsg, 4, syscall_timespec_timeout, NULL),
 #endif
 #ifdef SYS_recvmsg
-	SYSCALL(recvmsg),
+	SYSCALL_CHK(recvmsg, 0, NULL, syscall_recvfrom_ret),
 #endif
 #ifdef SYS_remap_file_pages
 	SYSCALL(remap_file_pages),
@@ -3048,10 +3048,10 @@ syscall_t syscalls[] = {
 	SYSCALL(sendmmsg),
 #endif
 #ifdef SYS_sendmsg
-	SYSCALL(sendmsg),
+	SYSCALL_CHK(sendmsg, 0, NULL, syscall_sendto_ret),
 #endif
 #ifdef SYS_sendto
-	SYSCALL_CHK(sendto, 6, NULL, syscall_sendto_ret),
+	SYSCALL_CHK(sendto, 0, NULL, syscall_sendto_ret),
 #endif
 #ifdef SYS_setdomainname
 	SYSCALL(setdomainname),
