@@ -31,13 +31,13 @@
 #define BUCKET_START			(0.00001)
 
 #define SYSCALL(n) \
-	[SYS_ ## n] = { #n, SYS_ ## n, 0, NULL, NULL, NULL, true }
+	[SYS_ ## n] = { #n, SYS_ ## n, 0, NULL, NULL, NULL, NULL, NULL }
 
-#define SYSCALL_TIMEOUT(n, arg, func_check, func_ret) \
-	[SYS_ ## n] = { #n, SYS_ ## n, arg, &syscall_timeout[SYS_ ## n], func_check, func_ret, true }
+#define SYSCALL_CHK_TIMEOUT(n, arg, func_check, func_ret) \
+	[SYS_ ## n] = { #n, SYS_ ## n, arg, &syscall_timeout[SYS_ ## n], func_check, func_ret, NULL, NULL }
 
-#define SYSCALL_CHKARGS(n, arg, func_check, func_ret) \
-	[SYS_ ## n] = { #n, SYS_ ## n, arg, &syscall_timeout[SYS_ ## n], func_check, func_ret, false }
+#define SYSCALL_CHK(n, arg, func_check, func_ret) \
+	[SYS_ ## n] = { #n, SYS_ ## n, arg, &syscall_timeout[SYS_ ## n], NULL, NULL, func_check, func_ret }
 
 #define TIMEOUT(n, timeout) \
 	[SYS_ ## n] = timeout
@@ -67,8 +67,11 @@ typedef struct syscall_info {
 
 typedef struct syscall syscall_t;
 
-typedef void (*check_timeout_func_t)(const syscall_t *sc, syscall_info_t *s, const pid_t pid, const double threshold, double *timeout);
-typedef void (*check_return_func_t)(json_object *j_tests, const syscall_t *sc, const syscall_info_t *s);
+typedef void (*call_enter_timeout_t)(const syscall_t *sc, syscall_info_t *s, const pid_t pid, const double threshold, double *timeout);
+typedef void (*call_return_timeout_t)(json_object *j_tests, const syscall_t *sc, const syscall_info_t *s);
+
+typedef void (*call_enter_t)(const syscall_t *sc, const syscall_info_t *s, const pid_t pid);
+typedef void (*call_return_t)(const syscall_t *sc, const syscall_info_t *s, const int ret);
 
 /* syscall specific information */
 typedef struct syscall {
@@ -76,9 +79,10 @@ typedef struct syscall {
 	int  		syscall;	/* system call number */
 	int		arg;		/* nth arg to check for timeout value (1st arg is zero) */
 	double		*threshold;	/* threshold - points to timeout array items indexed by syscall */
-	check_timeout_func_t check_func;/* timeout checking function, NULL means don't check */
-	check_return_func_t  check_ret; /* return checking function, NULL means don't check */
-	bool		do_poll_accounting;/* true if we should do polling accounting stats for this */
+	call_enter_timeout_t call_enter_timeout;	/* timeout checking function, NULL means don't check */
+	call_return_timeout_t  call_return_timeout; 	/* return checking function, NULL means don't check */
+	call_enter_t	call_enter;	/* non-timout call checking function, NULL means don't check */
+	call_return_t	call_return;	/* non-timeout return checking function, NULL means don't check */
 } syscall_t;
 
 /* fd cache */

@@ -124,24 +124,20 @@ static bool syscall_valid(const int syscall)
 
 #ifdef SYS_connect
 /*
- *  syscall_connect()
+ *  syscall_connect_args()
  *	stub for connect syscalls.
  *	A smart approach is to inspect the connect and
  *	see what address is being connected to for the net_*
  *	connections.
  */
-static void syscall_connect(
+static void syscall_connect_args(
 	const syscall_t *sc,
-	syscall_info_t *s,
-	const pid_t pid,
-	const double threshold,
-	double *ret_timeout)
+	const syscall_info_t *s,
+	const pid_t pid)
 {
 	(void)sc;
 	(void)s;
 	(void)pid;
-	(void)threshold;
-	(void)ret_timeout;
 
 	/* Inspect connect address, update network stats */
 }
@@ -151,10 +147,10 @@ static void syscall_connect(
  *	trigger a network connection update once a
  *	connect syscall has occurred.
  */
-static void syscall_connect_ret(json_object *j_obj, const syscall_t *sc, const syscall_info_t *s)
+static void syscall_connect_ret(const syscall_t *sc, const syscall_info_t *s, const int ret)
 {
-	(void)j_obj;
 	(void)sc;
+	(void)ret;
 
 	(void)net_connection_pid(s->proc->pid);
 }
@@ -959,10 +955,8 @@ static fd_cache_t *syscall_fd_cache_lookup(const pid_t pid, const int fd)
  */
 static void syscall_close_args(
 	const syscall_t *sc,
-	syscall_info_t *s,
-	const pid_t pid,
-	const double threshold,
-	double *ret_timeout)
+	const syscall_info_t *s,
+	const pid_t pid)
 {
 	unsigned long args[sc->arg + 1];
 	fd_cache_t *fc;
@@ -970,8 +964,6 @@ static void syscall_close_args(
 	int fd;
 
 	(void)s;
-	(void)threshold;
-	(void)ret_timeout;
 
 	if (!(opt_flags & OPT_WAKELOCKS_HEAVY))
 		return;
@@ -997,10 +989,8 @@ static void syscall_close_args(
  */
 static void syscall_write_args(
 	const syscall_t *sc,
-	syscall_info_t *s,
-	const pid_t pid,
-	const double threshold,
-	double *ret_timeout)
+	const syscall_info_t *s,
+	const pid_t pid)
 {
 	unsigned long args[sc->arg + 1];
 	fd_cache_t *fc;
@@ -1010,8 +1000,6 @@ static void syscall_write_args(
 		return;
 
 	(void)s;
-	(void)threshold;
-	(void)ret_timeout;
 
 	syscall_get_args(pid, sc->arg, args);
 	fd = (int)args[0];
@@ -1057,15 +1045,11 @@ static void syscall_write_args(
  */
 static void syscall_exit_args(
 	const syscall_t *sc,
-	syscall_info_t *s,
-	const pid_t pid,
-	const double threshold,
-	double *ret_timeout)
+	const syscall_info_t *s,
+	const pid_t pid)
 {
 	(void)s;
 	(void)sc;
-	(void)threshold;
-	(void)ret_timeout;
 
 	/*
 	 *  Before we exit we need to gather the
@@ -1155,17 +1139,13 @@ static void syscall_account_sync_file(syscall_sync_info_t *info, const int sysca
  */
 static void syscall_brk_args(
 	const syscall_t *sc,
-	syscall_info_t *s,
-	const pid_t pid,
-	const double threshold,
-	double *ret_timeout)
+	const syscall_info_t *s,
+	const pid_t pid)
 {
 	unsigned long args[sc->arg + 1];
 	void *addr;
 
 	(void)s;
-	(void)threshold;
-	(void)ret_timeout;
 
 	syscall_get_args(pid, sc->arg, args);
 	addr = (void *)args[0];
@@ -1181,16 +1161,12 @@ static void syscall_brk_args(
  */
 static void syscall_mmap_args(
 	const syscall_t *sc,
-	syscall_info_t *s,
-	const pid_t pid,
-	const double threshold,
-	double *ret_timeout)
+	const syscall_info_t *s,
+	const pid_t pid)
 {
 	unsigned long args[sc->arg + 2];
 
 	(void)s;
-	(void)threshold;
-	(void)ret_timeout;
 
 	syscall_get_args(pid, sc->arg, args);
 
@@ -1205,16 +1181,12 @@ static void syscall_mmap_args(
  */
 static void syscall_munmap_args(
 	const syscall_t *sc,
-	syscall_info_t *s,
-	const pid_t pid,
-	const double threshold,
-	double *ret_timeout)
+	const syscall_info_t *s,
+	const pid_t pid)
 {
 	unsigned long args[sc->arg + 2];
 
 	(void)s;
-	(void)threshold;
-	(void)ret_timeout;
 
 	syscall_get_args(pid, sc->arg, args);
 
@@ -1228,17 +1200,13 @@ static void syscall_munmap_args(
  */
 static void syscall_fsync_generic_args(
 	const syscall_t *sc,
-	syscall_info_t *s,
-	const pid_t pid,
-	const double threshold,
-	double *ret_timeout)
+	const syscall_info_t *s,
+	const pid_t pid)
 {
 	unsigned long args[sc->arg + 1];
 	syscall_sync_info_t *info;
 
 	(void)s;
-	(void)threshold;
-	(void)ret_timeout;
 
 	syscall_get_args(pid, sc->arg, args);
 	if ((info = syscall_sync_info_find_by_pid(pid)) == NULL)
@@ -1256,17 +1224,13 @@ static void syscall_fsync_generic_args(
  */
 static void syscall_sync_args(
 	const syscall_t *sc,
-	syscall_info_t *s,
-	const pid_t pid,
-	const double threshold,
-	double *ret_timeout)
+	const syscall_info_t *s,
+	const pid_t pid)
 {
 	syscall_sync_info_t *info;
 
 	(void)sc;
 	(void)s;
-	(void)threshold;
-	(void)ret_timeout;
 
 	if ((info = syscall_sync_info_find_by_pid(pid)) == NULL)
 		return;
@@ -1634,10 +1598,9 @@ void syscall_dump_pollers(json_object *j_tests, const double duration)
 
 		for (s = syscall_info[i]; s; s = s->next) {
 			int syscall = s->syscall;
-			if (syscalls[syscall].check_func && syscalls[syscall].do_poll_accounting) {
-				if (list_add_ordered(&sorted, s, syscall_count_cmp) == NULL) {
+			if (syscalls[syscall].call_enter_timeout) {
+				if (list_add_ordered(&sorted, s, syscall_count_cmp) == NULL)
 					goto out;
-				}
 				break;
 			}
 		}
@@ -1796,8 +1759,8 @@ void syscall_dump_pollers(json_object *j_tests, const double duration)
 			syscall_info_t *s = (syscall_info_t *)l->data;
 			if (syscall_valid(s->syscall)) {
 				syscall_t *sc = &syscalls[s->syscall];
-				if (sc->check_ret)
-					sc->check_ret(j_pollers, sc, s);
+				if (sc->call_return_timeout)
+					sc->call_return_timeout(j_pollers, sc, s);
 			}
 		}
 		if (!info_emit)
@@ -1822,24 +1785,26 @@ static void syscall_account_return(
 {
 	if (syscall_valid(syscall)) {
 		syscall_t *sc = &syscalls[syscall];
-		if (sc->check_ret) {
+		int ret;
+
+		if (syscall_get_return(pid, &ret) < 0)
+			return;
+
+		if (sc->call_return) {
+			/* Do call return handling immediately */
+			sc->call_return(sc, s, ret);
+		} else if (sc->call_return_timeout) {
+			/* Collect data and process it at the end of the run */
 			syscall_return_info_t *info;
-			int ret;
-
-			if (syscall_get_return(pid, &ret) < 0)
+			if ((info = (syscall_return_info_t *)calloc(1, sizeof(*info))) == NULL) {
+				health_check_out_of_memory("allocating syscall accounting information");
 				return;
-
-			if (s) {
-				if ((info = (syscall_return_info_t *)calloc(1, sizeof(*info))) == NULL) {
-					health_check_out_of_memory("allocating syscall accounting information");
-					return;
-				}
-				info->timeout = timeout;
-				info->ret = ret;
-				if (list_append(&s->return_history, info) == NULL) {
-					free(info);
-				}
 			}
+			info->timeout = timeout;
+			info->ret = ret;
+
+			if (list_append(&s->return_history, info) == NULL)
+				free(info);
 		}
 	}
 }
@@ -1895,11 +1860,13 @@ static syscall_info_t *syscall_count_usage(
 		syscall_info[h] = s;
 	}
 
-	if (sc->check_func) {
-		if (++syscall_count >= opt_max_syscalls)
-			keep_running = false;
-		sc->check_func(sc, s, pid, *(sc->threshold), timeout);
-	}
+	if (++syscall_count >= opt_max_syscalls)
+		keep_running = false;
+
+	if (sc->call_enter)
+		sc->call_enter(sc, s, pid);
+	else if (sc->call_enter_timeout)
+		sc->call_enter_timeout(sc, s, pid, *(sc->threshold), timeout);
 
 	return s;
 }
@@ -2270,7 +2237,7 @@ syscall_t syscalls[] = {
 	SYSCALL(break),
 #endif
 #ifdef SYS_brk
-	SYSCALL_CHKARGS(brk, 0, syscall_brk_args, NULL),
+	SYSCALL_CHK(brk, 0, syscall_brk_args, NULL),
 #endif
 #ifdef SYS_capget
 	SYSCALL(capget),
@@ -2303,7 +2270,7 @@ syscall_t syscalls[] = {
 	SYSCALL(clock_gettime),
 #endif
 #ifdef SYS_clock_nanosleep
-	SYSCALL_TIMEOUT(clock_nanosleep, 2, syscall_timespec_timeout, syscall_nanosleep_generic_ret),
+	SYSCALL_CHK_TIMEOUT(clock_nanosleep, 2, syscall_timespec_timeout, syscall_nanosleep_generic_ret),
 #endif
 #ifdef SYS_clock_settime
 	SYSCALL(clock_settime),
@@ -2312,10 +2279,10 @@ syscall_t syscalls[] = {
 	SYSCALL(clone),
 #endif
 #ifdef SYS_close
-	SYSCALL_CHKARGS(close, 0, syscall_close_args, NULL),
+	SYSCALL_CHK(close, 0, syscall_close_args, NULL),
 #endif
 #ifdef SYS_connect
-	SYSCALL_CHKARGS(connect, 0, syscall_connect, syscall_connect_ret),
+	SYSCALL_CHK(connect, 0, syscall_connect_args, syscall_connect_ret),
 #endif
 #ifdef SYS_creat
 	SYSCALL(creat),
@@ -2348,10 +2315,10 @@ syscall_t syscalls[] = {
 	SYSCALL(epoll_ctl_old),
 #endif
 #ifdef SYS_epoll_pwait
-	SYSCALL_TIMEOUT(epoll_pwait, 3, syscall_timeout_millisec, syscall_poll_generic_ret),
+	SYSCALL_CHK_TIMEOUT(epoll_pwait, 3, syscall_timeout_millisec, syscall_poll_generic_ret),
 #endif
 #ifdef SYS_epoll_wait
-	SYSCALL_TIMEOUT(epoll_wait, 3, syscall_timeout_millisec, syscall_poll_generic_ret),
+	SYSCALL_CHK_TIMEOUT(epoll_wait, 3, syscall_timeout_millisec, syscall_poll_generic_ret),
 #endif
 #ifdef SYS_epoll_wait_old
 	SYSCALL(epoll_wait_old),
@@ -2366,10 +2333,10 @@ syscall_t syscalls[] = {
 	SYSCALL(execve),
 #endif
 #ifdef SYS_exit
-	SYSCALL_CHKARGS(exit, 0, syscall_exit_args, NULL),
+	SYSCALL_CHK(exit, 0, syscall_exit_args, NULL),
 #endif
 #ifdef SYS_exit_group
-	SYSCALL_CHKARGS(exit_group, 0, syscall_exit_args, NULL),
+	SYSCALL_CHK(exit_group, 0, syscall_exit_args, NULL),
 #endif
 #ifdef SYS_faccessat
 	SYSCALL(faccessat),
@@ -2414,7 +2381,7 @@ syscall_t syscalls[] = {
 	SYSCALL(fcntl64),
 #endif
 #ifdef SYS_fdatasync
-	SYSCALL_CHKARGS(fdatasync, 0, syscall_fsync_generic_args, NULL),
+	SYSCALL_CHK(fdatasync, 0, syscall_fsync_generic_args, NULL),
 #endif
 #ifdef SYS_fgetxattr
 	SYSCALL(fgetxattr),
@@ -2453,7 +2420,7 @@ syscall_t syscalls[] = {
 	SYSCALL(fstatfs64),
 #endif
 #ifdef SYS_fsync
-	SYSCALL_CHKARGS(fsync, 0, syscall_fsync_generic_args, NULL),
+	SYSCALL_CHK(fsync, 0, syscall_fsync_generic_args, NULL),
 #endif
 #ifdef SYS_ftime
 	SYSCALL(ftime),
@@ -2729,10 +2696,10 @@ syscall_t syscalls[] = {
 	SYSCALL(mlockall),
 #endif
 #ifdef SYS_mmap
-	SYSCALL_CHKARGS(mmap, 1, syscall_mmap_args, NULL),
+	SYSCALL_CHK(mmap, 1, syscall_mmap_args, NULL),
 #endif
 #ifdef SYS_mmap2
-	SYSCALL_CHKARGS(mmap2, 1, syscall_mmap_args, NULL),
+	SYSCALL_CHK(mmap2, 1, syscall_mmap_args, NULL),
 #endif
 #ifdef SYS_modify_ldt
 	SYSCALL(modify_ldt),
@@ -2759,10 +2726,10 @@ syscall_t syscalls[] = {
 	SYSCALL(mq_open),
 #endif
 #ifdef SYS_mq_timedreceive
-	SYSCALL_TIMEOUT(mq_timedreceive, 4, syscall_timespec_timeout, syscall_mq_timedreceive_ret),
+	SYSCALL_CHK_TIMEOUT(mq_timedreceive, 4, syscall_timespec_timeout, syscall_mq_timedreceive_ret),
 #endif
 #ifdef SYS_mq_timedsend
-	SYSCALL_TIMEOUT(mq_timedsend, 4, syscall_timespec_timeout, syscall_mq_timedsend_ret),
+	SYSCALL_CHK_TIMEOUT(mq_timedsend, 4, syscall_timespec_timeout, syscall_mq_timedsend_ret),
 #endif
 #ifdef SYS_mq_unlink
 	SYSCALL(mq_unlink),
@@ -2792,19 +2759,19 @@ syscall_t syscalls[] = {
 	SYSCALL(munlockall),
 #endif
 #ifdef SYS_munmap
-	SYSCALL_CHKARGS(munmap, 1, syscall_munmap_args, NULL),
+	SYSCALL_CHK(munmap, 1, syscall_munmap_args, NULL),
 #endif
 #ifdef SYS_name_to_handle_at
 	SYSCALL(name_to_handle_at),
 #endif
 #ifdef SYS_nanosleep
-	SYSCALL_TIMEOUT(nanosleep, 0, syscall_timespec_timeout, syscall_nanosleep_generic_ret),
+	SYSCALL_CHK_TIMEOUT(nanosleep, 0, syscall_timespec_timeout, syscall_nanosleep_generic_ret),
 #endif
 #ifdef SYS_newfstatat
 	SYSCALL(newfstatat),
 #endif
 #ifdef SYS__newselect
-	SYSCALL_TIMEOUT(_newselect, 4, syscall_timeval_timeout, syscall_poll_generic_ret),
+	SYSCALL_CHK_TIMEOUT(_newselect, 4, syscall_timeval_timeout, syscall_poll_generic_ret),
 #endif
 #ifdef SYS_nfsservctl
 	SYSCALL(nfsservctl),
@@ -2855,10 +2822,10 @@ syscall_t syscalls[] = {
 	SYSCALL(pivot_root),
 #endif
 #ifdef SYS_poll
-	SYSCALL_TIMEOUT(poll, 2, syscall_timeout_millisec, syscall_poll_generic_ret),
+	SYSCALL_CHK_TIMEOUT(poll, 2, syscall_timeout_millisec, syscall_poll_generic_ret),
 #endif
 #ifdef SYS_ppoll
-	SYSCALL_TIMEOUT(ppoll, 2, syscall_timespec_timeout, syscall_poll_generic_ret),
+	SYSCALL_CHK_TIMEOUT(ppoll, 2, syscall_timespec_timeout, syscall_poll_generic_ret),
 #endif
 #ifdef SYS_prctl
 	SYSCALL(prctl),
@@ -2885,7 +2852,7 @@ syscall_t syscalls[] = {
 	SYSCALL(profil),
 #endif
 #ifdef SYS_pselect6
-	SYSCALL_TIMEOUT(pselect6, 4, syscall_timespec_timeout, syscall_poll_generic_ret),
+	SYSCALL_CHK_TIMEOUT(pselect6, 4, syscall_timespec_timeout, syscall_poll_generic_ret),
 #endif
 #ifdef SYS_ptrace
 	SYSCALL(ptrace),
@@ -2930,7 +2897,7 @@ syscall_t syscalls[] = {
 	SYSCALL(recvfrom),
 #endif
 #ifdef SYS_recvmmsg
-	SYSCALL_TIMEOUT(recvmmsg, 4, syscall_timespec_timeout, NULL),
+	SYSCALL_CHK_TIMEOUT(recvmmsg, 4, syscall_timespec_timeout, NULL),
 #endif
 #ifdef SYS_recvmsg
 	SYSCALL(recvmsg),
@@ -2975,7 +2942,7 @@ syscall_t syscalls[] = {
 	SYSCALL(rt_sigsuspend),
 #endif
 #ifdef SYS_rt_sigtimedwait
-	SYSCALL_TIMEOUT(rt_sigtimedwait, 2, syscall_timespec_timeout, syscall_poll_generic_ret),
+	SYSCALL_CHK_TIMEOUT(rt_sigtimedwait, 2, syscall_timespec_timeout, syscall_poll_generic_ret),
 #endif
 #ifdef SYS_rt_tgsigqueueinfo
 	SYSCALL(rt_tgsigqueueinfo),
@@ -3014,7 +2981,7 @@ syscall_t syscalls[] = {
 	SYSCALL(security),
 #endif
 #ifdef SYS_select
-	SYSCALL_TIMEOUT(select, 4, syscall_timeval_timeout, syscall_poll_generic_ret),
+	SYSCALL_CHK_TIMEOUT(select, 4, syscall_timeval_timeout, syscall_poll_generic_ret),
 #endif
 #ifdef SYS_semctl
 	SYSCALL(semctl),
@@ -3026,7 +2993,7 @@ syscall_t syscalls[] = {
 	SYSCALL(semop),
 #endif
 #ifdef SYS_semtimedop
-	SYSCALL_TIMEOUT(semtimedop, 3, syscall_timespec_timeout, syscall_semtimedop_ret),
+	SYSCALL_CHK_TIMEOUT(semtimedop, 3, syscall_timespec_timeout, syscall_semtimedop_ret),
 #endif
 #ifdef SYS_sendfile
 	SYSCALL(sendfile),
@@ -3233,13 +3200,13 @@ syscall_t syscalls[] = {
 	SYSCALL(symlinkat),
 #endif
 #ifdef SYS_sync
-	SYSCALL_CHKARGS(sync, 0, syscall_sync_args, NULL),
+	SYSCALL_CHK(sync, 0, syscall_sync_args, NULL),
 #endif
 #ifdef SYS_sync_file_range
 	SYSCALL(sync_file_range),
 #endif
 #ifdef SYS_syncfs
-	SYSCALL_CHKARGS(syncfs, 0, syscall_fsync_generic_args, NULL),
+	SYSCALL_CHK(syncfs, 0, syscall_fsync_generic_args, NULL),
 #endif
 #ifdef SYS__sysctl
 	SYSCALL(_sysctl),
@@ -3371,7 +3338,7 @@ syscall_t syscalls[] = {
 	SYSCALL(waitpid),
 #endif
 #ifdef SYS_write
-	SYSCALL_CHKARGS(write, 2, syscall_write_args, NULL),
+	SYSCALL_CHK(write, 2, syscall_write_args, NULL),
 #endif
 #ifdef SYS_writev
 	SYSCALL(writev),
