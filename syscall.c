@@ -49,6 +49,12 @@
 #define HASH_TABLE_SIZE	(1997)		/* Must be prime */
 #define ARRAY_SIZE(a)	(sizeof(a) / sizeof(a[0]))
 
+typedef enum {
+	SYSCALL_ENTRY = 0,
+	SYSCALL_RETURN,
+	SYSCALL_UNKNOWN
+} syscall_call_state;
+
 static pthread_t syscall_tracer;
 int procs_traced = 0;
 static int syscall_count = 0;
@@ -331,34 +337,35 @@ static void syscall_mq_timedsend_ret(json_object *j_obj, const syscall_t *sc, co
 #endif
 
 /*
- *  syscall_is_call_entry()
- *	are we entering a system call (true) or exiting it (false)
+ *  syscall_get_call_state()
+ *	are we entering a system call or exiting it or don't know?
  */
-static bool syscall_is_call_entry(const pid_t pid)
+static syscall_call_state syscall_get_call_state(const pid_t pid)
 {
 #if defined(__x86_64__)
 	errno = 0;
 	if (ptrace(PTRACE_PEEKUSER, pid, 8 * RAX, NULL) != -ENOSYS)
-		return false;
-	if (errno) {
-		return false;
-	}
-	return true;
+		return SYSCALL_RETURN;
+	if (errno)
+		return SYSCALL_UNKNOWN;
+	return SYSCALL_ENTRY;
 
 #elif defined(__i386__)
 	errno = 0;
 	if (ptrace(PTRACE_PEEKUSER, pid, 8 * EAX, NULL) != -ENOSYS)
-		return false;
+		return SYSCALL_RETURN;
 	if (errno)
-		return false;
-	return true;
+		return SYSCALL_UNKNOWN;
+	return SYSCALL_ENTRY;
 
 #elif defined(__arm__)
 	(void)pid;
 
-	return true;	/* Need to fix this */
+	return SYSCALL_UNKNOWN;	/* Need to fix this */
 #endif
-	return false;
+	(void)pid;
+
+	return SYSCALL_UNKNOWN;
 }
 
 
@@ -1920,16 +1927,37 @@ static syscall_info_t *syscall_count_usage(
  */
 static void syscall_handle_syscall(syscall_context_t *ctxt)
 {
-	if (syscall_is_call_entry(ctxt->pid)) {
+	int syscall;
+	syscall_call_state state = syscall_get_call_state(ctxt->pid);
+
+	switch (state) {
+	case SYSCALL_ENTRY:
 		if (syscall_get_call(ctxt->pid, &ctxt->syscall) == -1) {
 			ctxt->syscall_info = NULL;
 			ctxt->timeout = 0.0;
-			return;
 		} else {
+			ctxt->syscall_info = syscall_count_usage(ctxt->pid, ctxt->syscall, &ctxt->timeout);
+		}
+		return;
+
+	default:
+		/* We don't know what it was, so try and figure it out */
+		if (syscall_get_call(ctxt->pid, &syscall) == -1) {
+			printf("syscall give up\n");
+			/* Not good, abort stats */
+			ctxt->syscall_info = NULL;
+			ctxt->timeout = 0.0;
+			return;
+		}
+		if (syscall != ctxt->syscall) {
+			/* syscall is different, so can't be a return, must be a new syscall */
+			ctxt->syscall = syscall;
 			ctxt->syscall_info = syscall_count_usage(ctxt->pid, ctxt->syscall, &ctxt->timeout);
 			return;
 		}
-	} else {
+		/* assume it is a return, but it may not be, fall through to SYSCALL_RETURN.. */
+
+	case SYSCALL_RETURN:
 		if (ctxt->syscall_info != NULL)
 			syscall_account_return(ctxt->syscall_info, ctxt->pid, ctxt->syscall, ctxt->timeout);
 		/* We've got a return, so clear info for next syscall */
@@ -2216,7 +2244,7 @@ void syscall_cleanup(void)
 
 /*
  *  syscall_trace_proc()
- *	kick off ptrace thread 
+ *	kick off ptrace thread
  */
 int syscall_trace_proc(list_t *pids)
 {
