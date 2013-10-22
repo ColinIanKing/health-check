@@ -1094,7 +1094,7 @@ static syscall_sync_info_t *syscall_sync_info_find_by_pid(const pid_t pid)
 }
 #endif
 
-#if defined(SYS_fsync) || defined(SYS_fdatasync) || defined(SYS_syncfs)
+#if defined(SYS_fsync) || defined(SYS_fdatasync) || defined(SYS_syncfs) || defined(SYS_sync_file_range)
 /*
  *  syscall_account_sync_file()
  *	accounting for fsync, fdatasync and syncfs system calls
@@ -1130,6 +1130,51 @@ static void syscall_account_sync_file(syscall_sync_info_t *info, const int sysca
 		free(f);
 	}
 }
+
+/*
+ *  syscall_fsync_generic_args()
+ *	keep track of fsync, fdatasync and syncfs calls
+ */
+static void syscall_fsync_generic_args(
+	const syscall_t *sc,
+	const syscall_info_t *s,
+	const pid_t pid)
+{
+	unsigned long args[sc->arg + 1];
+	syscall_sync_info_t *info;
+
+	(void)s;
+
+	syscall_get_args(pid, sc->arg, args);
+	if ((info = syscall_sync_info_find_by_pid(pid)) == NULL)
+		return;
+	info->fsync_count++;
+	info->total_count++;
+	syscall_account_sync_file(info, sc->syscall, pid, (int)args[0]);
+}
+#endif
+
+#ifdef SYS_sync
+/*
+ *  syscall_sync_args()
+ *	keep track of sync calls
+ */
+static void syscall_sync_args(
+	const syscall_t *sc,
+	const syscall_info_t *s,
+	const pid_t pid)
+{
+	syscall_sync_info_t *info;
+
+	(void)sc;
+	(void)s;
+
+	if ((info = syscall_sync_info_find_by_pid(pid)) == NULL)
+		return;
+	info->sync_count++;
+	info->total_count++;
+}
+#endif
 
 #ifdef SYS_brk
 /*
@@ -1190,51 +1235,6 @@ static void syscall_munmap_args(
 	syscall_get_args(pid, sc->arg, args);
 
 	mem_mmap_account(pid, (size_t)args[1], false);
-}
-#endif
-
-/*
- *  syscall_fsync_generic_args()
- *	keep track of fsync, fdatasync and syncfs calls
- */
-static void syscall_fsync_generic_args(
-	const syscall_t *sc,
-	const syscall_info_t *s,
-	const pid_t pid)
-{
-	unsigned long args[sc->arg + 1];
-	syscall_sync_info_t *info;
-
-	(void)s;
-
-	syscall_get_args(pid, sc->arg, args);
-	if ((info = syscall_sync_info_find_by_pid(pid)) == NULL)
-		return;
-	info->fsync_count++;
-	info->total_count++;
-	syscall_account_sync_file(info, sc->syscall, pid, (int)args[0]);
-}
-#endif
-
-#ifdef SYS_sync
-/*
- *  syscall_sync_args()
- *	keep track of sync calls
- */
-static void syscall_sync_args(
-	const syscall_t *sc,
-	const syscall_info_t *s,
-	const pid_t pid)
-{
-	syscall_sync_info_t *info;
-
-	(void)sc;
-	(void)s;
-
-	if ((info = syscall_sync_info_find_by_pid(pid)) == NULL)
-		return;
-	info->sync_count++;
-	info->total_count++;
 }
 #endif
 
@@ -3246,7 +3246,7 @@ syscall_t syscalls[] = {
 	SYSCALL_CHK(sync, 0, syscall_sync_args, NULL),
 #endif
 #ifdef SYS_sync_file_range
-	SYSCALL(sync_file_range),
+	SYSCALL_CHK(sync_file_range, 0, syscall_fsync_generic_args, NULL),
 #endif
 #ifdef SYS_syncfs
 	SYSCALL_CHK(syncfs, 0, syscall_fsync_generic_args, NULL),
