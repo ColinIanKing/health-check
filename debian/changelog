@@ -1,3 +1,11 @@
+health-check (0.01.39) saucy; urgency=low
+
+  * Makefile: bump version
+  * syscall.c: Make syscall enter/return more intelligent
+  * syscall.c: Add sync_file_range sync tracing
+
+ -- Colin King <colin.king@canonical.com>  Tue, 22 Oct 2013 20:27:10 +0100
+
 health-check (0.01.38) saucy; urgency=low
 
   * Makefile: bump version
