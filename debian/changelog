@@ -1,3 +1,10 @@
+health-check (0.01.40) saucy; urgency=low
+
+  * Makefile: bump version
+  * syscall.c: fix unreachable code
+
+ -- Colin King <colin.king@canonical.com>  Wed, 23 Oct 2013 08:17:23 +0100
+
 health-check (0.01.39) saucy; urgency=low
 
   * Makefile: bump version
