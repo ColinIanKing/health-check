@@ -362,10 +362,11 @@ static syscall_call_state syscall_get_call_state(const pid_t pid)
 	(void)pid;
 
 	return SYSCALL_UNKNOWN;	/* Need to fix this */
-#endif
+#else
 	(void)pid;
 
 	return SYSCALL_UNKNOWN;
+#endif
 }
 
 
