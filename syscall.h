@@ -118,13 +118,17 @@ typedef struct {
 	int		syscall;
 } syscall_sync_file_t;
 
+/* sycall states */
+#define	SYSCALL_CTX_ALIVE		0x00000001
+#define SYSCALL_CTX_ATTACHED		0x00000002
+
 typedef struct syscall_context {
 	pid_t		pid;		/* process */
 	proc_info_t	*proc;		/* proc info */
 	int		syscall;	/* syscall detected */
 	double		timeout;	/* timeout on poll syscalls */
 	syscall_info_t	*syscall_info;	/* syscall accounting */
-	bool		alive;		/* is traced thread alive */
+	int		state;		/* is traced thread alive and/or attached? */
 	struct syscall_context *next;
 } syscall_context_t;
 
@@ -149,6 +153,6 @@ extern void syscall_cleanup(void);
 extern void syscall_dump_wakelocks(json_object *j_tests, const double duration, list_t *pids);
 extern void syscall_dump_sync(json_object *j_tests, double duration);
 extern int syscall_trace_proc(list_t *pids);
-extern void syscall_stop(void);
+extern int syscall_stop(void);
 
 #endif

@@ -2084,7 +2084,7 @@ static syscall_context_t *syscall_get_context(pid_t pid)
 		ctxt->timeout = 0.0;
 		ctxt->syscall = -1;
 		ctxt->syscall_info = NULL;
-		ctxt->alive = true;
+		ctxt->state |= SYSCALL_CTX_ALIVE;
 
 		/* Add to fast look up cache and list */
 		if (list_append(&syscall_contexts, ctxt) == NULL) {
@@ -2109,7 +2109,7 @@ static void syscall_trace_cleanup(void *arg)
 	(void)arg;
 	for (l = syscall_contexts.head; l; l = l->next) {
 		syscall_context_t *ctxt = (syscall_context_t *)l->data;
-		if (ctxt->alive) {
+		if (ctxt->state & SYSCALL_CTX_ATTACHED) {
 			int status;
 
 			kill(ctxt->pid, SIGSTOP);
@@ -2131,6 +2131,7 @@ void *syscall_trace(void *arg)
 	int status;
 	link_t *l;
 	unsigned long ptrace_flags = PTRACE_O_TRACESYSGOOD;
+	static int ret = 0;
 
 	(void)arg;
 
@@ -2142,8 +2143,17 @@ void *syscall_trace(void *arg)
 
 	for (l = syscall_contexts.head; l; l = l->next) {
 		ctxt = (syscall_context_t *)l->data;
-		ptrace(PTRACE_ATTACH, ctxt->pid, 0, 0);
-		ptrace(PTRACE_SETOPTIONS, ctxt->pid, 0, ptrace_flags);
+		if (ptrace(PTRACE_ATTACH, ctxt->pid, 0, 0) < 0) {
+			if (errno == EPERM) {
+				fprintf(stderr, "Insufficient privilege to trace process %d\n", ctxt->pid);
+			} else {
+				fprintf(stderr, "Cannot attach trace to process %d\n", ctxt->pid);
+			}
+			ret = -1;
+			goto done;
+		}
+		ctxt->state |= SYSCALL_CTX_ATTACHED;
+		(void)ptrace(PTRACE_SETOPTIONS, ctxt->pid, 0, ptrace_flags);
 		procs_traced++;
 	}
 
@@ -2177,7 +2187,7 @@ void *syscall_trace(void *arg)
 				(void)mem_get_by_proc(ctxt->proc, PROC_FINISH);
 				*/
 			}
-			ctxt->alive = false;
+			ctxt->state &= ~(SYSCALL_CTX_ALIVE | SYSCALL_CTX_ATTACHED);
 			procs_traced--;
 		}
 		else if (WIFSIGNALED(status)) {
@@ -2190,7 +2200,7 @@ void *syscall_trace(void *arg)
 			if (WTERMSIG(status) == SIGKILL) {
 				/* It died */
 				printf("Process %d received SIGKILL during monitoring.\n", pid);
-				ctxt->alive = false;
+				ctxt->state &= ~(SYSCALL_CTX_ALIVE | SYSCALL_CTX_ATTACHED);
 				procs_traced--;
 			}
 		}
@@ -2204,9 +2214,10 @@ void *syscall_trace(void *arg)
 		ptrace(PTRACE_SYSCALL, ctxt->pid, 0, sig);
 	}
 
+done:
 	syscall_trace_cleanup(NULL);
 	pthread_cleanup_pop(NULL);
-	pthread_exit(0);
+	pthread_exit(&ret);
 }
 
 /*
@@ -2224,10 +2235,17 @@ void syscall_init(void)
  *  syscall_stop()
  *	stop the ptrace thread
  */
-void syscall_stop(void)
+int syscall_stop(void)
 {
+	int *status = 0;
+
 	pthread_cancel(syscall_tracer);
-	pthread_join(syscall_tracer, NULL);
+	pthread_join(syscall_tracer, (void **)&status);
+
+	if (status == PTHREAD_CANCELED)
+		return 0;
+
+	return *status;
 }
 
 /*

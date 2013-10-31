@@ -601,7 +601,8 @@ int main(int argc, char **argv)
 	if (ctxt_switch_get_all_pids(&pids, PROC_FINISH) < 0)
 		goto out;
 	event_stop();
-	syscall_stop();
+	if (syscall_stop() < 0)
+		goto out;
 
 	sigaction(SIGINT, &old_action, NULL);
 
