@@ -384,8 +384,11 @@ static int mem_get_entry(FILE *fp, mem_info_t *mem)
 		}
 	}
 
+
 	if (strncmp(path, "[stack", 6) == 0)
 		type = MEM_STACK;
+	else if (strncmp(path, "[heap", 5) == 0)
+		type = MEM_HEAP;
 	else if (!*path && addr_offset == 0 && major == 0 && minor == 0)
 		type = MEM_HEAP;
 	else
