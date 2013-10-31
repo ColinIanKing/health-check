@@ -1,3 +1,12 @@
+health-check (0.01.42) saucy; urgency=low
+
+  * Makefile: bump version
+  * mem.c: fix formatting of change in memory
+  * syscall: handle failed attaching to processes
+  * mem: report heap as heap, not as mapped
+
+ -- Colin King <colin.king@canonical.com>  Thu, 31 Oct 2013 22:23:24 +0000
+
 health-check (0.01.41) saucy; urgency=low
 
   * Makefile: bump version
