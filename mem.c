@@ -150,7 +150,7 @@ void mem_dump_mmap(json_object *j_tests, const double duration)
 			goto out;
 	}
 
-	printf("  PID                          mmaps  munmaps   Change (K)  Rate (K/second)\n");
+	printf("  PID                          mmaps  munmaps  Change (K)  Rate (K/Sec)\n");
 	for (l = sorted.head; l; l = l->next) {
 		info = (mem_mmap_info_t *)l->data;
 		proc_info_t *p = proc_cache_find_by_pid(info->pid);
@@ -273,7 +273,7 @@ void mem_dump_brk(json_object *j_tests, const double duration)
 			goto out;
 	}
 
-	printf("  PID                        brk Count  Change (K)  Rate (K/second)\n");
+	printf("  PID                        brk Count   Change (K)  Rate (K/Sec)\n");
 	for (l = sorted.head; l; l = l->next) {
 		info = (mem_brk_info_t *)l->data;
 		proc_info_t *p = proc_cache_find_by_pid(info->pid);
