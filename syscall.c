@@ -344,7 +344,7 @@ static syscall_call_state syscall_get_call_state(const pid_t pid)
 {
 #if defined(__x86_64__)
 	errno = 0;
-	if (ptrace(PTRACE_PEEKUSER, pid, 8 * RAX, NULL) != -ENOSYS)
+	if (ptrace(PTRACE_PEEKUSER, pid, sizeof(long) * RAX, NULL) != -ENOSYS)
 		return SYSCALL_RETURN;
 	if (errno)
 		return SYSCALL_UNKNOWN;
@@ -352,7 +352,7 @@ static syscall_call_state syscall_get_call_state(const pid_t pid)
 
 #elif defined(__i386__)
 	errno = 0;
-	if (ptrace(PTRACE_PEEKUSER, pid, 8 * EAX, NULL) != -ENOSYS)
+	if (ptrace(PTRACE_PEEKUSER, pid, sizeof(long) * EAX, NULL) != -ENOSYS)
 		return SYSCALL_RETURN;
 	if (errno)
 		return SYSCALL_UNKNOWN;
@@ -378,7 +378,7 @@ static int syscall_get_call(const pid_t pid, int *syscall)
 {
 #if defined(__x86_64__)
 	errno = 0;
-	*syscall = ptrace(PTRACE_PEEKUSER, pid, 8 * ORIG_RAX, NULL);
+	*syscall = ptrace(PTRACE_PEEKUSER, pid, sizeof(long) * ORIG_RAX, NULL);
 	if (errno) {
 		*syscall = -1;
 		return -1;
@@ -386,7 +386,7 @@ static int syscall_get_call(const pid_t pid, int *syscall)
 	return 0;
 #elif defined(__i386__)
 	errno = 0;
-	*syscall = ptrace(PTRACE_PEEKUSER, pid, 4 * ORIG_EAX, NULL);
+	*syscall = ptrace(PTRACE_PEEKUSER, pid, sizeof(long) * ORIG_EAX, NULL);
 	if (errno) {
 		*syscall = -1;
 		return -1;
