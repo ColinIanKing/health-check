@@ -1,3 +1,10 @@
+health-check (0.01.41) saucy; urgency=low
+
+  * Makefile: bump version
+  * syscall: i386 tracing not working because multiply by 8 and not 4
+
+ -- Colin King <colin.king@canonical.com>  Thu, 31 Oct 2013 16:45:33 +0000
+
 health-check (0.01.40) saucy; urgency=low
 
   * Makefile: bump version
