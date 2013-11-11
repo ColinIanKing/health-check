@@ -574,13 +574,15 @@ void net_connection_dump(json_object *j_tests, double duration)
 		printf("\n");
 	}
 #ifdef JSON_OUTPUT
-	if ((j_net_info = j_obj_new_obj()) == NULL)
-		goto out;
-	j_obj_obj_add(j_net_test, "network-connections-total", j_net_info);
-	j_obj_new_int64_add(j_net_info, "send-total", send_total);
-	j_obj_new_int64_add(j_net_info, "receive-total", recv_total);
-	j_obj_new_double_add(j_net_info, "send-total-rate", (double)send_total / duration);
-	j_obj_new_double_add(j_net_info, "receive-total-rate", (double)recv_total / duration);
+	if (j_tests) {
+		if ((j_net_info = j_obj_new_obj()) == NULL)
+			goto out;
+		j_obj_obj_add(j_net_test, "network-connections-total", j_net_info);
+		j_obj_new_int64_add(j_net_info, "send-total", send_total);
+		j_obj_new_int64_add(j_net_info, "receive-total", recv_total);
+		j_obj_new_double_add(j_net_info, "send-total-rate", (double)send_total / duration);
+		j_obj_new_double_add(j_net_info, "receive-total-rate", (double)recv_total / duration);
+	}
 #endif
 out:
 	list_free(&sorted, NULL);
