@@ -42,6 +42,7 @@ static const char *mem_types[] = {
 	"Mapped",
 };
 
+#ifdef JSON_OUTPUT
 /*
  *  mem_tolower_str()
  *	string to lower case
@@ -51,6 +52,7 @@ static void mem_tolower_str(char *str)
 	for (;*str; str++)
 		*str = tolower(*str);
 }
+#endif
 
 /*
  *  mem_loading()
