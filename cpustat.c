@@ -194,7 +194,7 @@ int cpustat_dump_diff(json_object *j_tests, const double duration)
 		if ((j_cpu = j_obj_new_obj()) == NULL)
 			goto out;
 		j_obj_obj_add(j_cpustat, "cpu-load-total", j_cpu);
-		j_obj_new_double_add(j_cpu, "user-load-total", 100.0 * utime_total);
+		j_obj_new_double_add(j_cpu, "user-cpu-total", 100.0 * utime_total);
 		j_obj_new_double_add(j_cpu, "system-cpu-percent", 100.0 * stime_total);
 		j_obj_new_double_add(j_cpu, "total-cpu-percent", 100.0 * ttime_total);
 	}
