@@ -340,7 +340,7 @@ void event_dump_diff(
 			goto out;
 		j_obj_obj_add(j_event_test, "wakeup-events-total", j_event);
 		j_obj_new_int64_add(j_event, "wakeup-total", total_delta);
-		j_obj_new_double_add(j_event, "wakeup-rate-total", total_event_rate);
+		j_obj_new_double_add(j_event, "wakeup-total-rate", total_event_rate);
 		j_obj_new_string_add(j_event, "load-hint-total", event_loading(total_event_rate));
 	}
 out:
