@@ -343,8 +343,8 @@ void event_dump_diff(
 		j_obj_new_double_add(j_event, "wakeup-rate-total", total_event_rate);
 		j_obj_new_string_add(j_event, "load-hint-total", event_loading(total_event_rate));
 	}
-#endif
 out:
+#endif
 	return;
 }
 
