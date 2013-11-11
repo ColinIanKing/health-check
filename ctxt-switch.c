@@ -280,7 +280,7 @@ void ctxt_switch_dump_diff(json_object *j_tests, const double duration)
 			goto out;
 		j_obj_obj_add(j_ctxt_switch_test, "context-switches-total", j_ctxt_switch);
 		j_obj_new_int64_add(j_ctxt_switch, "context-switch-total", total);
-		j_obj_new_double_add(j_ctxt_switch, "context-switch-rate-total", total_rate);
+		j_obj_new_double_add(j_ctxt_switch, "context-switch-total-rate", total_rate);
 		j_obj_new_string_add(j_ctxt_switch, "load-hint-total", ctxt_switch_loading(total_rate));
 	}
 #endif
