@@ -703,7 +703,7 @@ void syscall_dump_hashtable(json_object *j_tests, const double duration)
 			goto out;
 		j_obj_obj_add(j_syscall, "system-calls-total", j_syscall_info);
 		j_obj_new_int64_add(j_syscall_info, "system-call-count-total", total);
-		j_obj_new_double_add(j_syscall_info, "system-call-count-rate-total",
+		j_obj_new_double_add(j_syscall_info, "system-call-count-total-rate",
 			(double)total / duration);
 	}
 #endif
@@ -1599,20 +1599,22 @@ void syscall_dump_wakelocks(json_object *j_tests, const double duration, list_t 
 					(double)locked / duration, (double)unlocked / duration,
 					count ? locked_duration / count : 0.0);
 #ifdef JSON_OUTPUT
-				if ((j_wakelock_info = j_obj_new_obj()) == NULL)
-					goto out;
-					j_obj_new_int32_add(j_wakelock_info, "pid", p->pid);
-					j_obj_new_int32_add(j_wakelock_info, "ppid", p->ppid);
-					j_obj_new_int32_add(j_wakelock_info, "is-thread", p->is_thread);
-					j_obj_new_string_add(j_wakelock_info, "name", p->cmdline);
-					j_obj_new_string_add(j_wakelock_info, "lockname", lockname);
-                        		j_obj_new_int64_add(j_wakelock_info, "wakelock-locked", locked);
-                        		j_obj_new_double_add(j_wakelock_info, "wakelock-locked-rate", (double)locked / duration);
-                        		j_obj_new_int64_add(j_wakelock_info, "wakelock-unlocked", unlocked);
-                        		j_obj_new_double_add(j_wakelock_info, "wakelock-unlocked-rate", (double)unlocked / duration);
-                        		j_obj_new_double_add(j_wakelock_info, "wakelock-locked-duration", 
-						count ? locked_duration / count : 0.0);
-                        		j_obj_array_add(j_wakelock_infos, j_wakelock_info);
+				if (j_tests) {
+					if ((j_wakelock_info = j_obj_new_obj()) == NULL)
+						goto out;
+						j_obj_new_int32_add(j_wakelock_info, "pid", p->pid);
+						j_obj_new_int32_add(j_wakelock_info, "ppid", p->ppid);
+						j_obj_new_int32_add(j_wakelock_info, "is-thread", p->is_thread);
+						j_obj_new_string_add(j_wakelock_info, "name", p->cmdline);
+						j_obj_new_string_add(j_wakelock_info, "lockname", lockname);
+                        			j_obj_new_int64_add(j_wakelock_info, "wakelock-locked", locked);
+                        			j_obj_new_double_add(j_wakelock_info, "wakelock-locked-rate", (double)locked / duration);
+                        			j_obj_new_int64_add(j_wakelock_info, "wakelock-unlocked", unlocked);
+                        			j_obj_new_double_add(j_wakelock_info, "wakelock-unlocked-rate", (double)unlocked / duration);
+                        			j_obj_new_double_add(j_wakelock_info, "wakelock-locked-duration", 
+							count ? locked_duration / count : 0.0);
+                        			j_obj_array_add(j_wakelock_infos, j_wakelock_info);
+				}
 #endif
 			}
 			list_free(&wakelock_names, NULL);
@@ -1624,13 +1626,15 @@ void syscall_dump_wakelocks(json_object *j_tests, const double duration, list_t 
 		printf("\n");
 	}
 #ifdef JSON_OUTPUT
-	if ((j_wakelock_info = j_obj_new_obj()) == NULL)
-		goto out;
-	j_obj_obj_add(j_wakelock_test, "wakelock-operations-heavy-total", j_wakelock_info);
-	j_obj_new_int64_add(j_wakelock_info, "wakelock-locked-total", total_locked);
-	j_obj_new_double_add(j_wakelock_info, "wakelock-locked-total-rate", (double)total_locked / duration);
-	j_obj_new_int64_add(j_wakelock_info, "wakelock-unlocked-total", total_unlocked);
-	j_obj_new_double_add(j_wakelock_info, "wakelock-unlocked-total-rate", (double)total_unlocked / duration);
+	if (j_tests) {
+		if ((j_wakelock_info = j_obj_new_obj()) == NULL)
+				goto out;
+			j_obj_obj_add(j_wakelock_test, "wakelock-operations-heavy-total", j_wakelock_info);
+			j_obj_new_int64_add(j_wakelock_info, "wakelock-locked-total", total_locked);
+			j_obj_new_double_add(j_wakelock_info, "wakelock-locked-total-rate", (double)total_locked / duration);
+					j_obj_new_int64_add(j_wakelock_info, "wakelock-unlocked-total", total_unlocked);
+			j_obj_new_double_add(j_wakelock_info, "wakelock-unlocked-total-rate", (double)total_unlocked / duration);
+	}
 out:
 #endif
 
@@ -1818,9 +1822,11 @@ void syscall_dump_pollers(json_object *j_tests, const double duration)
 					goto out;
 				j_obj_obj_add(j_syscall, "polling-system-calls-total", j_syscall_info);
 				j_obj_new_int64_add(j_syscall_info, "system-call-count-total", count);
-				j_obj_new_double_add(j_syscall_info, "system-call-rate-total", (double)count / duration);
+				j_obj_new_double_add(j_syscall_info, "system-call-total-rate", (double)count / duration);
 				j_obj_new_int64_add(j_syscall_info, "poll-count-infinite-total", (int64_t)poll_infinite);
+				j_obj_new_double_add(j_syscall_info, "poll-count-infinite-total-rate", (double)poll_infinite / duration);
 				j_obj_new_int64_add(j_syscall_info, "poll-count-zero-total", poll_zero);
+				j_obj_new_double_add(j_syscall_info, "poll-count-zero-total-rate", (double)poll_zero / duration);
 			}
 #endif
 			printf("\nDistribution of poll timeout times:\n");
