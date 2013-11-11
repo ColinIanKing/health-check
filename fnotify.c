@@ -557,10 +557,10 @@ static void fnotify_dump_io_ops(
 		j_obj_new_int64_add(j_io_op, "read-total", read_total);
 		j_obj_new_int64_add(j_io_op, "write-call-total", write_total);
 
-		j_obj_new_double_add(j_io_op, "open-call-rate-total", (double)open_total / duration);
-		j_obj_new_double_add(j_io_op, "close-call-rate-total", (double)close_total / duration);
-		j_obj_new_double_add(j_io_op, "read-call-rate-total", (double)read_total / duration);
-		j_obj_new_double_add(j_io_op, "write-call-rate-total", (double)write_total / duration);
+		j_obj_new_double_add(j_io_op, "open-call-total-rate", (double)open_total / duration);
+		j_obj_new_double_add(j_io_op, "close-call-total-rate", (double)close_total / duration);
+		j_obj_new_double_add(j_io_op, "read-call-total-rate", (double)read_total / duration);
+		j_obj_new_double_add(j_io_op, "write-call-total-rate", (double)write_total / duration);
 	}
 #endif
 
