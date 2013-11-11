@@ -468,22 +468,25 @@ static void net_size_to_str(char *buf, size_t buf_len, uint64_t size)
  *  net_connection_dump()
  *	dump out network connections
  */
-void net_connection_dump(json_object *j_tests)
+void net_connection_dump(json_object *j_tests, double duration)
 {
 	link_t *l;
 	list_t dump_info_list;
 	list_t sorted;
 #ifdef JSON_OUTPUT
 	json_object *j_net_test, *j_net_infos = NULL, *j_net_info;
+	uint64_t send_total = 0, recv_total = 0;
 #else
 	(void)j_tests;
 #endif
 
 	printf("Open Network Connections:\n");
+#if 0
 	if (!net_cached_addrs.head) {
 		printf(" None.\n\n");
 		return;
 	}
+#endif
 
 	list_init(&dump_info_list);
 	list_init(&sorted);
@@ -528,10 +531,6 @@ void net_connection_dump(json_object *j_tests)
 		}
 	}
 
-	if (!dump_info_list.head) {
-		printf(" None.\n\n");
-		return;
-	}
 
 	/*
 	 *  We've now got a reduced list of useful data, so now sort it
@@ -541,40 +540,53 @@ void net_connection_dump(json_object *j_tests)
 		list_add_ordered(&sorted, dump_info, net_dump_info_cmp);
 	}
 
-	printf("  PID  Process             Proto       Send   Receive  Address\n");
-	for (l = sorted.head; l; l = l->next) {
-		net_dump_info_t *dump_info = (net_dump_info_t *)l->data;
-		char *addr = net_get_addr(dump_info->addr_info);
-		char sendbuf[64], recvbuf[64];
+	if (!dump_info_list.head) {
+		printf(" None.\n\n");
+	} else {
+		printf("  PID  Process             Proto       Send   Receive  Address\n");
+		for (l = sorted.head; l; l = l->next) {
+			net_dump_info_t *dump_info = (net_dump_info_t *)l->data;
+			char *addr = net_get_addr(dump_info->addr_info);
+			char sendbuf[64], recvbuf[64];
 
-		net_size_to_str(sendbuf, sizeof(sendbuf), dump_info->nh->send.data_total);
-		net_size_to_str(recvbuf, sizeof(recvbuf), dump_info->nh->recv.data_total);
+			net_size_to_str(sendbuf, sizeof(sendbuf), dump_info->nh->send.data_total);
+			net_size_to_str(recvbuf, sizeof(recvbuf), dump_info->nh->recv.data_total);
 
-		printf(" %5i %-20.20s %-4.4s  %s %s  %s\n",
-			dump_info->nh->proc->pid,
-			dump_info->nh->proc->cmdline,
-			net_types[dump_info->addr_info->type],
-			sendbuf, recvbuf, addr);
+			printf(" %5i %-20.20s %-4.4s  %s %s  %s\n",
+				dump_info->nh->proc->pid,
+				dump_info->nh->proc->cmdline,
+				net_types[dump_info->addr_info->type],
+				sendbuf, recvbuf, addr);
 
 #ifdef JSON_OUTPUT
-		if (j_tests) {
-			if ((j_net_info = j_obj_new_obj()) == NULL)
-				goto out;
-			j_obj_new_int32_add(j_net_info, "pid", dump_info->nh->proc->pid);
-			j_obj_new_int32_add(j_net_info, "ppid", dump_info->nh->proc->ppid);
-			j_obj_new_int32_add(j_net_info, "is-thread", dump_info->nh->proc->is_thread);
-			j_obj_new_string_add(j_net_info, "name", dump_info->nh->proc->cmdline);
-			j_obj_new_string_add(j_net_info, "protocol", net_types[dump_info->addr_info->type]);
-			j_obj_new_string_add(j_net_info, "address", addr);
-			j_obj_new_int64_add(j_net_info, "send", dump_info->nh->send.data_total);
-			j_obj_new_int64_add(j_net_info, "receive", dump_info->nh->recv.data_total);
-#if 0
+			if (j_tests) {
+				if ((j_net_info = j_obj_new_obj()) == NULL)
+					goto out;
+				j_obj_new_int32_add(j_net_info, "pid", dump_info->nh->proc->pid);
+				j_obj_new_int32_add(j_net_info, "ppid", dump_info->nh->proc->ppid);
+				j_obj_new_int32_add(j_net_info, "is-thread", dump_info->nh->proc->is_thread);
+				j_obj_new_string_add(j_net_info, "name", dump_info->nh->proc->cmdline);
+				j_obj_new_string_add(j_net_info, "protocol", net_types[dump_info->addr_info->type]);
+				j_obj_new_string_add(j_net_info, "address", addr);
+				j_obj_new_int64_add(j_net_info, "send", dump_info->nh->send.data_total);
+				j_obj_new_int64_add(j_net_info, "receive", dump_info->nh->recv.data_total);
+				j_obj_array_add(j_net_infos, j_net_info);
+				send_total += dump_info->nh->send.data_total;
+				recv_total += dump_info->nh->recv.data_total;
+			}
 #endif
-			j_obj_array_add(j_net_infos, j_net_info);
 		}
-#endif
+		printf("\n");
 	}
-	printf("\n");
+#ifdef JSON_OUTPUT
+	if ((j_net_info = j_obj_new_obj()) == NULL)
+		goto out;
+	j_obj_obj_add(j_net_test, "network-connections-total", j_net_info);
+	j_obj_new_int64_add(j_net_info, "send-total", send_total);
+	j_obj_new_int64_add(j_net_info, "receive-total", recv_total);
+	j_obj_new_double_add(j_net_info, "send-total-rate", (double)send_total / duration);
+	j_obj_new_double_add(j_net_info, "receive-total-rate", (double)recv_total / duration);
+#endif
 out:
 	list_free(&sorted, NULL);
 	list_free(&dump_info_list, free);

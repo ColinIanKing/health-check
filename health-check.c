@@ -623,7 +623,7 @@ int main(int argc, char **argv)
 		goto out;
 	mem_dump_brk(json_tests, actual_duration);
 	mem_dump_mmap(json_tests, actual_duration);
-	net_connection_dump(json_tests);
+	net_connection_dump(json_tests, actual_duration);
 
 #ifdef FNOTIFY
 	if (opt_flags & OPT_WAKELOCKS_LIGHT)

@@ -25,7 +25,7 @@
 
 extern int net_connection_pids(list_t *pids);
 extern int net_connection_pid(const pid_t);
-extern int net_connection_dump(json_object *j_tests);
+extern int net_connection_dump(json_object *j_tests, double duration);
 extern void net_account_send(const pid_t pid, const int fd, size_t size);
 extern void net_account_recv(const pid_t pid, const int fd, size_t size);
 extern void net_connection_init(void);
