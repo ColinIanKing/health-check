@@ -26,6 +26,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <limits.h>
+#include <ctype.h>
 
 #include "list.h"
 #include "mem.h"
@@ -40,6 +41,16 @@ static const char *mem_types[] = {
 	"Heap",
 	"Mapped",
 };
+
+/*
+ *  mem_tolower_str()
+ *	string to lower case
+ */
+static void mem_tolower_str(char *str)
+{
+	for (;*str; str++)
+		*str = tolower(*str);
+}
 
 /*
  *  mem_loading()
@@ -656,12 +667,15 @@ int mem_dump_diff(
 				j_obj_new_string_add(j_mem_info, "name", delta->proc->cmdline);
 				/* Size */
 				snprintf(label, sizeof(label), "%s-size-Kbytes", mem_types[type]);
+				mem_tolower_str(label);
 				j_obj_new_int64_add(j_mem_info, label, delta->size[type] / 1024);
 				/* RSS */
 				snprintf(label, sizeof(label), "%s-rss-Kbytes", mem_types[type]);
+				mem_tolower_str(label);
 				j_obj_new_int64_add(j_mem_info, label, delta->rss[type] / 1024);
 				/* PSS */
 				snprintf(label, sizeof(label), "%s-pss-Kbytes", mem_types[type]);
+				mem_tolower_str(label);
 				j_obj_new_int64_add(j_mem_info, label, delta->pss[type] / 1024);
 
 				j_obj_array_add(j_mem_infos, j_mem_info);
@@ -677,12 +691,15 @@ int mem_dump_diff(
 		for (type = MEM_STACK; type < MEM_MAX; type++) {
 			/* Size */
 			snprintf(label, sizeof(label), "%s-size-total-Kbytes", mem_types[type]);
+			mem_tolower_str(label);
 			j_obj_new_int64_add(j_mem_info, label, total_size[type] / 1024);
 			/* RSS */
 			snprintf(label, sizeof(label), "%s-rss-total-Kbytes", mem_types[type]);
+			mem_tolower_str(label);
 			j_obj_new_int64_add(j_mem_info, label, total_rss[type] / 1024);
 			/* PSS */
 			snprintf(label, sizeof(label), "%s-pss-total-Kbytes", mem_types[type]);
+			mem_tolower_str(label);
 			j_obj_new_int64_add(j_mem_info, label, total_pss[type] / 1024);
 		}
 
@@ -709,26 +726,35 @@ int mem_dump_diff(
 				/* Size */
 				rate = (double)(delta->size[type] / 1024.0) / duration;
 				snprintf(label, sizeof(label), "%s-change-size-Kbytes", mem_types[type]);
+				mem_tolower_str(label);
 				j_obj_new_int64_add(j_mem_info, label, delta->size[type] / 1024);
 				snprintf(label, sizeof(label), "%s-change-size-Kbytes-rate", mem_types[type]);
+				mem_tolower_str(label);
 				j_obj_new_double_add(j_mem_info, label, rate);
 				snprintf(label, sizeof(label), "%s-change-size-Kbytes-hint", mem_types[type]);
+				mem_tolower_str(label);
 				j_obj_new_string_add(j_mem_info, label, mem_loading(rate));
 				/* RSS */
 				rate = (double)(delta->rss[type] / 1024.0) / duration;
 				snprintf(label, sizeof(label), "%s-change-rss-Kbytes", mem_types[type]);
+				mem_tolower_str(label);
 				j_obj_new_int64_add(j_mem_info, label, delta->rss[type] / 1024);
 				snprintf(label, sizeof(label), "%s-change-rss-Kbytes-rate", mem_types[type]);
+				mem_tolower_str(label);
 				j_obj_new_double_add(j_mem_info, label, rate);
 				snprintf(label, sizeof(label), "%s-change-rss-Kbytes-hint", mem_types[type]);
+				mem_tolower_str(label);
 				j_obj_new_string_add(j_mem_info, label, mem_loading(rate));
 				/* PSS */
 				rate = (double)(delta->pss[type] / 1024.0) / duration;
 				snprintf(label, sizeof(label), "%s-change-pss-Kbytes", mem_types[type]);
+				mem_tolower_str(label);
 				j_obj_new_int64_add(j_mem_info, label, delta->pss[type] / 1024);
 				snprintf(label, sizeof(label), "%s-change-pss-Kbytes-rate", mem_types[type]);
+				mem_tolower_str(label);
 				j_obj_new_double_add(j_mem_info, label, rate);
 				snprintf(label, sizeof(label), "%s-change-pss-Kbytes-hint", mem_types[type]);
+				mem_tolower_str(label);
 				j_obj_new_string_add(j_mem_info, label, mem_loading(rate));
 
 				j_obj_array_add(j_mem_infos, j_mem_info);
@@ -744,12 +770,15 @@ int mem_dump_diff(
 		for (type = MEM_STACK; type < MEM_MAX; type++) {
 			/* Size */
 			snprintf(label, sizeof(label), "%s-change-size-total-Kbytes", mem_types[type]);
+			mem_tolower_str(label);
 			j_obj_new_int64_add(j_mem_info, label, total_size[type] / 1024);
 			/* RSS */
 			snprintf(label, sizeof(label), "%s-change-rss-total-Kbytes", mem_types[type]);
+			mem_tolower_str(label);
 			j_obj_new_int64_add(j_mem_info, label, total_rss[type] / 1024);
 			/* PSS */
 			snprintf(label, sizeof(label), "%s-change-pss-total-Kbytes", mem_types[type]);
+			mem_tolower_str(label);
 			j_obj_new_int64_add(j_mem_info, label, total_pss[type] / 1024);
 		}
 	}
