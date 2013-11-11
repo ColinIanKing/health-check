@@ -1,3 +1,33 @@
+health-check (0.01.43) saucy; urgency=low
+
+  * Makefile: bump version
+  * syscall.c: force json output when no polls occur
+  * mem.c: avoid build warning when building with JSON disabled
+  * cpustat.c: correct cpustat json label
+  * net.c: fixup coverity scan issue
+  * cpustat.c: fix thinko in json user cpu label
+  * mem.c fixup json label names
+  * syscall: fixup some json name errors and null ptr derefs
+  * fnotify.c: rename rate-total to total-rate
+  * fnotify.c: rename access-count-rate-total to access-count-total-rate
+  * ctx-switch.c: rename context-switch-rate-total to context-switch-total-rate
+  * events.c: rename wakeup-rate-total -> wakeup-total-rate
+  * mem.c: fix warnings on JSON less build
+  * event.c: fix warnings on JSON less build
+  * syscall.c: fix warnings on JSON less build
+  * net.c: fix warnings on JSON less build
+  * Add heavy waklock json output
+  * mem.c: handle memory total deltas as signed 64 bit ints
+  * fnotify.c: fix json type adding and add wakelock json reporting
+  * syscall: add file sync json stats
+  * net: add total send/recv json stats
+  * cpustat.c: fix json cpu totals, got user/system/total mixed up
+  * fnotify: ouput json data even when no ops are detected
+  * mem.c: Add total memory stats for json output
+  * cpustat: add total rates of page faults
+
+ -- Colin King <colin.king@canonical.com>  Mon, 11 Oct 2013 15:57:52 +0000
+
 health-check (0.01.42) saucy; urgency=low
 
   * Makefile: bump version
