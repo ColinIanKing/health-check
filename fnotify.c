@@ -358,7 +358,7 @@ static void fnotify_dump_files(
 			printf("  PID  Process               Count  Op  Filename\n");
 			for (count = 0, total = 0, l = sorted.head; l; l = l->next) {
 				fnotify_fileinfo_t *info = (fnotify_fileinfo_t *)l->data;
-	
+
 				printf(" %5d %-20.20s %6" PRIu64 " %4s %s\n",
 					info->proc->pid, info->proc->cmdline,
 					info->count,
@@ -541,27 +541,26 @@ static void fnotify_dump_io_ops(
 			j_obj_new_int64_add(j_io_op, "close-call-count", io_ops->close_total);
 			j_obj_new_int64_add(j_io_op, "read-call-count", io_ops->read_total);
 			j_obj_new_int64_add(j_io_op, "write-call-count", io_ops->write_total);
-			j_obj_new_int64_add(j_io_op, "open-call-rate",
-				(double)io_ops->open_total / duration);
-			j_obj_new_int64_add(j_io_op, "close-call-rate",
-				(double)io_ops->close_total / duration);
-			j_obj_new_int64_add(j_io_op, "read-call-rate",
-				(double)io_ops->read_total / duration);
-			j_obj_new_int64_add(j_io_op, "write-call-rate",
-				(double)io_ops->write_total / duration);
+
+			j_obj_new_double_add(j_io_op, "open-call-rate", (double)io_ops->open_total / duration);
+			j_obj_new_double_add(j_io_op, "close-call-rate", (double)io_ops->close_total / duration);
+			j_obj_new_double_add(j_io_op, "read-call-rate", (double)io_ops->read_total / duration);
+			j_obj_new_double_add(j_io_op, "write-call-rate", (double)io_ops->write_total / duration);
 			j_obj_array_add(j_io_ops, j_io_op);
 		}
 		if ((j_io_op = j_obj_new_obj()) == NULL)
 			goto out;
 		j_obj_obj_add(j_fnotify_test, "file-io-operations-total", j_io_op);
-		j_obj_new_double_add(j_io_op, "open-call-rate-total",
-			(double)open_total / duration);
-		j_obj_new_double_add(j_io_op, "close-call-rate-total",
-			(double)close_total / duration);
-		j_obj_new_double_add(j_io_op, "read-call-rate-total",
-			(double)read_total / duration);
-		j_obj_new_double_add(j_io_op, "write-call-rate-total",
-			(double)write_total / duration);
+
+		j_obj_new_int64_add(j_io_op, "open-call-total", open_total);
+		j_obj_new_int64_add(j_io_op, "close-call-total", close_total);
+		j_obj_new_int64_add(j_io_op, "read-total", read_total);
+		j_obj_new_int64_add(j_io_op, "write-call-total", write_total);
+
+		j_obj_new_double_add(j_io_op, "open-call-rate-total", (double)open_total / duration);
+		j_obj_new_double_add(j_io_op, "close-call-rate-total", (double)close_total / duration);
+		j_obj_new_double_add(j_io_op, "read-call-rate-total", (double)read_total / duration);
+		j_obj_new_double_add(j_io_op, "write-call-rate-total", (double)write_total / duration);
 	}
 #endif
 
@@ -611,6 +610,45 @@ void fnotify_dump_wakelocks(
 		printf("\n");
 	}
 
+#ifdef JSON_OUTPUT
+	if (j_tests) {
+		json_object *j_wakelock_test, *j_wakelock_infos, *j_wakelock_info;
+		uint64_t locked_total = 0, unlocked_total = 0;
+
+		if ((j_wakelock_test = j_obj_new_obj()) == NULL)
+			goto out;
+		j_obj_obj_add(j_tests, "wakelock-operations-light", j_wakelock_test);
+		if ((j_wakelock_infos = j_obj_new_array()) == NULL)
+			goto out;
+		j_obj_obj_add(j_wakelock_test, "wakelock-operations-light-per-process", j_wakelock_infos);
+
+		for (l = sorted.head; l; l = l->next) {
+			fnotify_wakelock_info_t *info = (fnotify_wakelock_info_t *)l->data;
+
+			if ((j_wakelock_info = j_obj_new_obj()) == NULL)
+				goto out;
+                        j_obj_new_int32_add(j_wakelock_info, "pid", info->proc->pid);
+                        j_obj_new_int32_add(j_wakelock_info, "ppid", info->proc->ppid);
+                        j_obj_new_int32_add(j_wakelock_info, "is-thread", info->proc->is_thread);
+                        j_obj_new_string_add(j_wakelock_info, "name", info->proc->cmdline);
+			j_obj_new_int64_add(j_wakelock_info, "wakelock-locked", info->locked);
+			j_obj_new_double_add(j_wakelock_info, "wakelock-locked-rate", (double)info->locked / duration);
+			j_obj_new_int64_add(j_wakelock_info, "wakelock-unlocked", info->unlocked);
+			j_obj_new_double_add(j_wakelock_info, "wakelock-unlocked-rate", (double)info->unlocked / duration);
+			j_obj_array_add(j_wakelock_infos, j_wakelock_info);
+
+			locked_total += info->locked;
+			unlocked_total += info->unlocked;
+		}
+		if ((j_wakelock_info = j_obj_new_obj()) == NULL)
+			goto out;
+		j_obj_obj_add(j_wakelock_test, "wakelock-operations-light-total", j_wakelock_info);
+		j_obj_new_int64_add(j_wakelock_info, "wakelock-locked-total", locked_total);
+		j_obj_new_double_add(j_wakelock_info, "wakelock-locked-total-rate", (double)locked_total / duration);
+		j_obj_new_int64_add(j_wakelock_info, "wakelock-unlocked-total", unlocked_total);
+		j_obj_new_double_add(j_wakelock_info, "wakelock-unlocked-total-rate", (double)unlocked_total / duration);
+	}
+#endif
 out:
 	list_free(&sorted, NULL);
 }
