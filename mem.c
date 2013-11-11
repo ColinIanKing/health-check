@@ -138,35 +138,36 @@ void mem_dump_mmap(json_object *j_tests, const double duration)
 	mem_mmap_info_t *info;
 
 	printf("Memory Change via mmap() and munmap():\n");
-	if (mem_mmap_info.head == NULL) {
-		printf(" None.\n\n");
-		return;
-	}
-	list_init(&sorted);
 
+	list_init(&sorted);
 	for (l = mem_mmap_info.head; l; l = l->next) {
 		info = (mem_mmap_info_t *)l->data;
 		if (list_add_ordered(&sorted, info, mem_mmap_cmp) == NULL)
 			goto out;
 	}
 
-	printf("  PID                          mmaps  munmaps  Change (K)  Rate (K/Sec)\n");
-	for (l = sorted.head; l; l = l->next) {
-		info = (mem_mmap_info_t *)l->data;
-		proc_info_t *p = proc_cache_find_by_pid(info->pid);
-		int64_t delta = info->mmap_length - info->munmap_length;
-		double rate = ((double)delta) / duration;
-
-		printf(" %5d %-20.20s %8" PRIu64 " %8" PRIu64 "    %8" PRIi64 "      %8.2f (%s)\n",
-			info->pid, p ? p->cmdline : "",
-			info->mmap_count, info->munmap_count,
-			delta / 1024, rate / 1024.0, mem_loading(rate));
+	if (mem_mmap_info.head == NULL) {
+		printf(" None.\n\n");
+	} else {
+		printf("  PID                          mmaps  munmaps  Change (K)  Rate (K/Sec)\n");
+		for (l = sorted.head; l; l = l->next) {
+			info = (mem_mmap_info_t *)l->data;
+			proc_info_t *p = proc_cache_find_by_pid(info->pid);
+			int64_t delta = info->mmap_length - info->munmap_length;
+			double rate = ((double)delta) / duration;
+	
+			printf(" %5d %-20.20s %8" PRIu64 " %8" PRIu64 "    %8" PRIi64 "      %8.2f (%s)\n",
+				info->pid, p ? p->cmdline : "",
+				info->mmap_count, info->munmap_count,
+				delta / 1024, rate / 1024.0, mem_loading(rate));
+		}
+		printf("\n");
 	}
-	printf("\n");
 
 #ifdef JSON_OUTPUT
 	if (j_tests) {
 		json_object *j_mem_test, *j_mem_infos, *j_mem_info;
+		uint64_t total_mmap_count = 0, total_munmap_count = 0, total_delta = 0;
 
 		if ((j_mem_test = j_obj_new_obj()) == NULL)
 			goto out;
@@ -192,7 +193,19 @@ void mem_dump_mmap(json_object *j_tests, const double duration)
 			j_obj_new_int64_add(j_mem_info, "mmap-total-Kbytes", (uint64_t)delta / 1024);
 			j_obj_new_double_add(j_mem_info, "mmap-total-Kbytes-rate", ((double)delta / 1024.0) / duration );
 			j_obj_array_add(j_mem_infos, j_mem_info);
+
+			total_mmap_count += info->mmap_count;
+			total_munmap_count += info->munmap_count;
+			total_delta += delta;
 		}
+
+		if ((j_mem_info = j_obj_new_obj()) == NULL)
+			goto out;
+		j_obj_obj_add(j_mem_test, "memory-usage-via-mmap-total", j_mem_info);
+		j_obj_new_int64_add(j_mem_info, "mmap-count-total", total_mmap_count);
+		j_obj_new_int64_add(j_mem_info, "munmap-count-total", total_munmap_count);
+		j_obj_new_int64_add(j_mem_info, "mmap-total-Kbytes", total_delta / 1024);
+		j_obj_new_double_add(j_mem_info, "mmap-total-Kbytes-rate", ((double)total_delta / 1024.0) / duration);
 	}
 #endif
 
@@ -261,10 +274,6 @@ void mem_dump_brk(json_object *j_tests, const double duration)
 	mem_brk_info_t *info;
 
 	printf("Heap Change via brk():\n");
-	if (mem_brk_info.head == NULL) {
-		printf(" None.\n\n");
-		return;
-	}
 	list_init(&sorted);
 
 	for (l = mem_brk_info.head; l; l = l->next) {
@@ -273,24 +282,29 @@ void mem_dump_brk(json_object *j_tests, const double duration)
 			goto out;
 	}
 
-	printf("  PID                        brk Count   Change (K)  Rate (K/Sec)\n");
-	for (l = sorted.head; l; l = l->next) {
-		info = (mem_brk_info_t *)l->data;
-		proc_info_t *p = proc_cache_find_by_pid(info->pid);
-		ptrdiff_t delta = (info->brk_current - info->brk_start);
-		double rate = ((double)delta) / duration;
-
-		printf(" %5d %-20.20s   %8" PRIu64 "        %td      %8.2f (%s)\n",
-			info->pid,
-			p ? p->cmdline : "", info->brk_count,
-			delta / 1024,
-			rate / 1024.0, mem_loading(rate));
+	if (mem_brk_info.head == NULL) {
+		printf(" None.\n\n");
+	} else {
+		printf("  PID                        brk Count   Change (K)  Rate (K/Sec)\n");
+		for (l = sorted.head; l; l = l->next) {
+			info = (mem_brk_info_t *)l->data;
+			proc_info_t *p = proc_cache_find_by_pid(info->pid);
+			ptrdiff_t delta = (info->brk_current - info->brk_start);
+			double rate = ((double)delta) / duration;
+	
+			printf(" %5d %-20.20s   %8" PRIu64 "        %td      %8.2f (%s)\n",
+				info->pid,
+				p ? p->cmdline : "", info->brk_count,
+				delta / 1024,
+				rate / 1024.0, mem_loading(rate));
+		}
+		printf("\n");
 	}
-	printf("\n");
 
 #ifdef JSON_OUTPUT
 	if (j_tests) {
 		json_object *j_mem_test, *j_mem_infos, *j_mem_info;
+		uint64_t total_brk_count = 0, total_delta = 0;
 
 		if ((j_mem_test = j_obj_new_obj()) == NULL)
 			goto out;
@@ -313,9 +327,18 @@ void mem_dump_brk(json_object *j_tests, const double duration)
 			}
 			j_obj_new_int64_add(j_mem_info, "brk-count", info->brk_count);
 			j_obj_new_int64_add(j_mem_info, "brk-size-Kbytes", (uint64_t)delta / 1024);
-			j_obj_new_double_add(j_mem_info, "brk-size-Kbytes-rate", ((double)delta / 1024.0) / duration );
+			j_obj_new_double_add(j_mem_info, "brk-size-Kbytes-rate", ((double)delta / 1024.0) / duration);
 			j_obj_array_add(j_mem_infos, j_mem_info);
+
+			total_brk_count += info->brk_count;
+			total_delta += (uint64_t)delta;
 		}
+		if ((j_mem_info = j_obj_new_obj()) == NULL)
+			goto out;
+		j_obj_obj_add(j_mem_test, "heap-usage-via-brk-total", j_mem_info);
+		j_obj_new_int64_add(j_mem_info, "brk-count-total", total_brk_count);
+		j_obj_new_int64_add(j_mem_info, "brk-size-total-Kbytes", total_delta / 1024);
+		j_obj_new_double_add(j_mem_info, "brk-size-total-Kbytes-rate", ((double)total_delta / 1024.0) / duration);
 	}
 #endif
 
@@ -515,11 +538,7 @@ int mem_dump_diff(
 	(void)j_tests;
 #endif
 
-	if (mem_info_new.head == NULL) {
-		printf("Memory:\n");
-		printf(" No memory detected.\n\n");
-		return 0;
-	}
+	printf("Memory:\n");
 
 	list_init(&sorted);
 	list_init(&sorted_delta);
@@ -548,41 +567,49 @@ int mem_dump_diff(
 
 	if (!(opt_flags & OPT_BRIEF)) {
 		printf("Per Process Memory (K):\n");
-		printf("  PID  Process              Type        Size       RSS       PSS\n");
-		for (l = sorted.head; l; l = l->next) {
+		if (mem_info_new.head == NULL) {
+			printf(" No memory detected.\n\n");
+		} else {
+			printf("  PID  Process              Type        Size       RSS       PSS\n");
+			for (l = sorted.head; l; l = l->next) {
+				mem_info_t *delta = (mem_info_t *)l->data;
+				mem_type_t type;
+	
+				for (type = MEM_STACK; type < MEM_MAX; type++) {
+					printf(" %5d %-20.20s %-6.6s %9" PRIi64 " %9" PRIi64 " %9" PRIi64 "\n",
+						delta->proc->pid, delta->proc->cmdline,
+						mem_types[type],
+						delta->size[type] / 1024,
+						delta->rss[type] / 1024,
+						delta->pss[type] / 1024);
+				}
+			}
+			printf("\n");
+		}
+	}
+
+	printf("Change in memory (K/second):\n");
+	if (mem_info_new.head == NULL) {
+		printf(" No memory detected.\n\n");
+	} else {
+		for (l = sorted_delta.head; l; l = l->next) {
 			mem_info_t *delta = (mem_info_t *)l->data;
 			mem_type_t type;
 
 			for (type = MEM_STACK; type < MEM_MAX; type++) {
-				printf(" %5d %-20.20s %-6.6s %9" PRIi64 " %9" PRIi64 " %9" PRIi64 "\n",
-					delta->proc->pid, delta->proc->cmdline,
-					mem_types[type],
-					delta->size[type] / 1024,
-					delta->rss[type] / 1024,
-					delta->pss[type] / 1024);
-			}
-		}
-		printf("\n");
-	}
-
-	printf("Change in memory (K/second):\n");
-	for (l = sorted_delta.head; l; l = l->next) {
-		mem_info_t *delta = (mem_info_t *)l->data;
-		mem_type_t type;
-
-		for (type = MEM_STACK; type < MEM_MAX; type++) {
-			if (delta->total[type]) {
-				if (!deltas) {
-					printf("  PID  Process              Type        Size       RSS       PSS\n");
-					deltas = true;
+				if (delta->total[type]) {
+					if (!deltas) {
+						printf("  PID  Process              Type        Size       RSS       PSS\n");
+						deltas = true;
+					}
+					printf(" %5d %-20.20s %-6.6s %9.2f %9.2f %9.2f (%s)\n",
+						delta->proc->pid, delta->proc->cmdline,
+						mem_types[type],
+						(double)(delta->size[type] / 1024.0) / duration,
+						(double)(delta->rss[type] / 1024.0) / duration,
+						(double)(delta->pss[type] / 1024.0) / duration,
+						mem_loading((double)(delta->total[type] / duration)));
 				}
-				printf(" %5d %-20.20s %-6.6s %9.2f %9.2f %9.2f (%s)\n",
-					delta->proc->pid, delta->proc->cmdline,
-					mem_types[type],
-					(double)(delta->size[type] / 1024.0) / duration,
-					(double)(delta->rss[type] / 1024.0) / duration,
-					(double)(delta->pss[type] / 1024.0) / duration,
-					mem_loading((double)(delta->total[type] / duration)));
 			}
 		}
 	}
@@ -596,6 +623,11 @@ int mem_dump_diff(
 		char label[128];
 		mem_type_t type;
 		double rate;
+		uint64_t total_size[MEM_MAX], total_rss[MEM_MAX], total_pss[MEM_MAX];
+
+		memset(total_size, 0, sizeof(total_size));
+		memset(total_rss, 0, sizeof(total_rss));
+		memset(total_pss, 0, sizeof(total_pss));
 
 		if ((j_mem_test = j_obj_new_obj()) == NULL)
 			goto out;
@@ -624,8 +656,30 @@ int mem_dump_diff(
 				j_obj_new_int64_add(j_mem_info, label, delta->pss[type] / 1024);
 
 				j_obj_array_add(j_mem_infos, j_mem_info);
+
+				total_size[type] += delta->size[type];
+				total_rss[type] += delta->rss[type];
+				total_pss[type] += delta->pss[type];
 			}
 		}
+		if ((j_mem_info = j_obj_new_obj()) == NULL)
+			goto out;
+		j_obj_obj_add(j_mem_test, "memory-usage-total", j_mem_info);
+		for (type = MEM_STACK; type < MEM_MAX; type++) {
+			/* Size */
+			snprintf(label, sizeof(label), "%s-size-total-Kbytes", mem_types[type]);
+			j_obj_new_int64_add(j_mem_info, label, total_size[type] / 1024);
+			/* RSS */
+			snprintf(label, sizeof(label), "%s-rss-total-Kbytes", mem_types[type]);
+			j_obj_new_int64_add(j_mem_info, label, total_rss[type] / 1024);
+			/* PSS */
+			snprintf(label, sizeof(label), "%s-pss-total-Kbytes", mem_types[type]);
+			j_obj_new_int64_add(j_mem_info, label, total_pss[type] / 1024);
+		}
+
+		memset(total_size, 0, sizeof(total_size));
+		memset(total_rss, 0, sizeof(total_rss));
+		memset(total_pss, 0, sizeof(total_pss));
 
 		if ((j_mem_test = j_obj_new_obj()) == NULL)
 			goto out;
@@ -669,7 +723,25 @@ int mem_dump_diff(
 				j_obj_new_string_add(j_mem_info, label, mem_loading(rate));
 
 				j_obj_array_add(j_mem_infos, j_mem_info);
+
+				total_size[type] += delta->size[type];
+				total_rss[type] += delta->rss[type];
+				total_pss[type] += delta->pss[type];
 			}
+		}
+		if ((j_mem_info = j_obj_new_obj()) == NULL)
+			goto out;
+		j_obj_obj_add(j_mem_test, "memory-change-total", j_mem_info);
+		for (type = MEM_STACK; type < MEM_MAX; type++) {
+			/* Size */
+			snprintf(label, sizeof(label), "%s-change-size-total-Kbytes", mem_types[type]);
+			j_obj_new_int64_add(j_mem_info, label, total_size[type] / 1024);
+			/* RSS */
+			snprintf(label, sizeof(label), "%s-change-rss-total-Kbytes", mem_types[type]);
+			j_obj_new_int64_add(j_mem_info, label, total_rss[type] / 1024);
+			/* PSS */
+			snprintf(label, sizeof(label), "%s-change-pss-total-Kbytes", mem_types[type]);
+			j_obj_new_int64_add(j_mem_info, label, total_pss[type] / 1024);
 		}
 	}
 #endif
