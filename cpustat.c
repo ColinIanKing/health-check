@@ -279,6 +279,7 @@ int pagefault_dump_diff(json_object *j_tests, const double duration)
 #ifdef JSON_OUTPUT
 	if (j_tests) {
 		json_object *j_fault_info, *j_faults, *j_fault;
+		uint64_t minor_fault_total = 0, major_fault_total = 0;
 
 		if ((j_fault_info = j_obj_new_obj()) == NULL)
 			goto out;
@@ -303,7 +304,20 @@ int pagefault_dump_diff(json_object *j_tests, const double duration)
 			j_obj_new_double_add(j_fault, "major-page-faults-rate", (double)cin->major_fault / duration);
 			j_obj_new_double_add(j_fault, "total-page-faults-rate", (double)(cin->minor_fault + cin->major_fault) / duration);
 			j_obj_array_add(j_faults, j_fault);
+
+			minor_fault_total += cin->minor_fault;
+			major_fault_total += cin->major_fault;
 		}
+
+		if ((j_fault = j_obj_new_obj()) == NULL)
+			goto out;
+		j_obj_obj_add(j_fault_info, "page-faults-total", j_fault);
+		j_obj_new_int64_add(j_fault, "minor-page-faults-total", minor_fault_total);
+		j_obj_new_int64_add(j_fault, "major-page-faults-total", major_fault_total);
+		j_obj_new_int64_add(j_fault, "total-page-faults-total", minor_fault_total + major_fault_total);
+		j_obj_new_double_add(j_fault, "minor-page-faults-total-rate", (double)minor_fault_total / duration);
+		j_obj_new_double_add(j_fault, "major-page-faults-total-rate", (double)major_fault_total / duration);
+		j_obj_new_double_add(j_fault, "total-page-faults-total-rate", (double)(minor_fault_total + major_fault_total) / duration);
 	}
 #endif
 	printf("\n");
