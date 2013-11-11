@@ -623,7 +623,7 @@ int mem_dump_diff(
 		char label[128];
 		mem_type_t type;
 		double rate;
-		uint64_t total_size[MEM_MAX], total_rss[MEM_MAX], total_pss[MEM_MAX];
+		int64_t total_size[MEM_MAX], total_rss[MEM_MAX], total_pss[MEM_MAX];
 
 		memset(total_size, 0, sizeof(total_size));
 		memset(total_rss, 0, sizeof(total_rss));
