@@ -1719,7 +1719,9 @@ void syscall_dump_pollers(json_object *j_tests, const double duration)
 	int i;
 	list_t sorted;
 	link_t *l;
-#ifndef JSON_OUTPUT
+	json_object *j_pollers = NULL;
+
+#if !defined(JSON_OUTPUT)
 	(void)j_tests;
 #endif
 
@@ -1739,9 +1741,8 @@ void syscall_dump_pollers(json_object *j_tests, const double duration)
 	}
 
 #ifdef JSON_OUTPUT
-	json_object *j_poll_test;
-	json_object *j_pollers = NULL;
 	uint64_t poll_infinite = 0, poll_zero = 0, count = 0;
+	json_object *j_poll_test;
 	char tmp[64];
 
 	if (j_tests) {
@@ -1788,7 +1789,6 @@ void syscall_dump_pollers(json_object *j_tests, const double duration)
 #endif
 
 	if (sorted.head) {
-
 		if (!(opt_flags & OPT_BRIEF)) {
 			double prev, bucket;
 			char tmp[64], *units;
