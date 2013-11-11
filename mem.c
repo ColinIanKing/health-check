@@ -21,6 +21,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <stdint.h>
+#include <stddef.h>
 #include <inttypes.h>
 #include <string.h>
 #include <unistd.h>
@@ -136,6 +137,10 @@ void mem_dump_mmap(json_object *j_tests, const double duration)
 	list_t sorted;
 	link_t *l;
 	mem_mmap_info_t *info;
+
+#if !defined(JSON_OUTPUT)
+	(void)j_tests;
+#endif
 
 	printf("Memory Change via mmap() and munmap():\n");
 
@@ -272,6 +277,10 @@ void mem_dump_brk(json_object *j_tests, const double duration)
 	list_t sorted;
 	link_t *l;
 	mem_brk_info_t *info;
+
+#if !defined(JSON_OUTPUT)
+	(void)j_tests;
+#endif
 
 	printf("Heap Change via brk():\n");
 	list_init(&sorted);
