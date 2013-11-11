@@ -1293,6 +1293,10 @@ void syscall_dump_sync(json_object *j_tests, double duration)
 	syscall_sync_info_t *info;
 	bool sync_filenames = false;
 
+#if !defined(JSON_OUTPUT)
+	(void)j_tests;
+#endif
+
 	printf("Filesystem Syncs:\n");
 
 	list_init(&sorted);
@@ -1627,9 +1631,9 @@ void syscall_dump_wakelocks(json_object *j_tests, const double duration, list_t 
 	j_obj_new_double_add(j_wakelock_info, "wakelock-locked-total-rate", (double)total_locked / duration);
 	j_obj_new_int64_add(j_wakelock_info, "wakelock-unlocked-total", total_unlocked);
 	j_obj_new_double_add(j_wakelock_info, "wakelock-unlocked-total-rate", (double)total_unlocked / duration);
+out:
 #endif
 
-out:
 	if (syscall_wakelocks.head && opt_flags & OPT_VERBOSE) {
 		link_t *ls;
 
