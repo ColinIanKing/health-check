@@ -1294,10 +1294,6 @@ void syscall_dump_sync(json_object *j_tests, double duration)
 	bool sync_filenames = false;
 
 	printf("Filesystem Syncs:\n");
-	if (syscall_syncs.head == NULL) {
-		printf(" None.\n\n");
-		return;
-	}
 
 	list_init(&sorted);
 	for (l = syscall_syncs.head; l; l = l->next) {
@@ -1305,26 +1301,35 @@ void syscall_dump_sync(json_object *j_tests, double duration)
 			goto out;
 	}
 
-	printf("  PID   fdatasync    fsync     sync   syncfs    total   total (Rate)\n");
-	for (l = sorted.head; l; l = l->next) {
-		info = (syscall_sync_info_t *)l->data;
-		printf(" %5i   %8" PRIu64 " %8" PRIu64 " %8" PRIu64 " %8" PRIu64 " %8" PRIu64 " %8.2f\n",
-			info->pid,
-			info->fdatasync_count, info->fsync_count,
-			info->sync_count, info->syncfs_count,
-			info->total_count, (double)info->total_count / duration);
-			if (info->sync_file.length)
-				sync_filenames = true;
+	if (syscall_syncs.head == NULL) {
+		printf(" None.\n\n");
+	} else {
+		printf("  PID   fdatasync    fsync     sync   syncfs    total   total (Rate)\n");
+		for (l = sorted.head; l; l = l->next) {
+			info = (syscall_sync_info_t *)l->data;
+			printf(" %5i   %8" PRIu64 " %8" PRIu64 " %8" PRIu64 " %8" PRIu64 " %8" PRIu64 " %8.2f\n",
+				info->pid,
+				info->fdatasync_count, info->fsync_count,
+				info->sync_count, info->syncfs_count,
+				info->total_count, (double)info->total_count / duration);
+				if (info->sync_file.length)
+					sync_filenames = true;
+		}
+		printf("\n");
 	}
-	printf("\n");
 
 
 #ifdef JSON_OUTPUT
 	if (j_tests) {
 		json_object *j_syscall, *j_syscall_infos, *j_syscall_info;
+		uint64_t total_fdatasync = 0, total_fsync = 0, total_sync = 0, total_syncfs = 0;
 
-		j_obj_obj_add(j_tests, "file-system-syncs", (j_syscall = j_obj_new_obj()));
-                j_obj_obj_add(j_syscall, "sync-system-calls-per-process", (j_syscall_infos = j_obj_new_array()));
+		if ((j_syscall = j_obj_new_obj()) == NULL)
+			goto out;
+		j_obj_obj_add(j_tests, "file-system-syncs", j_syscall);
+		if ((j_syscall_infos = j_obj_new_array()) == NULL)
+			goto out;
+                j_obj_obj_add(j_syscall, "sync-system-calls-per-process", j_syscall_infos);
 		for (l = sorted.head; l; l = l->next) {
 			info = (syscall_sync_info_t *)l->data;
 			j_syscall_info = j_obj_new_obj();
@@ -1338,7 +1343,24 @@ void syscall_dump_sync(json_object *j_tests, double duration)
 			j_obj_new_int64_add(j_syscall_info, "syncfs-call-count", info->syncfs_count);
 			j_obj_new_double_add(j_syscall_info, "syncfs-call-rate", (double)info->syncfs_count / duration);
 			j_obj_array_add(j_syscall_infos, j_syscall_info);
+
+			total_fdatasync += info->fdatasync_count;
+			total_fsync += info->fsync_count;
+			total_sync += info->sync_count;
+			total_syncfs += info->syncfs_count;
 		}
+
+		if ((j_syscall_info = j_obj_new_obj()) == NULL)
+			goto out;
+                j_obj_obj_add(j_syscall, "sync-system-calls-total", j_syscall_info);
+		j_obj_new_int64_add(j_syscall_info, "fdatasync-call-count-total", total_fdatasync);
+		j_obj_new_double_add(j_syscall_info, "fdatasync-call-count-total-rate", (double)total_fdatasync / duration);
+		j_obj_new_int64_add(j_syscall_info, "fsync-call-count-total", total_fsync);
+		j_obj_new_double_add(j_syscall_info, "fsync-call-count-total-rate", (double)total_fsync / duration);
+		j_obj_new_int64_add(j_syscall_info, "sync-call-count-total", total_sync);
+		j_obj_new_double_add(j_syscall_info, "sync-call-count-total-rate", (double)total_sync / duration);
+		j_obj_new_int64_add(j_syscall_info, "syncfs-call-count-total", total_syncfs);
+		j_obj_new_double_add(j_syscall_info, "syncfs-call-count-total-rate", (double)total_syncfs / duration);
 	}
 #endif
 	if (sync_filenames) {
@@ -1362,9 +1384,14 @@ void syscall_dump_sync(json_object *j_tests, double duration)
 #ifdef JSON_OUTPUT
 	if (j_tests) {
 		json_object *j_syscall, *j_syscall_infos, *j_syscall_info;
+		uint64_t total_files_sync = 0;
 
-		j_obj_obj_add(j_tests, "files-synced", (j_syscall = j_obj_new_obj()));
-                j_obj_obj_add(j_syscall, "file-sync-per-process", (j_syscall_infos = j_obj_new_array()));
+		if ((j_syscall = j_obj_new_obj()) == NULL)
+			goto out;
+		j_obj_obj_add(j_tests, "files-synced", j_syscall);
+		if ((j_syscall_infos = j_obj_new_array()) == NULL)
+			goto out;
+                j_obj_obj_add(j_syscall, "file-sync-per-process", j_syscall_infos);
 		for (l = sorted.head; l; l = l->next) {
 			link_t *ll;
 			info = (syscall_sync_info_t *)l->data;
@@ -1383,8 +1410,15 @@ void syscall_dump_sync(json_object *j_tests, double duration)
 				j_obj_new_double_add(j_syscall_info, "call-rate", (double)f->count / duration);
 				j_obj_new_string_add(j_syscall_info, "filename", f->filename);
 				j_obj_array_add(j_syscall_infos, j_syscall_info);
+
+				total_files_sync += f->count;
 			}
 		}
+		if ((j_syscall_info = j_obj_new_obj()) == NULL)
+			goto out;
+                j_obj_obj_add(j_syscall, "files-synced-total", j_syscall_info);
+		j_obj_new_int64_add(j_syscall_info, "files-synced-total", total_files_sync);
+		j_obj_new_double_add(j_syscall_info, "files-synced-total-rate", (double)total_files_sync / duration);
 	}
 #endif
 
