@@ -1525,73 +1525,112 @@ void syscall_dump_wakelocks(json_object *j_tests, const double duration, list_t 
 	uint64_t total_locked = 0, total_unlocked = 0;
 	uint32_t total_count = 0;
 	double total_locked_duration = 0.0;
+#ifdef JSON_OUTPUT
+	json_object *j_wakelock_test, *j_wakelock_infos, *j_wakelock_info;
+#endif
 
 	(void)j_tests;
 
 	if (!(opt_flags & OPT_WAKELOCKS_HEAVY))
 		return;
 
+#ifdef JSON_OUTPUT
+	if (j_tests) {
+		if ((j_wakelock_test = j_obj_new_obj()) == NULL)
+			goto out;
+		j_obj_obj_add(j_tests, "wakelock-operations-heavy", j_wakelock_test);
+		if ((j_wakelock_infos = j_obj_new_array()) == NULL)
+			goto out;
+		j_obj_obj_add(j_wakelock_test, "wakelock-operations-heavy-per-process", j_wakelock_infos);
+	}
+#endif
+
 	printf("Wakelock operations by wakelock:\n");
 	if (!syscall_wakelocks.head) {
 		printf(" None.\n\n");
-		return;
-	}
+	} else {
+		printf("  PID  Process              Wakelock             Locks  Unlocks  Locks    Unlocks  Lock Duration\n");
+		printf("%65s%s", "", "Per Sec  Per Sec  (Average Sec)\n");
+		for (lp = pids->head; lp; lp = lp->next) {
+			link_t *ln;
+			list_t wakelock_names;
+			proc_info_t *p = (proc_info_t *)lp->data;
+	
+			list_init(&wakelock_names);
 
-	printf("  PID  Process              Wakelock             Locks  Unlocks  Locks    Unlocks  Lock Duration\n");
-	printf("%65s%s", "", "Per Sec  Per Sec  (Average Sec)\n");
-	for (lp = pids->head; lp; lp = lp->next) {
-		link_t *ln;
-		list_t wakelock_names;
-		proc_info_t *p = (proc_info_t *)lp->data;
+			syscall_wakelock_names_by_pid(p->pid, &wakelock_names);
 
-		list_init(&wakelock_names);
+			for (ln = wakelock_names.head; ln; ln = ln->next) {
+				char *lockname = (char *)ln->data;
+				uint64_t locked = 0, unlocked = 0;
+				double locked_time = -1.0, unlocked_time;
+				double locked_duration = 0.0;
+				uint32_t count = 0;
+				link_t *ls;
 
-		syscall_wakelock_names_by_pid(p->pid, &wakelock_names);
-
-		for (ln = wakelock_names.head; ln; ln = ln->next) {
-			char *lockname = (char *)ln->data;
-			uint64_t locked = 0, unlocked = 0;
-			double locked_time = -1.0, unlocked_time;
-			double locked_duration = 0.0;
-			uint32_t count = 0;
-			link_t *ls;
-
-			for (ls = syscall_wakelocks.head; ls; ls = ls->next) {
-				syscall_wakelock_info_t *info = (syscall_wakelock_info_t *)ls->data;
-				if (info->pid == p->pid && !strcmp(lockname, info->lockname)) {
-					if (info->locked) {
-						locked++;
-						locked_time = syscall_timeval_to_double(&info->tv);
-					}
-					else {
-						unlocked++;
-						unlocked_time = syscall_timeval_to_double(&info->tv);
-						if (locked_time >= 0.0) {
-							count++;
-							locked_duration += unlocked_time - locked_time;
+				for (ls = syscall_wakelocks.head; ls; ls = ls->next) {
+					syscall_wakelock_info_t *info = (syscall_wakelock_info_t *)ls->data;
+					if (info->pid == p->pid && !strcmp(lockname, info->lockname)) {
+						if (info->locked) {
+							locked++;
+							locked_time = syscall_timeval_to_double(&info->tv);
+						}
+						else {
+							unlocked++;
+							unlocked_time = syscall_timeval_to_double(&info->tv);
+							if (locked_time >= 0.0) {
+								count++;
+								locked_duration += unlocked_time - locked_time;
+							}
 						}
 					}
 				}
+				total_locked += locked;
+				total_unlocked += unlocked;
+				total_count += count;
+				total_locked_duration += locked_duration;
+	
+				printf(" %5i %-20.20s %-16.16s  %8" PRIu64 " %8" PRIu64 " %8.2f %8.2f %12.5f\n",
+					p->pid, p->cmdline, lockname, locked, unlocked,
+					(double)locked / duration, (double)unlocked / duration,
+					count ? locked_duration / count : 0.0);
+#ifdef JSON_OUTPUT
+				if ((j_wakelock_info = j_obj_new_obj()) == NULL)
+					goto out;
+					j_obj_new_int32_add(j_wakelock_info, "pid", p->pid);
+					j_obj_new_int32_add(j_wakelock_info, "ppid", p->ppid);
+					j_obj_new_int32_add(j_wakelock_info, "is-thread", p->is_thread);
+					j_obj_new_string_add(j_wakelock_info, "name", p->cmdline);
+					j_obj_new_string_add(j_wakelock_info, "lockname", lockname);
+                        		j_obj_new_int64_add(j_wakelock_info, "wakelock-locked", locked);
+                        		j_obj_new_double_add(j_wakelock_info, "wakelock-locked-rate", (double)locked / duration);
+                        		j_obj_new_int64_add(j_wakelock_info, "wakelock-unlocked", unlocked);
+                        		j_obj_new_double_add(j_wakelock_info, "wakelock-unlocked-rate", (double)unlocked / duration);
+                        		j_obj_new_double_add(j_wakelock_info, "wakelock-locked-duration", 
+						count ? locked_duration / count : 0.0);
+                        		j_obj_array_add(j_wakelock_infos, j_wakelock_info);
+#endif
 			}
-			total_locked += locked;
-			total_unlocked += unlocked;
-			total_count += count;
-			total_locked_duration += locked_duration;
-
-			printf(" %5i %-20.20s %-16.16s  %8" PRIu64 " %8" PRIu64 " %8.2f %8.2f %12.5f\n",
-				p->pid, p->cmdline, lockname, locked, unlocked,
-				(double)locked / duration, (double)unlocked / duration,
-				count ? locked_duration / count : 0.0);
+			list_free(&wakelock_names, NULL);
 		}
-		list_free(&wakelock_names, NULL);
+		printf(" Total%40s%8" PRIu64 " %8" PRIu64 " %8.2f %8.2f %12.5f\n", "",
+			total_locked, total_unlocked,
+			(double)total_locked / duration, (double)total_unlocked / duration,
+			total_count ? total_locked_duration / total_count : 0.0);
+		printf("\n");
 	}
-	printf(" Total%40s%8" PRIu64 " %8" PRIu64 " %8.2f %8.2f %12.5f\n", "",
-		total_locked, total_unlocked,
-		(double)total_locked / duration, (double)total_unlocked / duration,
-		total_count ? total_locked_duration / total_count : 0.0);
-	printf("\n");
+#ifdef JSON_OUTPUT
+	if ((j_wakelock_info = j_obj_new_obj()) == NULL)
+		goto out;
+	j_obj_obj_add(j_wakelock_test, "wakelock-operations-heavy-total", j_wakelock_info);
+	j_obj_new_int64_add(j_wakelock_info, "wakelock-locked-total", total_locked);
+	j_obj_new_double_add(j_wakelock_info, "wakelock-locked-total-rate", (double)total_locked / duration);
+	j_obj_new_int64_add(j_wakelock_info, "wakelock-unlocked-total", total_unlocked);
+	j_obj_new_double_add(j_wakelock_info, "wakelock-unlocked-total-rate", (double)total_unlocked / duration);
+#endif
 
-	if (opt_flags & OPT_VERBOSE) {
+out:
+	if (syscall_wakelocks.head && opt_flags & OPT_VERBOSE) {
 		link_t *ls;
 
 		printf("Verbose Dump of Wakelock Actions:\n");
@@ -1601,15 +1640,15 @@ void syscall_dump_wakelocks(json_object *j_tests, const double duration, list_t 
 			syscall_wakelock_info_t *info = (syscall_wakelock_info_t *)ls->data;
 			time_t whence_time = (time_t)info->tv.tv_sec;
 			struct tm *whence_tm = localtime(&whence_time);
-
+	
 			strftime(buf, sizeof(buf), "%x %X", whence_tm);
-
+	
 			if (info->locked) {
 				link_t *l;
-
+	
 				for (l = ls; l; l = l->next) {
 					syscall_wakelock_info_t *info2 = (syscall_wakelock_info_t *)l->data;
-
+	
 					if (info->pid == info2->pid &&
 					    !info2->locked &&
 					    !strcmp(info->lockname, info2->lockname)) {
@@ -1618,7 +1657,7 @@ void syscall_dump_wakelocks(json_object *j_tests, const double duration, list_t 
 					}
 				}
 			}
-
+	
 			if (info->paired) {
 				double locked_time = syscall_timeval_to_double(&info->paired->tv);
 				double unlocked_time = syscall_timeval_to_double(&info->tv);
