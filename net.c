@@ -478,15 +478,10 @@ void net_connection_dump(json_object *j_tests, double duration)
 	uint64_t send_total = 0, recv_total = 0;
 #else
 	(void)j_tests;
+	(void)duration;
 #endif
 
 	printf("Open Network Connections:\n");
-#if 0
-	if (!net_cached_addrs.head) {
-		printf(" None.\n\n");
-		return;
-	}
-#endif
 
 	list_init(&dump_info_list);
 	list_init(&sorted);
