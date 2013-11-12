@@ -1,3 +1,11 @@
+health-check (0.01.44) saucy; urgency=low
+
+  * Makefile: bump version
+  * fnotify.c: JSON access-count-total-rate should be double
+  * Add test helper health-check-test-pid.py
+
+ -- Colin King <colin.king@canonical.com>  Tue, 13 Oct 2013 14:03:01 +0000
+
 health-check (0.01.43) saucy; urgency=low
 
   * Makefile: bump version
