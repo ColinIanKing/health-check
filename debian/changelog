@@ -1,3 +1,10 @@
+health-check (0.01.45) saucy; urgency=low
+
+  * Fix dates in changelog
+  * Makefile: bump version again
+
+ -- Colin King <colin.king@canonical.com>  Tue, 12 Oct 2013 14:03:01 +0000
+
 health-check (0.01.44) saucy; urgency=low
 
   * Makefile: bump version
