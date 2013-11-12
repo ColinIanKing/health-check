@@ -404,7 +404,7 @@ static void fnotify_dump_files(
 			goto out;
 		j_obj_obj_add(j_fnotify_test, "file-access-total", j_access);
 		j_obj_new_int64_add(j_access, "access-count-total", total);
-		j_obj_new_int64_add(j_access, "access-count-total-rate", (double)total / duration);
+		j_obj_new_double_add(j_access, "access-count-total-rate", (double)total / duration);
 	}
 #endif
 
