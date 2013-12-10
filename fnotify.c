@@ -72,17 +72,22 @@ int fnotify_event_init(void)
 	}
 
 	while ((mount = getmntent (mounts)) != NULL) {
+		/*
 		if (access (mount->mnt_fsname, F_OK) != 0)
 			continue;
+		*/
 
 		ret = fanotify_mark(fan_fd, FAN_MARK_ADD | FAN_MARK_MOUNT,
 			FAN_ACCESS| FAN_MODIFY | FAN_OPEN | FAN_CLOSE |
 			FAN_ONDIR | FAN_EVENT_ON_CHILD, AT_FDCWD,
 			mount->mnt_dir);
 		if ((ret < 0) && (errno != ENOENT)) {
+			continue;
+			/*
 			fprintf(stderr, "Cannot add watch on %s mount %s: %s.\n",
 				mount->mnt_type, mount->mnt_dir,
 				strerror (errno));
+			*/
 		}
 	}
 	endmntent (mounts);
@@ -229,7 +234,7 @@ int fnotify_event_add(
 				for (l = fnotify_files.head; l; l = l->next) {
 					fileinfo = (fnotify_fileinfo_t *)l->data;
 					if ((metadata->mask == fileinfo->mask) &&
-					    (!strcmp(fileinfo->filename, fileinfo->filename))) {
+					    (!strcmp(fileinfo->filename, filename))) {
 						found = true;
 						break;
 					}
