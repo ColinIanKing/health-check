@@ -32,7 +32,6 @@
 #endif
 #include <sys/user.h>
 #include <errno.h>
-#include <linux/ptrace.h>
 #include <limits.h>
 #include <pthread.h>
 
