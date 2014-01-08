@@ -6,7 +6,7 @@ Standards-Version: 3.9.4
 Build-Depends: debhelper (>= 7), libjson0-dev (>= 0.9)
 
 Package: health-check
-Architecture: linux-any
+Architecture: linux i386 amd64 arm
 Depends: ${shlibs:Depends}, ${misc:Depends}
 Description: process monitoring tool
  Health-check monitors a processes and optionally their child
