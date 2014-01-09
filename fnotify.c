@@ -327,15 +327,6 @@ static const char *fnotify_mask_to_str(const int mask)
 }
 
 /*
- *  fnotify_is_syspower()
- *	check for /sys/power wakelock activity
- */
-static inline bool fnotify_is_syspower(fnotify_fileinfo_t *info)
-{
-	return !strncmp(info->filename, "/sys/power", 10);
-}
-
-/*
  *  fnotify_dump_files()
  *	dump out fnotify file access stats
  */
