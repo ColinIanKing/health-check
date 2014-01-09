@@ -185,8 +185,8 @@ int event_get_all_pids(const list_t *pids, proc_state state)
 
 		ptr++;
 		sscanf(buf, "%" SCNu64, &count);
-		sscanf(ptr, "%d", &event_pid);
-		sscanf(ptr + 24, "%s (%[^)])", func, timer);
+		sscanf(ptr, "%8d", &event_pid);
+		sscanf(ptr + 24, "%127s (%127[^)])", func, timer);
 
 		for (l = pids->head; l; l = l->next) {
 			proc_info_t *p = (proc_info_t *)l->data;
