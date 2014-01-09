@@ -685,7 +685,7 @@ static int net_tcp_udp_parse(const net_type_t type)
 		} else {
 			new_addr.family = new_addr.u.addr4.sin_family = AF_INET;
 			new_addr.u.addr4.sin_port = port;
-			sscanf(addr_str, "%X", &new_addr.u.addr4.sin_addr.s_addr);
+			sscanf(addr_str, "%8X", &new_addr.u.addr4.sin_addr.s_addr);
 		}
 		net_addr_add(&new_addr);
 	}
