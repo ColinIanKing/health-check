@@ -1528,7 +1528,7 @@ void syscall_dump_wakelocks(json_object *j_tests, const double duration, list_t 
 	uint64_t total_locked = 0, total_unlocked = 0;
 	uint32_t total_count = 0;
 #ifdef JSON_OUTPUT
-	json_object *j_wakelock_test, *j_wakelock_infos, *j_wakelock_info;
+	json_object *j_wakelock_test = NULL, *j_wakelock_infos = NULL, *j_wakelock_info;
 #endif
 
 	(void)j_tests;
