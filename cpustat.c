@@ -345,8 +345,8 @@ int cpustat_get_by_proc(proc_info_t *proc, proc_state state)
 		pid_t pid;
 
 		/* 3173 (a.out) R 3093 3173 3093 34818 3173 4202496 165 0 0 0 3194 0 */
-		if (fscanf(fp, "%d (%[^)]) %*c %*d %*d %*d %*d %*d %*u %" SCNu64
-			" %*u %" SCNu64 " %*u %" SCNu64 " %" SCNu64,
+		if (fscanf(fp, "%8d (%19[^)]) %*c %*d %*d %*d %*d %*d %*u %20" SCNu64
+			" %*u %20" SCNu64 " %*u %20" SCNu64 " %20" SCNu64,
 			&pid, comm, &minor_fault, &major_fault, &utime, &stime) == 6) {
 			cpustat_info_t *info;
 
