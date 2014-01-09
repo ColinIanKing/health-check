@@ -1,3 +1,27 @@
+health-check (0.01.47) trusty; urgency=low
+
+  * Makefile: bump version
+  * debian/control: fix architectures
+  * Minor fixes to stop some build warnings
+  * Fix j_net_test warning
+  * event.c: avoid possible scanf overruns
+  * net.c: avoid possible scanf overruns
+  * cpustat.c: avoid possible scanf overruns
+  * mem.c: avoid possible scanf overruns
+  * avoid undefined behaviour with void * ptr differences
+  * proc.c: avoid possible scanf overruns
+  * move scope of total_locked_duration
+  * Use correct printf specifiers for size_t
+  * remove unused function fnotify_is_syspower
+  * Add debian watch file
+  * Update debian control and add homepage info
+  * Ensure we build just for x86 and ARM for the moment
+  * Update debian compat and rules
+  * syscall: fix build error on trusty
+  * Update copyright dates
+
+ -- Colin King <colin.king@canonical.com>  Thu, 9 Jan 2014 14:47:11 +0000
+
 health-check (0.01.46) saucy; urgency=low
 
   * Makefile: bump version
