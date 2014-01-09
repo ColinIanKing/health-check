@@ -392,7 +392,7 @@ static int mem_get_size(FILE *fp, const char *field, uint64_t *size)
 	*size = 0;
 
 	while (!feof(fp)) {
-		if (fscanf(fp, "%[^:]: %" SCNi64 "%*[^\n]%*c", tmp, &size_k) == 2) {
+		if (fscanf(fp, "%4095[^:]: %" SCNi64 "%*[^\n]%*c", tmp, &size_k) == 2) {
 			if (strcmp(tmp, field) == 0) {
 				*size = size_k * 1024;
 				return 0;
