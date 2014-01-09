@@ -172,7 +172,7 @@ int proc_cache_get(void)
 			pid_t pid, ppid;
 			char comm[64];
 			/* 3173 (a.out) R 3093 3173 3093 34818 3173 4202496 165 0 0 0 3194 0 */
-			if (fscanf(fp, "%d (%[^)]) %*c %i", &pid, comm, &ppid) == 3)
+			if (fscanf(fp, "%8d (%63[^)]) %*c %8i", &pid, comm, &ppid) == 3)
 				(void)proc_cache_add(pid, ppid, false);
 			fclose(fp);
 		}
