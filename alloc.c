@@ -25,7 +25,7 @@ void *__malloc(const size_t size, const char *where, const int line)
 {
 	void *ptr = malloc(size);
 
-	printf("malloc(%zd) --> %p  @ %s %d\n",
+	printf("malloc(%zu) --> %p  @ %s %d\n",
 		size, ptr, where, line);
 
 	return ptr;
@@ -41,7 +41,7 @@ void *__calloc(const size_t nmemb, const size_t size, const char *where, const i
 {
 	void *ptr = calloc(nmemb, size);
 
-	printf("calloc(%zd, %zd) --> %p  @ %s %d\n",
+	printf("calloc(%zu, %zu) --> %p  @ %s %d\n",
 		nmemb, size, ptr, where, line);
 
 	return ptr;
@@ -51,7 +51,7 @@ void *__realloc(void *ptr, const size_t size, const char *where, const int line)
 {
 	void *new = realloc(ptr, size);
 
-	printf("realloc(%p, %zd) --> %p  @ %s %d\n",
+	printf("realloc(%p, %zu) --> %p  @ %s %d\n",
 		ptr, size, new, where, line);
 
 	return new;
