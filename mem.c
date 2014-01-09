@@ -275,8 +275,8 @@ static int mem_brk_cmp(const void *data1, const void *data2)
 	mem_brk_info_t *m1 = (mem_brk_info_t *)data1;
 	mem_brk_info_t *m2 = (mem_brk_info_t *)data2;
 
-	ptrdiff_t p1 = m1->brk_current - m1->brk_start;
-	ptrdiff_t p2 = m2->brk_current - m2->brk_start;
+	ptrdiff_t p1 = (char *)m1->brk_current - (char *)m1->brk_start;
+	ptrdiff_t p2 = (char *)m2->brk_current - (char *)m2->brk_start;
 
 	return p2 - p1;
 }
@@ -311,7 +311,7 @@ void mem_dump_brk(json_object *j_tests, const double duration)
 		for (l = sorted.head; l; l = l->next) {
 			info = (mem_brk_info_t *)l->data;
 			proc_info_t *p = proc_cache_find_by_pid(info->pid);
-			ptrdiff_t delta = (info->brk_current - info->brk_start);
+			ptrdiff_t delta = ((char *)info->brk_current - (char *)info->brk_start);
 			double rate = ((double)delta) / duration;
 	
 			printf(" %5d %-20.20s   %8" PRIu64 "        %td      %8.2f (%s)\n",
@@ -337,7 +337,7 @@ void mem_dump_brk(json_object *j_tests, const double duration)
 		for (l = sorted.head; l; l = l->next) {
 			info = (mem_brk_info_t *)l->data;
 			proc_info_t *p = proc_cache_find_by_pid(info->pid);
-			ptrdiff_t delta = (info->brk_current - info->brk_start);
+			ptrdiff_t delta = ((char *)info->brk_current - (char *)info->brk_start);
 
 			if ((j_mem_info = j_obj_new_obj()) == NULL)
 				goto out;
