@@ -46,7 +46,9 @@ option is only useful when attaching to already running processes using
 the \-p option.
 .TP
 .B \-d 
-Specify analysis duration in seconds. Default is 60 seconds.
+Specify analysis duration in seconds. Default is 60 seconds.  A duration
+of 0 will make health-check run forever, or until the monitored process
+exits.
 .TP
 .B \-f
 Follow fork, vfork and clone system calls.
