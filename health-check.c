@@ -478,8 +478,8 @@ int main(int argc, char **argv)
 		if (pid_list_get_children(&pids) < 0)
 			goto out;
 
-	if (opt_duration_secs < 0.5) {
-		fprintf(stderr, "Duration must 0.5 or more.\n");
+	if (opt_duration_secs < 0.0) {
+		fprintf(stderr, "Duration must positive.\n");
 		health_check_exit(EXIT_FAILURE);
 	}
 
@@ -545,13 +545,16 @@ int main(int argc, char **argv)
 
 	while ((procs_traced > 0) &&
 	       keep_running &&
-	       timeval_to_double(&duration) > 0.0) {
+	       (opt_duration_secs == 0.0 || timeval_to_double(&duration) > 0.0)) {
+
+		struct timeval *duration_ptr = 
+			opt_duration_secs == 0.0 ? NULL : &duration;
 #ifdef FNOTIFY
 		fd_set rfds;
 		FD_ZERO(&rfds);
 		FD_SET(fan_fd, &rfds);
 
-		ret = select(fan_fd + 1, &rfds, NULL, NULL, &duration);
+		ret = select(fan_fd + 1, &rfds, NULL, NULL, duration_ptr);
 		if (ret < 0) {
 			if (errno != EINTR) {
 				fprintf(stderr, "Select failed: %s\n", strerror(errno));
@@ -575,7 +578,7 @@ int main(int argc, char **argv)
 			}
 		}
 #else
-		ret = select(0, NULL, NULL, NULL, &duration);
+		ret = select(0, NULL, NULL, NULL, duration_ptr);
 		if (ret < 0) {
 			if (errno != EINTR) {
 				fprintf(stderr, "Select failed: %s\n", strerror(errno));
