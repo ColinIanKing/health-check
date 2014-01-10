@@ -53,6 +53,8 @@
 
 #define APP_NAME			"health-check"
 
+#define DURATION_RUN_FOREVER		(0.0)
+
 static bool caught_sigint = false;
 volatile bool keep_running = true;
 int opt_flags;
@@ -393,6 +395,7 @@ int main(int argc, char **argv)
 			break;
 		case 'd':
 			opt_duration_secs = atof(optarg);
+			opt_flags |= OPT_DURATION;
 			break;
 		case 'm':
 			opt_max_syscalls = atoi(optarg);
@@ -446,8 +449,14 @@ int main(int argc, char **argv)
 		argv += optind;
 		path = find_executable(argv[0]);
 		if (path) {
-			pid_t pid = exec_executable(opt_username, path, argv);
+			pid_t pid;
 			proc_info_t *p;
+
+			/* No duration given, so run until completion */
+			if (!(opt_flags & OPT_DURATION))
+				opt_duration_secs = DURATION_RUN_FOREVER;
+
+			pid = exec_executable(opt_username, path, argv);
 			if ((p = proc_cache_add(pid, 0, false)) == NULL) {
 				fprintf(stderr, "Cannot find process with PID %i\n", pid);
 				goto out;
@@ -545,10 +554,10 @@ int main(int argc, char **argv)
 
 	while ((procs_traced > 0) &&
 	       keep_running &&
-	       (opt_duration_secs == 0.0 || timeval_to_double(&duration) > 0.0)) {
+	       (opt_duration_secs == DURATION_RUN_FOREVER || timeval_to_double(&duration) > 0.0)) {
 
 		struct timeval *duration_ptr = 
-			opt_duration_secs == 0.0 ? NULL : &duration;
+			opt_duration_secs == DURATION_RUN_FOREVER ? NULL : &duration;
 #ifdef FNOTIFY
 		fd_set rfds;
 		FD_ZERO(&rfds);
