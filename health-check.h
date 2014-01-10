@@ -33,6 +33,7 @@
 #define OPT_WAKELOCKS_HEAVY             0x00000010
 #define OPT_VERBOSE                     0x00000020
 #define OPT_FOLLOW_NEW_PROCS		0x00000040
+#define OPT_DURATION			0x00000080
 
 extern void health_check_exit(const int status) __attribute__ ((noreturn));
 extern void health_check_out_of_memory(const char *msg);
