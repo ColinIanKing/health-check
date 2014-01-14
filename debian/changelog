@@ -1,3 +1,10 @@
+health-check (0.01.49) trusty; urgency=low
+
+  * Makefile: bump version
+  * fix debug message that was on by default
+
+ -- Colin King <colin.king@canonical.com>  Tue, 14 Jan 2014 14:04:00 +0000
+
 health-check (0.01.48) trusty; urgency=low
 
   * Makefile: bump version
@@ -9,7 +16,7 @@ health-check (0.01.48) trusty; urgency=low
   * health-check: run forever if -d option is zero
   * Fix man page
 
- -- Colin King <colin.king@canonical.com>  Tue, 14 Jan 2014 14:46:53 +0000
+ -- Colin King <colin.king@canonical.com>  Tue, 14 Jan 2014 13:46:53 +0000
 
 health-check (0.01.47) trusty; urgency=low
 
