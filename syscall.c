@@ -2274,7 +2274,9 @@ void *syscall_trace(void *arg)
 		if (WIFSTOPPED(status)) {
 			sig = syscall_handle_stop(ctxt, status);
 		} else if (WIFEXITED(status)) {
+#if SYSCALL_DEBUG
 			printf("PROC EXITED %d\n", ctxt->pid);
+#endif
 			if (ctxt->proc) {
 				/*
 				 *  We need to probably catch exit in the system call
