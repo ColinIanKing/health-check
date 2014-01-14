@@ -59,6 +59,8 @@ int procs_traced = 0;
 static int syscall_count = 0;
 static int info_emit = false;
 
+static syscall_context_t *syscall_get_context(pid_t pid);
+
 static list_t syscall_wakelocks;
 static list_t syscall_contexts;		/* This links all the items in syscall_contexts_cache */
 static list_t syscall_syncs;
@@ -2059,16 +2061,16 @@ static void syscall_handle_syscall(syscall_context_t *ctxt)
  */
 static void syscall_handle_event(syscall_context_t *ctxt, int event)
 {
-	if (event == PTRACE_EVENT_CLONE ||
-	    event == PTRACE_EVENT_FORK ||
-	    event == PTRACE_EVENT_VFORK) {
-		unsigned long msg;
-		pid_t child;
-		proc_info_t *p;
+	unsigned long msg;
+	pid_t child;
+	proc_info_t *p;
 
+	switch (event) {
+	case PTRACE_EVENT_CLONE:
+	case PTRACE_EVENT_FORK:
+	case PTRACE_EVENT_VFORK:
 		ptrace(PTRACE_GETEVENTMSG, ctxt->pid, 0, &msg);
 		child = (pid_t)msg;
-
 #if SYSCALL_DEBUG
 		if (event == PTRACE_EVENT_CLONE)
 			printf("PID %d is a clone\n", child);
@@ -2083,8 +2085,19 @@ static void syscall_handle_event(syscall_context_t *ctxt, int event)
 			(void)mem_get_by_proc(p, PROC_START);
 			(void)cpustat_get_by_proc(p, PROC_START);
 			(void)ctxt_switch_get_by_proc(p, PROC_START);
+			(void)syscall_get_context(child);
 		}
 		(void)net_connection_pid(child);	/* Update net connections on new process */
+		break;
+	case PTRACE_EVENT_EXIT:
+#if SYSCALL_DEBUG
+		printf("PID %d exited\n", ctxt->pid);
+#endif
+		if (ctxt->state & SYSCALL_CTX_ATTACHED)
+			ptrace(PTRACE_CONT, ctxt->pid, 0, 0);
+		break;
+	default:
+		break;
 	}
 }
 
@@ -2123,9 +2136,11 @@ static int syscall_handle_stop(syscall_context_t *ctxt, const int status)
 		} else {
 			syscall_handle_trap(ctxt);
 		}
+	} else if (sig == SIGCHLD) {
+		procs_traced--;
 	} else if (sig == (SIGTRAP | 0x80)) {
 		syscall_handle_syscall(ctxt);
-	} else if ((sig != SIGCHLD) && (sig != SIGSTOP)) {
+	} else if (sig != SIGSTOP) {
 		return sig;
 	}
 	return 0;
@@ -2215,7 +2230,7 @@ void *syscall_trace(void *arg)
 	syscall_context_t *ctxt;
 	int status;
 	link_t *l;
-	unsigned long ptrace_flags = PTRACE_O_TRACESYSGOOD;
+	unsigned long ptrace_flags = PTRACE_O_TRACESYSGOOD | PTRACE_O_TRACEEXIT;
 	static int ret = 0;
 
 	(void)arg;
@@ -2239,7 +2254,6 @@ void *syscall_trace(void *arg)
 		}
 		ctxt->state |= SYSCALL_CTX_ATTACHED;
 		(void)ptrace(PTRACE_SETOPTIONS, ctxt->pid, 0, ptrace_flags);
-		procs_traced++;
 	}
 
 	while (keep_running && procs_traced > 0) {
@@ -2260,6 +2274,7 @@ void *syscall_trace(void *arg)
 		if (WIFSTOPPED(status)) {
 			sig = syscall_handle_stop(ctxt, status);
 		} else if (WIFEXITED(status)) {
+			printf("PROC EXITED %d\n", ctxt->pid);
 			if (ctxt->proc) {
 				/*
 				 *  We need to probably catch exit in the system call
