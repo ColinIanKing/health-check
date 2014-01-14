@@ -1,3 +1,16 @@
+health-check (0.01.48) trusty; urgency=low
+
+  * Makefile: bump version
+  * Account for exiting processes correctly.
+  * mem.c: don't account for null address brks
+  * Forgot to add changes that include OPT_DURATION
+  * Run forever if checking an executable
+  * Update man page for -d 0 option
+  * health-check: run forever if -d option is zero
+  * Fix man page
+
+ -- Colin King <colin.king@canonical.com>  Tue, 14 Jan 2014 14:46:53 +0000
+
 health-check (0.01.47) trusty; urgency=low
 
   * Makefile: bump version
