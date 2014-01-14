@@ -241,6 +241,9 @@ int mem_brk_account(const pid_t pid, const void *addr)
 
 	mem_brk_info_t *info = NULL;
 
+	if (!addr)
+		return 0;
+
 	for (l = mem_brk_info.head; l; l = l->next) {
 		info = (mem_brk_info_t *)l->data;
 		if (info->pid == pid) {
@@ -313,8 +316,8 @@ void mem_dump_brk(json_object *j_tests, const double duration)
 			proc_info_t *p = proc_cache_find_by_pid(info->pid);
 			ptrdiff_t delta = ((char *)info->brk_current - (char *)info->brk_start);
 			double rate = ((double)delta) / duration;
-	
-			printf(" %5d %-20.20s   %8" PRIu64 "        %td      %8.2f (%s)\n",
+
+			printf(" %5d %-20.20s   %8" PRIu64 " %12td      %8.2f (%s)\n",
 				info->pid,
 				p ? p->cmdline : "", info->brk_count,
 				delta / 1024,
