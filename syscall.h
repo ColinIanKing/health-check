@@ -23,6 +23,12 @@
 
 #include <sys/time.h>
 
+#if (defined(__x86_64__) || defined(__i386__) || defined(__arm__))
+#define SYSCALL_SUPPORTED	1
+#else
+#define SYSCALL_SUPPORTED	0
+#endif
+
 #include "proc.h"
 #include "list.h"
 #include "json.h"
@@ -141,9 +147,9 @@ typedef struct socket_info {
 	struct socket_info *next;
 } socket_info_t;
 
+extern int procs_traced;
 extern syscall_t syscalls[];
 extern size_t syscalls_len;
-extern int procs_traced;
 
 extern void *syscall_trace(void *arg);
 extern void syscall_dump_hashtable(json_object *j_tests, const double duration);

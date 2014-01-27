@@ -526,8 +526,10 @@ int main(int argc, char **argv)
 	new_action.sa_flags = 0;	
 	sigaction(SIGINT, &new_action, &old_action);
 	
+#if SYSCALL_SUPPORTED
 	syscall_init();
 	syscall_trace_proc(&pids);
+#endif
 
 	mem_init();
 	event_init();
@@ -613,8 +615,10 @@ int main(int argc, char **argv)
 	if (ctxt_switch_get_all_pids(&pids, PROC_FINISH) < 0)
 		goto out;
 	event_stop();
+#if SYSCALL_SUPPORTED
 	if (syscall_stop() < 0)
 		goto out;
+#endif
 
 	sigaction(SIGINT, &old_action, NULL);
 
@@ -628,9 +632,11 @@ int main(int argc, char **argv)
 #ifdef FNOTIFY
 	fnotify_dump_events(json_tests, actual_duration, &pids);
 #endif
+#if SYSCALL_SUPPORTED
 	syscall_dump_hashtable(json_tests, actual_duration);
 	syscall_dump_pollers(json_tests, actual_duration);
 	syscall_dump_sync(json_tests, actual_duration);
+#endif
 	if (mem_dump_diff(json_tests, actual_duration) < 0)
 		goto out;
 	mem_dump_brk(json_tests, actual_duration);
@@ -642,8 +648,10 @@ int main(int argc, char **argv)
 		fnotify_dump_wakelocks(json_tests, actual_duration);
 #endif
 
+#if SYSCALL_SUPPORTED
 	if (opt_flags & OPT_WAKELOCKS_HEAVY)
 		syscall_dump_wakelocks(json_tests, actual_duration, &pids);
+#endif
 
 	if (actual_duration < 5.0)
 		printf("Analysis ran for just %.4f seconds, so rate calculations may be misleading\n",
@@ -658,7 +666,9 @@ out:
 	keep_running = false;	/* Force stop if we aborted */
 	mem_cleanup();
 	net_connection_cleanup();
+#if SYSCALL_SUPPORTED
 	syscall_cleanup();
+#endif
 	event_cleanup();
 	cpustat_cleanup();
 	ctxt_switch_cleanup();

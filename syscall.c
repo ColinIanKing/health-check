@@ -16,6 +16,9 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
  *
  */
+
+int procs_traced = 0;
+
 #define _GNU_SOURCE
 
 #include <stdio.h>
@@ -35,6 +38,7 @@
 #include <limits.h>
 #include <pthread.h>
 
+#include "list.h"
 #include "syscall.h"
 #include "proc.h"
 #include "json.h"
@@ -44,6 +48,8 @@
 #include "fnotify.h"
 #include "ctxt-switch.h"
 #include "health-check.h"
+
+#ifdef SYSCALL_SUPPORTED
 
 #define HASH_TABLE_SIZE	(1997)		/* Must be prime */
 #define ARRAY_SIZE(a)	(sizeof(a) / sizeof(a[0]))
@@ -55,7 +61,6 @@ typedef enum {
 } syscall_call_state;
 
 static pthread_t syscall_tracer;
-int procs_traced = 0;
 static int syscall_count = 0;
 static int info_emit = false;
 
@@ -3538,3 +3543,5 @@ syscall_t syscalls[] = {
 };
 
 size_t syscalls_len = ARRAY_SIZE(syscalls);
+
+#endif
