@@ -1,3 +1,16 @@
+health-check (0.01.50-1) unstable; urgency=medium
+
+  * Initial Debian release (Closes: #737561)
+  * Add COPYING file
+  * Update copyright boiler plate
+  * Correct debian source format
+  * Update man page
+  * Makefile: bump version
+  * Debian: update standards version
+  * Make syscall dependent on arch
+
+ -- Colin King <colin.king@canonical.com>  Tue, 28 Jan 2014 09:15:12 +0000
+
 health-check (0.01.49) trusty; urgency=low
 
   * Makefile: bump version
