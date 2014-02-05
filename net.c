@@ -34,6 +34,7 @@
 #include "proc.h"
 #include "json.h"
 #include "health-check.h"
+#include "net.h"
 
 #ifndef LINE_MAX
 #define LINE_MAX	(4096)
@@ -588,8 +589,6 @@ void net_connection_dump(json_object *j_tests, double duration)
 out:
 	list_free(&sorted, NULL);
 	list_free(&dump_info_list, free);
-
-	return;
 }
 
 /*
