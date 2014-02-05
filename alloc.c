@@ -20,6 +20,8 @@
 #include <stdlib.h>
 #include <stdio.h>
 
+#include "alloc.h"
+
 #if DEBUG_MALLOC
 
 void *__malloc(const size_t size, const char *where, const int line)
