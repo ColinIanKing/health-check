@@ -84,11 +84,6 @@ int fnotify_event_init(void)
 			mount->mnt_dir);
 		if ((ret < 0) && (errno != ENOENT)) {
 			continue;
-			/*
-			fprintf(stderr, "Cannot add watch on %s mount %s: %s.\n",
-				mount->mnt_type, mount->mnt_dir,
-				strerror (errno));
-			*/
 		}
 	}
 	endmntent (mounts);
