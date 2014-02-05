@@ -1209,7 +1209,7 @@ static void syscall_brk_args(
 	syscall_get_args(pid, sc->arg, args);
 	addr = (void *)args[0];
 
-	(int)mem_brk_account(pid, addr);
+	(void)mem_brk_account(pid, addr);
 }
 #endif
 
