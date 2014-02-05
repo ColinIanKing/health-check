@@ -120,9 +120,9 @@ typedef struct {
 } syscall_sync_info_t;
 
 typedef struct {
-	char		*filename;
-	uint64_t	count;
-	int		syscall;
+	char		*filename;	/* name of file being sync'd */
+	uint64_t	count;		/* count of sync calls */
+	int		syscall;	/* specific sync syscall being used */
 } syscall_sync_file_t;
 
 /* sycall states */
@@ -140,11 +140,11 @@ typedef struct syscall_context {
 } syscall_context_t;
 
 typedef struct socket_info {
-	pid_t		pid;
-	int		fd;
-	bool 		send;
-	uint64_t	count;
-	uint64_t	total;
+	pid_t		pid;		/* process id */
+	int		fd;		/* socket fd */
+	bool 		send;		/* true = send, false = recv */
+	uint64_t	count;		/* number of calls */
+	uint64_t	total;		/* number of bytes tx/rx */
 	struct socket_info *next;
 } socket_info_t;
 
