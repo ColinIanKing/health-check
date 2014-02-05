@@ -1,3 +1,18 @@
+health-check (0.01.51-1) unstable; urgency=medium
+
+  * Makefile: bump version
+  * fnotify.c: remove commented out code
+  * mem.h: add more comments
+  * syscall.h: add some more comments
+  * net.h: remove extraneous line
+  * alloc.h: remove extraneous line
+  * syscall.c: cast to (void) for mem_brk_account return
+  * alloc.c: include alloc.h
+  * net.c, net.h: include net.h, fix up net_connection_dump prototype
+  * Fix Debian copyright to GPL-2+
+
+ -- Colin King <colin.king@canonical.com>  Wed, 5 Feb 2014 15:06:23 +0000
+
 health-check (0.01.50-1) unstable; urgency=medium
 
   * Initial Debian release (Closes: #737561)
