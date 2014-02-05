@@ -35,30 +35,29 @@ typedef enum {
 	MEM_MAX,
 } mem_type_t;
 
-
 /* wakeup event information per process */
 typedef struct mem_info_t {
 	proc_info_t	*proc;		/* Proc specific info */
-	int64_t		size[MEM_MAX];
-	int64_t		rss[MEM_MAX];
-	int64_t		pss[MEM_MAX];
-	int64_t		total[MEM_MAX];
-	int64_t		grand_total;
+	int64_t		size[MEM_MAX];	/* region size */
+	int64_t		rss[MEM_MAX];	/* RSS size */
+	int64_t		pss[MEM_MAX];	/* PSS size */
+	int64_t		total[MEM_MAX];	/* total size */
+	int64_t		grand_total;	/* grand total of same mem types */
 } mem_info_t;
 
 typedef struct {
-	pid_t		pid;
-	const void	*brk_start;
-	const void	*brk_current;
-	uint64_t	brk_count;
+	pid_t		pid;		/* process id */
+	const void	*brk_start;	/* start of brk location */
+	const void	*brk_current;	/* current brk location */
+	uint64_t	brk_count;	/* brk calls made */
 } mem_brk_info_t;
 
 typedef struct { 
-	pid_t		pid;
-	uint64_t	mmap_length;
-	uint64_t	mmap_count;
-	uint64_t	munmap_length;
-	uint64_t	munmap_count;
+	pid_t		pid;		/* process id */
+	uint64_t	mmap_length;	/* processes' total mmap region size */
+	uint64_t	mmap_count;	/* number of mmaps made */
+	uint64_t	munmap_length;	/* processes' total unmap region size */
+	uint64_t	munmap_count;	/* number of unmaps made */
 } mem_mmap_info_t;
 
 extern void mem_init(void);
