@@ -17,7 +17,6 @@
  *
  * Author: Colin Ian King <colin.king@canonical.com>
  */
-
 #ifndef __NET_H__
 #define __NET_H__
 
