@@ -369,6 +369,10 @@ static syscall_call_state syscall_get_call_state(const pid_t pid)
 	(void)pid;
 
 	return SYSCALL_UNKNOWN;	/* Need to fix this */
+#elif defined (__powerpc__)
+	(void)pid;
+
+	return SYSCALL_UNKNOWN;	/* Don't think it is possible to do this */
 #else
 	(void)pid;
 
@@ -439,6 +443,14 @@ static int syscall_get_call(const pid_t pid, int *syscall)
 
 	*syscall = sc;
 	return 0;
+#elif defined(__powerpc__)
+	errno = 0;
+	*syscall = ptrace(PTRACE_PEEKUSER, pid, sizeof(long) * PT_R0, NULL);
+	if (errno) {
+		*syscall = -1;
+		return -1;
+	}
+	return 0;
 #else
 #error Only currently implemented for x86 and ARM
 	*syscall = -1;
@@ -481,6 +493,19 @@ static int syscall_get_return(const pid_t pid, int *rc)
 		return -1;
 
 	*rc = regs.ARM_r0;
+	return 0;
+#elif defined(__powerpc__)
+	long flag;
+
+	errno = 0;
+	flag = ptrace(PTRACE_PEEKUSER, pid, sizeof(long) * PT_CCR, NULL);
+	if (errno)
+		return -1;
+	*rc = ptrace(PTRACE_PEEKUSER, pid, sizeof(long) * PT_R3, NULL);
+	if (errno)
+		return -1;
+	if (flag & 0x10000000)
+		*rc = -(*rc);
 	return 0;
 #else
 	fprintf(stderr, "Unknown arch.\n");
@@ -536,6 +561,18 @@ static int syscall_get_args(
 	for (i = 0; i <= arg; i++)
 		args[i] = regs.uregs[i];
 
+	return 0;
+#elif defined (__powerpc__)
+	int i;
+
+	for (i = 0; i <= arg; i++) {
+		int reg = (i == 0) ? PT_ORIG_R3 : (PT_R3 + i);
+
+		errno = 0;
+		args[i] = ptrace(PTRACE_PEEKUSER, pid, reg * sizeof(unsigned long), NULL);
+		if (errno)
+			return -1;
+	}
 	return 0;
 #else
 	int i;

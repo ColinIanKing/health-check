@@ -24,7 +24,7 @@
 
 #include <sys/time.h>
 
-#if (defined(__x86_64__) || defined(__i386__) || defined(__arm__))
+#if (defined(__x86_64__) || defined(__i386__) || defined(__arm__) || defined(__powerpc__))
 #define SYSCALL_SUPPORTED	1
 #else
 #define SYSCALL_SUPPORTED	0
