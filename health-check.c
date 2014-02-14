@@ -533,7 +533,9 @@ int main(int argc, char **argv)
 #endif
 
 	mem_init();
+#if EVENT_SUPPORTED
 	event_init();
+#endif
 	cpustat_init();
 	ctxt_switch_init();
 
@@ -543,8 +545,10 @@ int main(int argc, char **argv)
 	gettimeofday(&tv_start, NULL);
 	tv_end = timeval_add(&tv_start, &duration);
 
+#if EVENT_SUPPORTED
 	if (event_get_all_pids(&pids, PROC_START) < 0)
 		goto out;
+#endif
 	if (cpustat_get_all_pids(&pids, PROC_START) < 0)
 		goto out;
 	if (mem_get_all_pids(&pids, PROC_START) < 0)
@@ -607,15 +611,19 @@ int main(int argc, char **argv)
 	duration = timeval_sub(&tv_now, &tv_start);
 	actual_duration = timeval_to_double(&duration);
 
+#if EVENT_SUPPORTED
 	if (event_get_all_pids(&pids, PROC_FINISH) < 0)
 		goto out;
+#endif
 	if (cpustat_get_all_pids(&pids, PROC_FINISH) < 0)
 		goto out;
 	if (mem_get_all_pids(&pids, PROC_FINISH) < 0)
 		goto out;
 	if (ctxt_switch_get_all_pids(&pids, PROC_FINISH) < 0)
 		goto out;
+#if EVENT_SUPPORTED
 	event_stop();
+#endif
 #if SYSCALL_SUPPORTED
 	if (syscall_stop() < 0)
 		goto out;
@@ -628,7 +636,9 @@ int main(int argc, char **argv)
 
 	cpustat_dump_diff(json_tests, actual_duration);
 	pagefault_dump_diff(json_tests, actual_duration);
+#if EVENT_SUPPORTED
 	event_dump_diff(json_tests, actual_duration);
+#endif
 	ctxt_switch_dump_diff(json_tests, actual_duration);
 #ifdef FNOTIFY
 	fnotify_dump_events(json_tests, actual_duration, &pids);
@@ -670,7 +680,9 @@ out:
 #if SYSCALL_SUPPORTED
 	syscall_cleanup();
 #endif
+#if EVENT_SUPPORTED
 	event_cleanup();
+#endif
 	cpustat_cleanup();
 	ctxt_switch_cleanup();
 #ifdef FNOTIFY

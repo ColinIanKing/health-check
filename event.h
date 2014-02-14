@@ -28,6 +28,13 @@
 
 #define TIMER_STATS	"/proc/timer_stats"
 
+#if (defined(__x86_64__) || defined(__i386__) || defined(__arm__))
+#define EVENT_SUPPORTED	1
+#else
+#define EVENT_SUPPORTED 0
+#endif
+
+
 /* wakeup event information per process */
 typedef struct {
 	proc_info_t	*proc;		/* Proc specific info */
