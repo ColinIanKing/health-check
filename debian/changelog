@@ -1,3 +1,12 @@
+health-check (0.01.53-1) unstable; urgency=medium
+
+  * Makefile: bump version
+  * Add linux-powerpc to Architecture in debian/control
+  * Make event handling arch specific
+  * syscall.c: add powerpc support
+
+ -- Colin King <colin.king@canonical.com>  Fri, 14 Feb 2014 14:06:22 +0000
+
 health-check (0.01.52-1) unstable; urgency=medium
 
   * Makefile: bump version
