@@ -1,3 +1,10 @@
+health-check (0.01.54-1) unstable; urgency=medium
+
+  * Makefile: bump version
+  * Include linux/ptrace.h to fix FTBFS on ARM
+
+ -- Colin King <colin.king@canonical.com>  Mon, 17 Feb 2014 11:00:12 +0000
+
 health-check (0.01.53-1) unstable; urgency=medium
 
   * Makefile: bump version
