@@ -30,6 +30,9 @@ int procs_traced = 0;
 #include <unistd.h>
 #include <sys/syscall.h>
 #include <sys/ptrace.h>
+#if defined(__arm__)
+#include <linux/ptrace.h>
+#endif
 #include <sys/wait.h>
 #if defined(__x86_64__) || defined(__i386__)
 #include <sys/reg.h>
