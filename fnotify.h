@@ -27,6 +27,12 @@
 #include "list.h"
 #include "json.h"
 
+#if defined(__aarch64__)
+#define FNOTIFY_SUPPORTED 0
+#else
+#define FNOTIFY_SUPPORTED 1
+#endif
+
 /* fnotify file information per process */
 typedef struct {
 	proc_info_t	*proc;		/* Proc specific info */

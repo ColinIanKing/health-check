@@ -1,7 +1,6 @@
 VERSION=0.01.54
 
 JSON_OUTPUT=y
-FNOTIFY=y
 
 CFLAGS += -Wall -Wextra -DVERSION='"$(VERSION)"'
 LDFLAGS += -lpthread

@@ -42,9 +42,7 @@
 #include "proc.h"
 #include "syscall.h"
 #include "timeval.h"
-#ifdef FNOTIFY
 #include "fnotify.h"
-#endif
 #include "event.h"
 #include "cpustat.h"
 #include "mem.h"
@@ -62,10 +60,10 @@ int opt_flags;
 int opt_max_syscalls = 1000000;
 
 /*
- *  handle_sigint()
- *	catch sigint, stop program
+ *  handle_sig()
+ *	catch signal, stop program
  */
-static void handle_sigint(int dummy)
+static void handle_sig(int dummy)
 {
 	(void)dummy;    /* Stop unused parameter warning with -Wextra */
 
@@ -117,7 +115,7 @@ static void show_usage(void)
 	printf("  -r            resolve IP addresses\n");
 	printf("  -u user       run command as a specified user\n");
 	printf("  -v            verbose output\n");
-#ifdef FNOTIFY
+#if FNOTIFY_SUPPORTED
 	printf("  -w            monitor wakelock count\n");
 #endif
 	printf("  -W            monitor wakelock usage (has overhead)\n");
@@ -342,7 +340,7 @@ int main(int argc, char **argv)
 	double actual_duration, opt_duration_secs = 60.0;
 	struct timeval tv_start, tv_end, tv_now, duration;
 	int ret, rc = EXIT_SUCCESS;
-#ifdef FNOTIFY
+#if FNOTIFY_SUPPORTED
 	int fan_fd = 0;
 #endif
 	list_t pids;
@@ -415,7 +413,7 @@ int main(int argc, char **argv)
 		case 'v':
 			opt_flags |= OPT_VERBOSE;
 			break;
-#ifdef FNOTIFY
+#if FNOTIFY_SUPPORTED
 		case 'w':
 			opt_flags |= OPT_WAKELOCKS_LIGHT;
 			break;
@@ -510,7 +508,7 @@ int main(int argc, char **argv)
 		json_object_object_add(json_obj, "health-check", json_tests);
 	}
 #endif
-#ifdef FNOTIFY
+#if FNOTIFY_SUPPORTED
 	fnotify_init();
 	if ((fan_fd = fnotify_event_init()) < 0)
 		goto out;
@@ -522,10 +520,11 @@ int main(int argc, char **argv)
 		goto out;
 	}
 
-	new_action.sa_handler = handle_sigint;
+	new_action.sa_handler = handle_sig;
 	sigemptyset(&new_action.sa_mask);
 	new_action.sa_flags = 0;	
 	sigaction(SIGINT, &new_action, &old_action);
+	sigaction(SIGUSR1, &new_action, &old_action);
 	
 #if SYSCALL_SUPPORTED
 	syscall_init();
@@ -565,7 +564,7 @@ int main(int argc, char **argv)
 
 		struct timeval *duration_ptr = 
 			opt_duration_secs == DURATION_RUN_FOREVER ? NULL : &duration;
-#ifdef FNOTIFY
+#if FNOTIFY_SUPORTED
 		fd_set rfds;
 		FD_ZERO(&rfds);
 		FD_SET(fan_fd, &rfds);
@@ -640,7 +639,7 @@ int main(int argc, char **argv)
 	event_dump_diff(json_tests, actual_duration);
 #endif
 	ctxt_switch_dump_diff(json_tests, actual_duration);
-#ifdef FNOTIFY
+#if FNOTIFY_SUPPORTED
 	fnotify_dump_events(json_tests, actual_duration, &pids);
 #endif
 #if SYSCALL_SUPPORTED
@@ -654,7 +653,7 @@ int main(int argc, char **argv)
 	mem_dump_mmap(json_tests, actual_duration);
 	net_connection_dump(json_tests, actual_duration);
 
-#ifdef FNOTIFY
+#if FNOTIFY_SUPPORTED
 	if (opt_flags & OPT_WAKELOCKS_LIGHT)
 		fnotify_dump_wakelocks(json_tests, actual_duration);
 #endif
@@ -685,7 +684,7 @@ out:
 #endif
 	cpustat_cleanup();
 	ctxt_switch_cleanup();
-#ifdef FNOTIFY
+#if FNOTIFY_SUPPORTED
 	fnotify_cleanup();
 #endif
 	free(buffer);
