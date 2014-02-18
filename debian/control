@@ -7,7 +7,7 @@ Build-Depends: debhelper (>= 9), libjson0-dev (>= 0.9)
 Homepage: http://kernel.ubuntu.com/~cking/health-check
 
 Package: health-check
-Architecture: i386 amd64 armel armhf powerpc
+Architecture: i386 amd64 x32 armel armhf powerpc ppc64 ppc64el
 Depends: ${shlibs:Depends}, ${misc:Depends}
 Description: process monitoring tool
  Health-check monitors processes and optionally their child
