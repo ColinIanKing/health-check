@@ -1,3 +1,18 @@
+health-check (0.01.55-1) unstable; urgency=medium
+
+  [Colin King <colin.king@canonical.com]
+  * Makefile: bump version.
+  * debian/control: Disable building on x32.
+  * Disable syscall handling for x32 mode.
+  * Add first cut of __aarch64__ support.
+  * Make fnotify optional depending on arch.
+
+  [Adam Conrad <adconrad@ubuntu.com>]
+  * debian/control: Also enable building on x32, ppc64, and ppc64el.
+  * debian/control: Drop redundant 'linux-' prefixes from arch list.
+
+ -- Colin King <colin.king@canonical.com>  Tue, 18 Feb 2014 17:05:43 +0000
+
 health-check (0.01.54-1) unstable; urgency=medium
 
   * Makefile: bump version
