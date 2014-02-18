@@ -33,6 +33,11 @@ int procs_traced = 0;
 #if defined(__arm__)
 #include <linux/ptrace.h>
 #endif
+#if defined(__aarch64__)
+#include <asm/ptrace.h>
+#include <sys/uio.h>
+#include <elf.h>
+#endif
 #include <sys/wait.h>
 #if defined(__x86_64__) || defined(__i386__)
 #include <sys/reg.h>
@@ -58,6 +63,17 @@ int procs_traced = 0;
 #define HASH_TABLE_SIZE	(1997)		/* Must be prime */
 #define ARRAY_SIZE(a)	(sizeof(a) / sizeof(a[0]))
 
+#if defined(__aarch64__)
+struct arm_pt_regs {
+	int regs[18];
+};
+
+struct aarch64_regs {
+	struct user_pt_regs	usr;
+	struct arm_pt_regs	arm;
+};
+#endif
+
 typedef enum {
 	SYSCALL_ENTRY = 0,
 	SYSCALL_RETURN,
@@ -67,6 +83,7 @@ typedef enum {
 static pthread_t syscall_tracer;
 static int syscall_count = 0;
 static int info_emit = false;
+static pid_t main_pid = -1;
 
 static syscall_context_t *syscall_get_context(pid_t pid);
 
@@ -368,11 +385,7 @@ static syscall_call_state syscall_get_call_state(const pid_t pid)
 		return SYSCALL_UNKNOWN;
 	return SYSCALL_ENTRY;
 
-#elif defined(__arm__)
-	(void)pid;
-
-	return SYSCALL_UNKNOWN;	/* Need to fix this */
-#elif defined (__powerpc__)
+#elif defined(__arm__) || defined(__aarch64__) || defined (__powerpc__)
 	(void)pid;
 
 	return SYSCALL_UNKNOWN;	/* Don't think it is possible to do this */
@@ -454,10 +467,36 @@ static int syscall_get_call(const pid_t pid, int *syscall)
 		return -1;
 	}
 	return 0;
+#elif defined (__aarch64__)
+	struct aarch64_regs regs;
+	struct iovec io = {
+		.iov_base = &regs
+	};
+
+	errno = 0;
+	io.iov_len = sizeof(struct aarch64_regs);
+	ptrace(PTRACE_GETREGSET, pid, NT_PRSTATUS, &io);
+	if (errno)
+		return -1;
+
+	switch (io.iov_len) {
+	case sizeof(regs.arm):
+		*syscall = regs.arm.regs[7];
+		break;
+	case sizeof(regs.usr):
+		*syscall = regs.usr.regs[8];
+		break;
+	default:
+		*syscall = 0;
+		return -1;
+	}
+	return 0;
 #else
-#error Only currently implemented for x86 and ARM
+#warning syscall_get_call not implemented for this arch
+	(void)pid;
+
 	*syscall = -1;
-	return -1
+	return -1;
 #endif
 }
 
@@ -497,6 +536,20 @@ static int syscall_get_return(const pid_t pid, int *rc)
 
 	*rc = regs.ARM_r0;
 	return 0;
+#elif defined (__aarch64__)
+	struct aarch64_regs regs;
+	struct iovec io = {
+		.iov_base = &regs
+	};
+
+	errno = 0;
+	io.iov_len = sizeof(struct aarch64_regs);
+	ptrace(PTRACE_GETREGSET, pid, NT_PRSTATUS, &io);
+	if (errno)
+		return -1;
+
+	*rc = regs.usr.regs[0];
+	return 0;
 #elif defined(__powerpc__)
 	long flag;
 
@@ -511,7 +564,6 @@ static int syscall_get_return(const pid_t pid, int *rc)
 		*rc = -(*rc);
 	return 0;
 #else
-	fprintf(stderr, "Unknown arch.\n");
 	return -1;
 #endif
 }
@@ -563,6 +615,23 @@ static int syscall_get_args(
 
 	for (i = 0; i <= arg; i++)
 		args[i] = regs.uregs[i];
+
+	return 0;
+#elif defined (__aarch64__)
+	struct aarch64_regs regs;
+	struct iovec io = {
+		.iov_base = &regs
+	};
+	int i;
+
+	errno = 0;
+	io.iov_len = sizeof(struct aarch64_regs);
+	ptrace(PTRACE_GETREGSET, pid, NT_PRSTATUS, &io);
+	if (errno)
+		return -1;
+
+	for (i = 0; i <= arg; i++)
+		args[i] = regs.usr.regs[i];
 
 	return 0;
 #elif defined (__powerpc__)
@@ -851,6 +920,7 @@ static void syscall_timespec_timeout(
 	syscall_count_timeout(s, *ret_timeout, threshold);
 }
 
+#if defined(SYS__newselect) || defined(SYS_select)
 /*
  *  syscall_timeval_timeout()
  *     keep tally of timeval timeouts
@@ -875,6 +945,7 @@ static void syscall_timeval_timeout(
 
 	syscall_count_timeout(s, *ret_timeout, threshold);
 }
+#endif
 
 
 /*
@@ -2337,6 +2408,9 @@ void *syscall_trace(void *arg)
 			}
 			ctxt->state &= ~(SYSCALL_CTX_ALIVE | SYSCALL_CTX_ATTACHED);
 			procs_traced--;
+#if SYSCALL_DEBUG
+			printf("PROC TRACED: %d\n", procs_traced);
+#endif
 		}
 		else if (WIFSIGNALED(status)) {
 			/*
@@ -2362,9 +2436,13 @@ void *syscall_trace(void *arg)
 		ptrace(PTRACE_SYSCALL, ctxt->pid, 0, sig);
 	}
 
+#if SYSCALL_DEBUG
+	printf("SYSCALL TRACE COMPLETE\n");
+#endif
 done:
 	syscall_trace_cleanup(NULL);
 	pthread_cleanup_pop(NULL);
+	kill(main_pid, SIGUSR1);
 	pthread_exit(&ret);
 }
 
@@ -2418,6 +2496,7 @@ int syscall_trace_proc(list_t *pids)
 	link_t *l;
 
 	__pids = pids;
+	main_pid = getpid();
 
 	for (l = pids->head; l; l = l->next) {
 		proc_info_t *p = (proc_info_t *)l->data;
