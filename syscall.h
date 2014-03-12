@@ -156,10 +156,11 @@ typedef struct socket_info {
 } socket_info_t;
 
 typedef struct filename_info {
-	int		syscall;
+	int		syscall;	/* syscall number */
 	pid_t		pid;		/* process id */
+	proc_info_t	*proc;		/* proc info */
 	char 		*filename;	/* file being inotify_added */
-	unsigned long	count;
+	uint64_t	count;		/* number of times accessed */
 	struct filename_info *next;
 } filename_info_t;
 
