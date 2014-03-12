@@ -1892,6 +1892,7 @@ void syscall_add_filename(const int syscall, const pid_t pid, const char *filena
 			}
 			info->syscall = syscall;
 			info->pid = pid;
+			info->proc = proc_cache_find_by_pid(pid);
 			info->count = 1;
 			info->next = filename_cache[h];
 			filename_cache[h] = info;
@@ -1959,10 +1960,12 @@ void syscall_dump_filename(const char *label, const int syscall, json_object *j_
 	if (sorted.length == 0) {
 		printf(" None.\n\n");
 	} else {
-		printf("  PID   Rate/Sec  File\n");
+		printf("  PID  Process              Rate/Sec File\n");
 		for (l = sorted.head; l; l = l->next) {
 			filename_info_t *info = (filename_info_t *)l->data;
-			printf(" %5i %8.3f   %s\n", info->pid, (double)info->count / duration, info->filename);
+			printf(" %5i %-20.20s %8.3f %s\n", info->pid,
+				info->proc->cmdline,
+				(double)info->count / duration, info->filename);
 		}
 		printf("\n");
 	}
@@ -1981,6 +1984,9 @@ void syscall_dump_filename(const char *label, const int syscall, json_object *j_
 
 			j_syscall_info = j_obj_new_obj();
 			j_obj_new_int32_add(j_syscall_info, "pid", info->pid);
+			j_obj_new_int32_add(j_syscall_info, "ppid", info->proc->ppid);
+			j_obj_new_int32_add(j_syscall_info, "is_thread", info->proc->is_thread);
+			j_obj_new_string_add(j_syscall_info, "name", info->proc->cmdline);
 			j_obj_new_int64_add(j_syscall_info, "count", info->count);
 			j_obj_new_double_add(j_syscall_info, "access-rate", (double)info->count / duration);
 			j_obj_new_string_add(j_syscall_info, "filename", info->filename);
