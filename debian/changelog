@@ -1,3 +1,16 @@
+health-check (0.01.56-1) unstable; urgency=medium
+
+  * Makefile: bump version
+  * Fix inotify breakage, it was not fully enabled because of macro
+  * Add more file proc specific information to output
+  * syscall: temporarily disable exec tracing
+  * Add json logging for inotify and exec files
+  * syscall: Add usec output to json output
+  * syscall: add microsecond syscall accounting
+  * syscall: Add inotify watch and exec filename tracking
+
+ -- Colin King <colin.king@canonical.com>  Wed, 12 Mar 2014 20:29:31 +0000
+
 health-check (0.01.55-1) unstable; urgency=medium
 
   [Colin King <colin.king@canonical.com]
