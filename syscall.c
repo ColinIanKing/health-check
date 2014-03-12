@@ -98,6 +98,9 @@ static syscall_info_t *syscall_info[HASH_TABLE_SIZE];
 /* hash table for cached fds, hashed on pid and fd */
 static fd_cache_t *fd_cache[HASH_TABLE_SIZE];
 
+/* hash table for cached filenames, hashed on pid and filename */
+static filename_info_t *filename_cache[HASH_TABLE_SIZE];
+
 /* hash table for cached context info, hased on pid */
 static syscall_context_t *syscall_contexts_cache[HASH_TABLE_SIZE];
 
@@ -693,6 +696,28 @@ static inline unsigned long hash_fd(const pid_t pid, const int fd)
 
 	h = (pid ^ (pid << 3) ^ fd) % HASH_TABLE_SIZE;
 	return h;
+}
+
+/*
+ *  hash_filename()
+ *	hash pid and filename
+ */
+static inline unsigned long hash_filename(const pid_t pid, const char *filename)
+{
+	unsigned long h;
+
+	h = pid;
+
+	while (*filename) {
+		unsigned long g;
+		h = (h << 4) + (*filename);
+		if (0 != (g = h & 0xf0000000)) {
+			h = h ^ (g >> 24);
+			h = h ^ g;
+		}
+                filename++;
+	}
+	return h % HASH_TABLE_SIZE;
 }
 
 /*
@@ -1730,7 +1755,7 @@ void syscall_dump_wakelocks(json_object *j_tests, const double duration, list_t 
                         			j_obj_new_double_add(j_wakelock_info, "wakelock-locked-rate", (double)locked / duration);
                         			j_obj_new_int64_add(j_wakelock_info, "wakelock-unlocked", unlocked);
                         			j_obj_new_double_add(j_wakelock_info, "wakelock-unlocked-rate", (double)unlocked / duration);
-                        			j_obj_new_double_add(j_wakelock_info, "wakelock-locked-duration", 
+                        			j_obj_new_double_add(j_wakelock_info, "wakelock-locked-duration",
 							count ? locked_duration / count : 0.0);
                         			j_obj_array_add(j_wakelock_infos, j_wakelock_info);
 				}
@@ -1800,6 +1825,217 @@ out:
 		}
 	}
 }
+
+#if defined(SYS_inotify_add_watch) || defined(SYS_execve)
+/*
+ *  syscall_peek_filename()
+ *	get a filename as pointed to by addr
+ */
+static char *syscall_peek_filename(const pid_t pid, const unsigned long addr)
+{
+	char *data;
+	size_t i, n = 0;
+	unsigned long v;
+
+	/* Find how long it is */
+	do {
+		v = ptrace(PTRACE_PEEKDATA, pid,
+			addr + n, NULL) & 0xff;
+		n++;
+	} while (v);
+
+	if ((data = calloc(sizeof(unsigned char), n)) == NULL) {
+		health_check_out_of_memory("allocating syscall peek buffer");
+		return NULL;
+	}
+
+	for (i = 0; i < n; i++)
+		data[i] = ptrace(PTRACE_PEEKDATA, pid,
+				addr + i, NULL);
+
+	return data;
+}
+
+/*
+ *  syscall_add_filename()
+ *	Add filename into filename cache
+ */
+void syscall_add_filename(const int syscall, const pid_t pid, const char *filename)
+{
+	unsigned long h;
+	filename_info_t *info;
+
+	if (filename == NULL)
+		return;
+
+	h = hash_filename(pid, filename);
+	info = filename_cache[h];
+
+	while (info) {
+		if (info->pid == pid && !strcmp(info->filename, filename))
+			break;
+	}
+
+	if (!info) {
+		info = calloc(1, sizeof(*info));
+		if (info) {
+			info->filename = strdup(filename);
+			if (!info->filename) {
+				free(info);
+				return;
+			}
+			info->syscall = syscall;
+			info->pid = pid;
+			info->count = 1;
+			info->next = filename_cache[h];
+			filename_cache[h] = info;
+		}
+	} else {
+		info->count++;
+	}
+}
+
+/*
+ *  syscall_filename_cmp()
+ *	filename and pid compare
+ */
+static int syscall_filename_cmp(const void *d1, const void *d2)
+{
+	filename_info_t *f1 = (filename_info_t *)d1;
+	filename_info_t *f2 = (filename_info_t *)d2;
+
+	return f2->count - f1->count;
+}
+
+/*
+ *  syscall_filename_cache_free()
+ *	free up filename cache
+ */
+static void syscall_filename_cache_free(void)
+{
+	int i;
+
+	for (i = 0; i < HASH_TABLE_SIZE; i++) {
+		filename_info_t *next, *info = filename_cache[i];
+
+		while (info) {
+			next = info->next;
+			free(info->filename);
+			free(info);
+			info = next;
+		}
+	}
+}
+
+/*
+ *  syscall_dump_filename()
+ *	dump filename usage by syscall
+ */
+void syscall_dump_filename(const int syscall, double duration)
+{
+	int i;
+	list_t sorted;
+	link_t *l;
+
+	list_init(&sorted);
+
+	for (i = 0; i < HASH_TABLE_SIZE; i++) {
+		filename_info_t *info;
+
+		for (info = filename_cache[i]; info; info = info->next) {
+			if (info->syscall == syscall) {
+				if (list_add_ordered(&sorted, info, syscall_filename_cmp) == NULL)
+					goto out;
+			}
+		}
+	}
+
+	if (sorted.length == 0) {
+		printf(" None.\n\n");
+		return;
+	}
+
+	printf("  PID   Rate/Sec  File\n");
+	for (l = sorted.head; l; l = l->next) {
+		filename_info_t *info = (filename_info_t *)l->data;
+		printf(" %5i %8.3f   %s\n", info->pid, (double)info->count / duration, info->filename);
+	}
+	printf("\n");
+
+	list_free(&sorted, NULL);
+out:
+	return;
+}
+
+#endif
+
+#ifdef SYS_inotify_add_watch
+/*
+ *  syscall_inotify_add_watch_args()
+ *	trace filenames used by inotify_add_watch()
+ */
+void syscall_inotify_add_watch_args(
+	const syscall_t *sc,
+	const syscall_info_t *s,
+	const pid_t pid)
+{
+	unsigned long args[sc->arg + 1];
+	char *filename;
+
+	(void)s;
+	syscall_get_args(pid, sc->arg, args);
+	filename = syscall_peek_filename(pid, args[1]);
+	if (filename) {
+		syscall_add_filename(sc->syscall, pid, filename);
+		free(filename);
+	}
+}
+
+void syscall_dump_inotify(double duration)
+{
+	printf("Inotify watches added:\n");
+	syscall_dump_filename(SYS_inotify_add_watch, duration);
+}
+#else
+void syscall_dump_inotify(double duration)
+{
+	(void)duration;
+}
+#endif
+
+#ifdef SYS_execve
+/*
+ *  syscall_execve_args()
+ *	trace filenames used by execve()
+ */
+void syscall_execve_args(
+	const syscall_t *sc,
+	const syscall_info_t *s,
+	const pid_t pid)
+{
+	unsigned long args[sc->arg + 1];
+	char *filename;
+
+	(void)s;
+	syscall_get_args(pid, sc->arg, args);
+	filename = syscall_peek_filename(pid, args[0]);
+	if (filename) {
+		syscall_add_filename(sc->syscall, pid, syscall_peek_filename(pid, args[0]));
+		free(filename);
+	}
+}
+
+void syscall_dump_execve(double duration)
+{
+	printf("Programs exec'd:\n");
+	syscall_dump_filename(SYS_execve, duration);
+}
+#else
+void syscall_dump_execve(double duration)
+{
+	(void)duration;
+}
+#endif
 
 /*
  *  syscall_timeout_to_human_time()
@@ -2115,8 +2351,12 @@ static syscall_info_t *syscall_count_usage(
 		syscall_info[h] = s;
 	}
 
-	if (++syscall_count >= opt_max_syscalls)
+	if (++syscall_count >= opt_max_syscalls) {
+#if SYSCALL_DEBUG
+		printf("HIT SYSCALL LIMIT\n");
+#endif
 		keep_running = false;
+	}
 
 	if (sc->call_enter)
 		sc->call_enter(sc, s, pid);
@@ -2182,6 +2422,9 @@ static void syscall_handle_event(syscall_context_t *ctxt, int event)
 	pid_t child;
 	proc_info_t *p;
 
+#if SYSCALL_DEBUG
+	printf("EVENT: %d\n", event);
+#endif
 	switch (event) {
 	case PTRACE_EVENT_CLONE:
 	case PTRACE_EVENT_FORK:
@@ -2247,14 +2490,21 @@ static int syscall_handle_stop(syscall_context_t *ctxt, const int status)
 	int event = status >> 16;
 	int sig = WSTOPSIG(status);
 
+
 	if (sig == SIGTRAP) {
+#if SYSCALL_DEBUG
+		printf("GOT SIGTRAP, event: %d\n", event);
+#endif
 		if (event) {
 			syscall_handle_event(ctxt, event);
 		} else {
 			syscall_handle_trap(ctxt);
 		}
 	} else if (sig == SIGCHLD) {
-		procs_traced--;
+#if SYSCALL_DEBUG
+		printf("GOT SIGCHLD, %d\n", ctxt->pid);
+#endif
+		//procs_traced--;
 	} else if (sig == (SIGTRAP | 0x80)) {
 		syscall_handle_syscall(ctxt);
 	} else if (sig != SIGSTOP) {
@@ -2311,6 +2561,9 @@ static syscall_context_t *syscall_get_context(pid_t pid)
 		ctxt->next = syscall_contexts_cache[h];
 		syscall_contexts_cache[h] = ctxt;
 		procs_traced++;
+#if SYSCALL_DEBUG
+		printf("NEW PROCESS %d, TRACED: %d\n", pid, procs_traced);
+#endif
 	}
 	return ctxt;
 }
@@ -2335,6 +2588,9 @@ static void syscall_trace_cleanup(void *arg)
 			kill(ctxt->pid, SIGCONT);
 		}
 	}
+#if SYSCALL_DEBUG
+	printf("SYSCALL TRACE CLEANUP\n");
+#endif
 	keep_running = false;
 }
 
@@ -2355,8 +2611,12 @@ void *syscall_trace(void *arg)
 	pthread_cleanup_push(syscall_trace_cleanup, arg);
 	pthread_setcancelstate(PTHREAD_CANCEL_ENABLE, NULL);
 
-	if (opt_flags & OPT_FOLLOW_NEW_PROCS)
+	if (opt_flags & OPT_FOLLOW_NEW_PROCS) {
 		ptrace_flags |= (PTRACE_O_TRACECLONE | PTRACE_O_TRACEFORK | PTRACE_O_TRACEVFORK);
+#if SYSCALL_DEBUG
+		printf("FOLLOW PROCS\n");
+#endif
+	}
 
 	for (l = syscall_contexts.head; l; l = l->next) {
 		ctxt = (syscall_context_t *)l->data;
@@ -2373,14 +2633,24 @@ void *syscall_trace(void *arg)
 		(void)ptrace(PTRACE_SETOPTIONS, ctxt->pid, 0, ptrace_flags);
 	}
 
+#if SYSCALL_DEBUG
+	printf("TRACE LOOP\n");
+#endif
 	while (keep_running && procs_traced > 0) {
 		int sig = 0;
 		pid_t pid;
 
 		errno = 0;
+#if SYSCALL_DEBUG
+		printf("WAITPID..\n");
+#endif
 		if ((pid = waitpid(-1, &status, __WALL)) == -1) {
-			if (errno == EINTR || errno == ECHILD)
+			if (errno == EINTR || errno == ECHILD) {
+#if SYSCALL_DEBUG
+				printf("WAITPID returned errno: %d\n", errno);
+#endif
 				break;
+			}
 		}
 
 		if ((ctxt = syscall_get_context(pid)) == NULL) {
@@ -2389,10 +2659,13 @@ void *syscall_trace(void *arg)
 		}
 
 		if (WIFSTOPPED(status)) {
+#if SYSCALL_DEBUG
+			printf("PROC  %d\n", ctxt->pid);
+#endif
 			sig = syscall_handle_stop(ctxt, status);
 		} else if (WIFEXITED(status)) {
 #if SYSCALL_DEBUG
-			printf("PROC EXITED %d\n", ctxt->pid);
+			printf("PROC WIFEXITED %d\n", ctxt->pid);
 #endif
 			if (ctxt->proc) {
 				/*
@@ -2419,6 +2692,9 @@ void *syscall_trace(void *arg)
 			 *  TODO: See if we can find out final state before
 			 *  signalled.
 			 */
+#if SYSCALL_DEBUG
+			printf("PROC WIGSIGNALED\n");
+#endif
 			if (WTERMSIG(status) == SIGKILL) {
 				/* It died */
 				printf("Process %d received SIGKILL during monitoring.\n", pid);
@@ -2485,6 +2761,7 @@ void syscall_cleanup(void)
 	list_free(&syscall_syncs, syscall_sync_free_item);
 	syscall_wakelock_fd_cache_free();
 	syscall_hashtable_free();
+	syscall_filename_cache_free();
 }
 
 /*
@@ -2647,7 +2924,7 @@ syscall_t syscalls[] = {
 	SYSCALL(eventfd2),
 #endif
 #ifdef SYS_execve
-	SYSCALL(execve),
+	SYSCALL_CHK(execve, 0, syscall_execve_args, NULL),
 #endif
 #ifdef SYS_exit
 	SYSCALL_CHK(exit, 0, syscall_exit_args, NULL),
@@ -2878,7 +3155,7 @@ syscall_t syscalls[] = {
 	SYSCALL(init_module),
 #endif
 #ifdef SYS_inotify_add_watch
-	SYSCALL(inotify_add_watch),
+	SYSCALL_CHK(inotify_add_watch, 1, syscall_inotify_add_watch_args, NULL),
 #endif
 #ifdef SYS_inotify_init
 	SYSCALL(inotify_init),

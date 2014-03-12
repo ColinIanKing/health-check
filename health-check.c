@@ -646,6 +646,8 @@ int main(int argc, char **argv)
 	syscall_dump_hashtable(json_tests, actual_duration);
 	syscall_dump_pollers(json_tests, actual_duration);
 	syscall_dump_sync(json_tests, actual_duration);
+	syscall_dump_inotify(actual_duration);
+	syscall_dump_execve(actual_duration);
 #endif
 	if (mem_dump_diff(json_tests, actual_duration) < 0)
 		goto out;

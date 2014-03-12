@@ -152,6 +152,14 @@ typedef struct socket_info {
 	struct socket_info *next;
 } socket_info_t;
 
+typedef struct filename_info {
+	int		syscall;
+	pid_t		pid;		/* process id */
+	char 		*filename;	/* file being inotify_added */
+	unsigned long	count;
+	struct filename_info *next;
+} filename_info_t;
+
 extern int procs_traced;
 extern syscall_t syscalls[];
 extern size_t syscalls_len;
@@ -163,6 +171,8 @@ extern void syscall_init(void);
 extern void syscall_cleanup(void);
 extern void syscall_dump_wakelocks(json_object *j_tests, const double duration, list_t *pids);
 extern void syscall_dump_sync(json_object *j_tests, double duration);
+extern void syscall_dump_inotify(double duration);
+extern void syscall_dump_execve(double duration);
 extern int syscall_trace_proc(list_t *pids);
 extern int syscall_stop(void);
 
