@@ -842,6 +842,7 @@ void syscall_dump_hashtable(json_object *j_tests, const double duration)
 			j_obj_new_int64_add(j_syscall_info, "system-call-count", s->count);
 			j_obj_new_double_add(j_syscall_info, "system-call-rate",
 				(double)s->count / duration);
+			j_obj_new_int64_add(j_syscall_info, "system-call-total-microseconds", s->usecs_total);
 			j_obj_array_add(j_syscall_infos, j_syscall_info);
 			total += s->count;
 		}
