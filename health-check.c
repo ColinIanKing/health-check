@@ -564,7 +564,7 @@ int main(int argc, char **argv)
 
 		struct timeval *duration_ptr = 
 			opt_duration_secs == DURATION_RUN_FOREVER ? NULL : &duration;
-#if FNOTIFY_SUPORTED
+#if FNOTIFY_SUPPORTED
 		fd_set rfds;
 		FD_ZERO(&rfds);
 		FD_SET(fan_fd, &rfds);
