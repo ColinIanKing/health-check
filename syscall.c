@@ -2054,8 +2054,14 @@ void syscall_execve_args(
 
 void syscall_dump_execve(json_object *j_obj, double duration)
 {
+	(void)duration;
+	(void)j_obj;
+	/*
+	 * Not 100% reliable yet, so disable this for the moment
+	 *
 	printf("Programs exec'd:\n");
 	syscall_dump_filename("execed-programs", SYS_execve, j_obj, duration);
+	*/
 }
 #else
 void syscall_dump_execve(double duration)
