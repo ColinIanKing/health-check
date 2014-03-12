@@ -64,6 +64,9 @@ typedef struct syscall_info {
 	proc_info_t	*proc;		/* process info */
 	int 		syscall;	/* system call number */
 	uint64_t	count;		/* number times call has been made */
+	uint64_t	usecs_total;	/* total number of uSecs in system call */
+	struct timeval	usec_enter;	/* Time when a syscall was entered */
+	struct timeval	usec_return;	/* Time when a syscall was exited */
 	double 		poll_min;	/* minimum poll time */
 	double		poll_max;	/* maximum poll time */
 	double		poll_total;	/* sum of non zero or negative poll times */

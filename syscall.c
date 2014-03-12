@@ -57,6 +57,7 @@ int procs_traced = 0;
 #include "fnotify.h"
 #include "ctxt-switch.h"
 #include "health-check.h"
+#include "timeval.h"
 
 #ifdef SYSCALL_SUPPORTED
 
@@ -776,7 +777,7 @@ void syscall_dump_hashtable(json_object *j_tests, const double duration)
 	link_t *l;
 	int i;
 	int count = 0;
-	uint64_t total;
+	uint64_t total, usecs_total = 0;
 #ifndef JSON_OUTPUT
 	(void)j_tests;
 #endif
@@ -789,26 +790,30 @@ void syscall_dump_hashtable(json_object *j_tests, const double duration)
 	for (i = 0; i < HASH_TABLE_SIZE; i++) {
 		syscall_info_t *s;
 
-		for (s = syscall_info[i]; s; s = s->next)
+		for (s = syscall_info[i]; s; s = s->next) {
 			if (list_add_ordered(&sorted, s, syscall_count_cmp) == NULL)
 				goto out;
+			usecs_total += s->usecs_total;
+		}
 	}
 
 	printf("System calls traced:\n");
-	printf("  PID  Process              Syscall               Count    Rate/Sec\n");
+	printf("  PID  Process              Syscall               Count    Rate/Sec    Total μSecs  %% Call Time\n");
 	for (total = 0, l = sorted.head; l; l = l->next) {
 		char name[64];
 		syscall_info_t *s = (syscall_info_t *)l->data;
 
 		syscall_name(s->syscall, name, sizeof(name));
-		printf(" %5i %-20.20s %-20.20s %6" PRIu64 " %12.4f\n",
-			s->proc->pid, s->proc->cmdline, name, s->count, (double)s->count / duration);
+		printf(" %5i %-20.20s %-20.20s %6" PRIu64 " %12.4f %13" PRIu64 "    %8.4f\n",
+			s->proc->pid, s->proc->cmdline, name, s->count,
+			(double)s->count / duration, s->usecs_total,
+			(double)s->usecs_total * 100.0 / (double)usecs_total);
 		count++;
 		total += s->count;
 	}
 	if (count > 1) {
-		printf(" %-46.46s%8" PRIu64 " %12.4f\n", "Total",
-			total, (double)total / duration);
+		printf(" %-46.46s%8" PRIu64 " %12.4f %13" PRIu64 "\n", "Total",
+			total, (double)total / duration, usecs_total);
 	}
 	printf("\n");
 
@@ -2382,6 +2387,8 @@ static void syscall_handle_syscall(syscall_context_t *ctxt)
 			ctxt->timeout = 0.0;
 		} else {
 			ctxt->syscall_info = syscall_count_usage(ctxt->pid, ctxt->syscall, &ctxt->timeout);
+			if (ctxt->syscall_info)
+				gettimeofday(&ctxt->syscall_info->usec_enter, NULL);
 		}
 		return;
 
@@ -2398,13 +2405,23 @@ static void syscall_handle_syscall(syscall_context_t *ctxt)
 			/* syscall is different, so can't be a return, must be a new syscall */
 			ctxt->syscall = syscall;
 			ctxt->syscall_info = syscall_count_usage(ctxt->pid, ctxt->syscall, &ctxt->timeout);
+			if (ctxt->syscall_info)
+				gettimeofday(&ctxt->syscall_info->usec_enter, NULL);
 			return;
 		}
 		/* assume it is a return, but it may not be, fall through to SYSCALL_RETURN.. */
 
 	case SYSCALL_RETURN:
-		if (ctxt->syscall_info != NULL)
+		if (ctxt->syscall_info != NULL) {
+			struct timeval t;
+			uint64_t usec;
+
+			gettimeofday(&ctxt->syscall_info->usec_return, NULL);
+			t = timeval_sub(&ctxt->syscall_info->usec_return, &ctxt->syscall_info->usec_enter);
+			usec = (t.tv_sec * 1000000) + t.tv_usec;
+			ctxt->syscall_info->usecs_total += usec;
 			syscall_account_return(ctxt->syscall_info, ctxt->pid, ctxt->syscall, ctxt->timeout);
+		}
 		/* We've got a return, so clear info for next syscall */
 		ctxt->syscall = -1;
 		ctxt->syscall_info = NULL;
