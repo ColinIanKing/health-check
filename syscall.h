@@ -174,8 +174,8 @@ extern void syscall_init(void);
 extern void syscall_cleanup(void);
 extern void syscall_dump_wakelocks(json_object *j_tests, const double duration, list_t *pids);
 extern void syscall_dump_sync(json_object *j_tests, double duration);
-extern void syscall_dump_inotify(double duration);
-extern void syscall_dump_execve(double duration);
+extern void syscall_dump_inotify(json_object *j_obj, double duration);
+extern void syscall_dump_execve(json_object *j_obj, double duration);
 extern int syscall_trace_proc(list_t *pids);
 extern int syscall_stop(void);
 

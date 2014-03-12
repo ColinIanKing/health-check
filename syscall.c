@@ -1937,7 +1937,7 @@ static void syscall_filename_cache_free(void)
  *  syscall_dump_filename()
  *	dump filename usage by syscall
  */
-void syscall_dump_filename(const int syscall, double duration)
+void syscall_dump_filename(const char *label, const int syscall, json_object *j_obj, double duration)
 {
 	int i;
 	list_t sorted;
@@ -1958,16 +1958,36 @@ void syscall_dump_filename(const int syscall, double duration)
 
 	if (sorted.length == 0) {
 		printf(" None.\n\n");
-		return;
+	} else {
+		printf("  PID   Rate/Sec  File\n");
+		for (l = sorted.head; l; l = l->next) {
+			filename_info_t *info = (filename_info_t *)l->data;
+			printf(" %5i %8.3f   %s\n", info->pid, (double)info->count / duration, info->filename);
+		}
+		printf("\n");
 	}
+#ifdef JSON_OUTPUT
+	if (j_obj) {
+		json_object *j_syscall, *j_syscall_infos, *j_syscall_info;
 
-	printf("  PID   Rate/Sec  File\n");
-	for (l = sorted.head; l; l = l->next) {
-		filename_info_t *info = (filename_info_t *)l->data;
-		printf(" %5i %8.3f   %s\n", info->pid, (double)info->count / duration, info->filename);
+		if ((j_syscall = j_obj_new_obj()) == NULL)
+			goto out;
+		j_obj_obj_add(j_obj, label, j_syscall);
+		if ((j_syscall_infos = j_obj_new_array()) == NULL)
+			goto out;
+                j_obj_obj_add(j_syscall, "files", j_syscall_infos);
+		for (l = sorted.head; l; l = l->next) {
+			filename_info_t *info = (filename_info_t *)l->data;
+
+			j_syscall_info = j_obj_new_obj();
+			j_obj_new_int32_add(j_syscall_info, "pid", info->pid);
+			j_obj_new_int64_add(j_syscall_info, "count", info->count);
+			j_obj_new_double_add(j_syscall_info, "access-rate", (double)info->count / duration);
+			j_obj_new_string_add(j_syscall_info, "filename", info->filename);
+			j_obj_array_add(j_syscall_infos, j_syscall_info);
+		}
 	}
-	printf("\n");
-
+#endif
 	list_free(&sorted, NULL);
 out:
 	return;
@@ -1997,15 +2017,16 @@ void syscall_inotify_add_watch_args(
 	}
 }
 
-void syscall_dump_inotify(double duration)
+void syscall_dump_inotify(json_object *j_obj, double duration)
 {
 	printf("Inotify watches added:\n");
-	syscall_dump_filename(SYS_inotify_add_watch, duration);
+	syscall_dump_filename("inotify-watches-added", SYS_inotify_add_watch, j_obj, duration);
 }
 #else
-void syscall_dump_inotify(double duration)
+void syscall_dump_inotify(json_object *j_obj, double duration)
 {
 	(void)duration;
+	(void)j_obj;
 }
 #endif
 
@@ -2031,15 +2052,16 @@ void syscall_execve_args(
 	}
 }
 
-void syscall_dump_execve(double duration)
+void syscall_dump_execve(json_object *j_obj, double duration)
 {
 	printf("Programs exec'd:\n");
-	syscall_dump_filename(SYS_execve, duration);
+	syscall_dump_filename("execed-programs", SYS_execve, j_obj, duration);
 }
 #else
 void syscall_dump_execve(double duration)
 {
 	(void)duration;
+	(void)j_obj;
 }
 #endif
 
