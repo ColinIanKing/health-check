@@ -1,4 +1,7 @@
-VERSION=0.01.56
+VERSION=0.01.57
+#
+# Codename "Ravenous Bug Blaster"
+#
 
 JSON_OUTPUT=y
 
