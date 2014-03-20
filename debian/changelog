@@ -1,3 +1,11 @@
+health-check (0.01.57-1) unstable; urgency=medium
+
+  * Makefile: bump version
+  * Fix make dist, use plain old tar to omit debian contents
+  * syscall: fix memory leak on filename
+
+ -- Colin King <colin.king@canonical.com>  Thu, 20 Mar 2014 11:45:11 +0000
+
 health-check (0.01.56-1) unstable; urgency=medium
 
   * Makefile: bump version
