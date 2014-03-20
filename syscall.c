@@ -2053,7 +2053,7 @@ void syscall_execve_args(
 	syscall_get_args(pid, sc->arg, args);
 	filename = syscall_peek_filename(pid, args[0]);
 	if (filename) {
-		syscall_add_filename(sc->syscall, pid, syscall_peek_filename(pid, args[0]));
+		syscall_add_filename(sc->syscall, pid, filename);
 		free(filename);
 	}
 }
