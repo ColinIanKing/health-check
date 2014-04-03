@@ -1880,23 +1880,24 @@ void syscall_add_filename(const int syscall, const pid_t pid, const char *filena
 	while (info) {
 		if (info->pid == pid && !strcmp(info->filename, filename))
 			break;
+		info = info->next;
 	}
 
 	if (!info) {
 		info = calloc(1, sizeof(*info));
-		if (info) {
-			info->filename = strdup(filename);
-			if (!info->filename) {
-				free(info);
-				return;
-			}
-			info->syscall = syscall;
-			info->pid = pid;
-			info->proc = proc_cache_find_by_pid(pid);
-			info->count = 1;
-			info->next = filename_cache[h];
-			filename_cache[h] = info;
+		if (!info)
+			return;
+		info->filename = strdup(filename);
+		if (!info->filename) {
+			free(info);
+			return;
 		}
+		info->syscall = syscall;
+		info->pid = pid;
+		info->proc = proc_cache_find_by_pid(pid);
+		info->count = 1;
+		info->next = filename_cache[h];
+		filename_cache[h] = info;
 	} else {
 		info->count++;
 	}
