@@ -1,6 +1,6 @@
-VERSION=0.01.57
+VERSION=0.01.58
 #
-# Codename "Ravenous Bug Blaster"
+# Codename "Intrepid Inotify Interrogator"
 #
 
 JSON_OUTPUT=y
