@@ -535,8 +535,6 @@ void net_connection_dump(json_object *j_tests, double duration)
 				addr_info = (net_addr_info_t *)l->data;
 
 				if (nh->inode == addr_info->inode) {
-					if ((dump_info = calloc(1, sizeof(net_dump_info_t))) == NULL)
-						goto out;
 					found = true;
 					break;
 				}
@@ -556,10 +554,10 @@ void net_connection_dump(json_object *j_tests, double duration)
 				strncpy(new_addr.u.path, nh->path, PATH_MAX);
 				if ((addr_info = net_addr_add(&new_addr)) == NULL)
 					goto out;
-				if ((dump_info = calloc(1, sizeof(net_dump_info_t))) == NULL)
-					goto out;
 			}
 
+			if ((dump_info = calloc(1, sizeof(net_dump_info_t))) == NULL)
+				goto out;
 			dump_info->addr_info = addr_info;
 			dump_info->nh = nh;
 			dump_info->send_recv_total = nh->send.data_total + nh->recv.data_total;
