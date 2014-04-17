@@ -22,7 +22,7 @@
 
 #ifdef JSON_OUTPUT
 
-#include <json/json.h>
+#include <json-c/json.h>
 
 extern json_object *j_obj_new_array(void);
 extern json_object *j_obj_new_obj(void);

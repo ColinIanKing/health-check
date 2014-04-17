@@ -21,7 +21,7 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <unistd.h>
-#include <json/json.h>
+#include <json-c/json.h>
 
 #include "json.h"
 #include "health-check.h"
