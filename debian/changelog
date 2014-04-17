@@ -1,3 +1,14 @@
+health-check (0.01.59-1) unstable; urgency=medium
+
+  * Makefile: bump version
+  * Update build-depends from libjson0-dev to libjson-c-dev (Closes: #745004)
+  * Makefile: use libjson-c
+  * Use json-c, so change header path
+  * net: fix up dump_info allocation
+  * net: add netlink, udp6, tcp6 and handle protos we don't find.
+
+ -- Colin King <colin.king@canonical.com>  Thu, 17 Apr 2014 11:16:11 +0100
+
 health-check (0.01.58-1) unstable; urgency=medium
 
   * Makefile: bump version
