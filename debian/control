@@ -3,7 +3,7 @@ Section: admin
 Priority: optional
 Maintainer: Colin King <colin.king@canonical.com>
 Standards-Version: 3.9.5
-Build-Depends: debhelper (>= 9), libjson0-dev (>= 0.9)
+Build-Depends: debhelper (>= 9), libjson-c-dev (>= 0.11)
 Homepage: http://kernel.ubuntu.com/~cking/health-check
 
 Package: health-check
