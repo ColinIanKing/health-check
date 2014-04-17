@@ -8,7 +8,7 @@ JSON_OUTPUT=y
 CFLAGS += -Wall -Wextra -DVERSION='"$(VERSION)"'
 LDFLAGS += -lpthread
 ifeq ($(JSON_OUTPUT),y)
-	LDFLAGS += -ljson	
+	LDFLAGS += -ljson-c
 	CFLAGS += -DJSON_OUTPUT
 endif
 ifeq ($(FNOTIFY),y)
