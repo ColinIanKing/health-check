@@ -1,3 +1,11 @@
+health-check (0.01.60-1) unstable; urgency=medium
+
+  * Makefile: bump version
+  * net: set addr_info to NULL and check
+  * event: make failed write to /proc/timer_stats non-fatal
+
+ -- Colin King <colin.king@canonical.com>  Fri, 25 Apr 2014 11:46:01 +0100
+
 health-check (0.01.59-1) unstable; urgency=medium
 
   * Makefile: bump version
