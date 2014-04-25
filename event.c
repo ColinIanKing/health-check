@@ -32,25 +32,22 @@
 #include "health-check.h"
 
 static list_t event_info_start, event_info_finish;
+static bool timer_stats = true;
 
 /*
  *  event_timer_stat_set()
  *	enable/disable timer stat
  */
-static void event_timer_stat_set(const char *str, const bool carp)
+static int event_timer_stat_set(const char *str)
 {
 	FILE *fp;
 
-	if ((fp = fopen(TIMER_STATS, "w")) == NULL) {
-		if (carp) {
-			fprintf(stderr, "Cannot write to %s.\n",TIMER_STATS);
-			exit(EXIT_FAILURE);
-		} else {
-			return;
-		}
-	}
+	if ((fp = fopen(TIMER_STATS, "w")) == NULL)
+		return -1;
 	fprintf(fp, "%s\n", str);
 	fclose(fp);
+
+	return 0;
 }
 
 /*
@@ -299,7 +296,8 @@ void event_dump_diff(
 			printf("\n");
 		}
 	} else {
-		printf(" No wakeups detected.\n\n");
+		printf(" No wakeups detected%s.\n\n",
+			timer_stats ? "" : " (Access to " TIMER_STATS " failed)");
 	}
 
 #ifdef JSON_OUTPUT
@@ -359,7 +357,8 @@ void event_init(void)
 	list_init(&event_info_finish);
 
 	/* Should really catch signals and set back to zero before we die */
-        event_timer_stat_set("1", true);
+        if (event_timer_stat_set("1") < 0)
+		timer_stats = false;
 }
 
 /*
@@ -368,7 +367,8 @@ void event_init(void)
  */
 void event_stop(void)
 {
-        event_timer_stat_set("0", false);
+	if (timer_stats)
+        	event_timer_stat_set("0");
 }
 
 /*
