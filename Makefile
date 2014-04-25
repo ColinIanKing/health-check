@@ -1,4 +1,4 @@
-VERSION=0.01.59
+VERSION=0.01.60
 #
 # Codename "Intrepid Inotify Interrogator"
 #
