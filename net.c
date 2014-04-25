@@ -528,7 +528,7 @@ void net_connection_dump(json_object *j_tests, double duration)
 			bool found = false;
 			net_hash_t *nh = (net_hash_t *)ln->data;
 			net_dump_info_t *dump_info;
-			net_addr_info_t *addr_info;
+			net_addr_info_t *addr_info = NULL;
 
 			/* Is there cached info about this? */
 			for (l = net_cached_addrs.head; l; l = l->next) {
@@ -544,7 +544,7 @@ void net_connection_dump(json_object *j_tests, double duration)
 			if ((nh->send.data_total + nh->recv.data_total == 0) && nh->proc->is_thread)
 				continue;
 
-			if (!found) {
+			if ((addr_info == NULL) || !found) {
 				/* Not found in cache, no idea what it is */
 				net_addr_info_t new_addr;
 
