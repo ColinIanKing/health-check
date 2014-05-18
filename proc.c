@@ -26,6 +26,7 @@
 #include <sys/types.h>
 #include <dirent.h>
 #include <ctype.h>
+#include <errno.h>
 
 #include "list.h"
 #include "pid.h"
@@ -209,7 +210,10 @@ int proc_cache_get_pthreads(void)
 		if (!isdigit(procentry->d_name[0]))
 			continue;
 
-		ppid = atoi(procentry->d_name);
+		errno = 0;
+		ppid = (pid_t)strtol(procentry->d_name, NULL, 10);
+		if (errno)
+			continue;
 
 		snprintf(path, sizeof(path), "/proc/%i/task", ppid);
 
