@@ -39,7 +39,7 @@
 extern void health_check_exit(const int status) __attribute__ ((noreturn));
 extern void health_check_out_of_memory(const char *msg);
 extern volatile bool keep_running;
-extern int opt_max_syscalls;
+extern long int opt_max_syscalls;
 extern int opt_flags;
 
 #endif

@@ -57,7 +57,7 @@
 static bool caught_sigint = false;
 volatile bool keep_running = true;
 int opt_flags;
-int opt_max_syscalls = 1000000;
+long int opt_max_syscalls = 1000000;
 
 /*
  *  handle_sig()
@@ -137,7 +137,12 @@ static int parse_pid_list(char *arg, list_t *pids)
 			proc_info_t *p;
 			pid_t pid;
 
-			pid = atoi(token);
+			errno = 0;
+			pid = strtol(token, NULL, 10);
+			if (errno) {
+				fprintf(stderr, "Invalid pid specified.\n");
+				return -1;
+			}
 			if ((p = proc_cache_find_by_pid(pid)) == NULL) {
 				fprintf(stderr, "Cannot find process with PID %i.\n", pid);
 				return -1;
@@ -397,7 +402,12 @@ int main(int argc, char **argv)
 			opt_flags |= OPT_DURATION;
 			break;
 		case 'm':
-			opt_max_syscalls = atoi(optarg);
+			errno = 0;
+			opt_max_syscalls = strtol(optarg, NULL, 10);
+			if (errno) {
+				fprintf(stderr, "Invalid maximum number of system calls specified.\n");
+				health_check_exit(EXIT_FAILURE);
+			}
 			break;
 #ifdef JSON_OUTPUT
 		case 'o':

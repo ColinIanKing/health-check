@@ -82,7 +82,7 @@ typedef enum {
 } syscall_call_state;
 
 static pthread_t syscall_tracer;
-static int syscall_count = 0;
+static long int syscall_count = 0;
 static int info_emit = false;
 static pid_t main_pid = -1;
 
