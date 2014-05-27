@@ -150,6 +150,7 @@ static net_hash_t *net_hash_add(const char *path, const uint64_t inode, const pi
 	return n;
 }
 
+#if 0
 /*
  *  net_hash_find_inode()
  *	given an inode, find the associated hash'd data
@@ -167,6 +168,7 @@ static inline net_hash_t *net_hash_find_inode(const uint64_t inode)
 	}
 	return NULL;
 }
+#endif
 
 /*
  *  net_get_inode()
