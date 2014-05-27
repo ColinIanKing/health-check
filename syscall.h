@@ -88,7 +88,7 @@ typedef void (*call_enter_t)(const syscall_t *sc, const syscall_info_t *s, const
 typedef void (*call_return_t)(const syscall_t *sc, const syscall_info_t *s, const int ret);
 
 /* syscall specific information */
-typedef struct syscall {
+struct syscall {
 	char 		*name;		/* name of the syscall */
 	int  		syscall;	/* system call number */
 	int		arg;		/* nth arg to check for timeout value (1st arg is zero) */
@@ -97,7 +97,7 @@ typedef struct syscall {
 	call_return_timeout_t  call_return_timeout; 	/* return checking function, NULL means don't check */
 	call_enter_t	call_enter;	/* non-timout call checking function, NULL means don't check */
 	call_return_t	call_return;	/* non-timeout return checking function, NULL means don't check */
-} syscall_t;
+};
 
 /* fd cache */
 typedef struct fd_cache {
