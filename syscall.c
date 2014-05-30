@@ -371,7 +371,7 @@ static void syscall_mq_timedsend_ret(json_object *j_obj, const syscall_t *sc, co
  *  syscall_get_call_state()
  *	are we entering a system call or exiting it or don't know?
  */
-static syscall_call_state syscall_get_call_state(const pid_t pid)
+static inline syscall_call_state syscall_get_call_state(const pid_t pid)
 {
 #if defined(__x86_64__)
 	errno = 0;
@@ -405,7 +405,7 @@ static syscall_call_state syscall_get_call_state(const pid_t pid)
  *  syscall_get_call()
  *	get syscall number
  */
-static int syscall_get_call(const pid_t pid, int *syscall)
+static inline int syscall_get_call(const pid_t pid, int *syscall)
 {
 #if defined(__x86_64__)
 	errno = 0;
@@ -508,7 +508,7 @@ static int syscall_get_call(const pid_t pid, int *syscall)
  *  syscall_get_return()
  *	get syscall return code
  */
-static int syscall_get_return(const pid_t pid, int *rc)
+static inline int syscall_get_return(const pid_t pid, int *rc)
 {
 #if defined (__x86_64__)
 	errno = 0;
@@ -2518,7 +2518,7 @@ static void syscall_handle_event(syscall_context_t *ctxt, int event)
  *  syscall_handle_trap()
  *	handle ptrace trap
  */
-static void syscall_handle_trap(syscall_context_t *ctxt)
+static inline void syscall_handle_trap(syscall_context_t *ctxt)
 {
 	siginfo_t siginfo;
 
@@ -2538,7 +2538,7 @@ static void syscall_handle_trap(syscall_context_t *ctxt)
  *  syscall_handle_stop
  *	handle a ptrace stop
  */
-static int syscall_handle_stop(syscall_context_t *ctxt, const int status)
+static inline int syscall_handle_stop(syscall_context_t *ctxt, const int status)
 {
 	int event = status >> 16;
 	int sig = WSTOPSIG(status);
