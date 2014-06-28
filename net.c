@@ -314,18 +314,14 @@ static int net_cache_inodes(list_t *pids)
 static void net_inet4_resolve(char *name, const size_t len, struct sockaddr_in *sin)
 {
 	if ((opt_flags & OPT_ADDR_RESOLVE) &&
-	    (sin->sin_addr.s_addr != INADDR_ANY)) {
-		struct hostent *e;
-
-		e = gethostbyaddr((char *)&sin->sin_addr.s_addr, sizeof(struct in_addr), AF_INET);
-		if (e) {
-			strncpy(name, e->h_name, len - 1);
-			name[len - 1] = '\0';
-			return;
-		}
-	}
-	inet_ntop(AF_INET, &sin->sin_addr, name, len);
-
+	    (sin->sin_addr.s_addr != INADDR_ANY) &&
+	    (getnameinfo((struct sockaddr *)sin, sizeof(*sin), name, len,
+		NULL, 0, NI_NAMEREQD) == 0))
+		return;
+	if (getnameinfo((struct sockaddr *)sin, sizeof(*sin), name, len,
+		NULL, 0, NI_NUMERICHOST) == 0)
+		return;
+	strncpy(name, "<unknown>", len);
 	return;
 }
 
@@ -336,19 +332,14 @@ static void net_inet4_resolve(char *name, const size_t len, struct sockaddr_in *
 static void net_inet6_resolve(char *name, const size_t len, struct sockaddr_in6 *sin6)
 {
 	if ((opt_flags & OPT_ADDR_RESOLVE) &&
-	    (!IN6_IS_ADDR_UNSPECIFIED(&sin6->sin6_addr))) {
-		struct hostent *e;
-
-		e = gethostbyaddr((char *)&sin6->sin6_addr.s6_addr, sizeof(struct in6_addr), AF_INET);
-		if (e) {
-
-			strncpy(name, e->h_name, len - 1);
-			name[len - 1] = '\0';
-			return;
-		}
-	}
-	inet_ntop(AF_INET6, &sin6->sin6_addr, name, len - 1);
-
+	    (!IN6_IS_ADDR_UNSPECIFIED(&sin6->sin6_addr)) &&
+	    (getnameinfo((struct sockaddr *)sin6, sizeof(*sin6), name, len,
+		NULL, 0, NI_NAMEREQD) == 0))
+		return;
+	if (getnameinfo((struct sockaddr *)sin6, sizeof(*sin6), name, len,
+		NULL, 0, NI_NUMERICHOST) == 0)
+		return;
+	strncpy(name, "<unknown>", len);
 	return;
 }
 
