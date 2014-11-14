@@ -1,3 +1,15 @@
+health-check (0.01.62-1) unstable; urgency=medium
+
+  * debian/control: update Standards-Version to 3.9.6
+  * Makefile: bump version
+  * Use POSIX getnameinfo rather than obsolete gethostbyaddr
+  * Fix -w -W man page options
+  * Some inlining, makes critical syscall path slightly faster
+  * syscall.h remove C11 style typedef on forward defined syscall_t
+  * net.c: #define out net_hash_find_inode
+
+ -- Colin King <colin.king@canonical.com>  Fri, 14 Nov 2014 14:08:00 +0000
+
 health-check (0.01.61-1) unstable; urgency=medium
 
   * Makefile: bump version
