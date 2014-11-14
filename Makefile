@@ -1,11 +1,11 @@
-VERSION=0.01.61
+VERSION=0.01.62
 #
 # Codename "Intrepid Inotify Interrogator"
 #
 
 JSON_OUTPUT=y
 
-CFLAGS += -Wall -Wextra -DVERSION='"$(VERSION)"'
+CFLAGS += -Wall -Wextra -DVERSION='"$(VERSION)"' -g
 LDFLAGS += -lpthread
 ifeq ($(JSON_OUTPUT),y)
 	LDFLAGS += -ljson-c
