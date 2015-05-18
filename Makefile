@@ -15,7 +15,7 @@
 # along with this program; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
 #
-VERSION=0.01.62
+VERSION=0.01.63
 #
 # Codename "Intrepid Inotify Interrogator"
 #
