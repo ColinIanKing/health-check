@@ -15,9 +15,9 @@
 # along with this program; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
 #
-VERSION=0.01.63
+VERSION=0.02.00
 #
-# Codename "Intrepid Inotify Interrogator"
+# Codename "Where have all my cycles gone?"
 #
 
 JSON_OUTPUT=y
