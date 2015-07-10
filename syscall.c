@@ -699,26 +699,22 @@ static inline unsigned long hash_fd(const pid_t pid, const int fd)
 	return h;
 }
 
+
 /*
  *  hash_filename()
- *	hash pid and filename
+ *	hash pid and filename, from Dan Bernstein comp.lang.c (xor version)
  */
-static inline unsigned long hash_filename(const pid_t pid, const char *filename)
+static uint32_t hash_filename(const pid_t pid, const char *filename)
 {
-	unsigned long h;
+	register uint32_t hash = 5381 ^ pid;
+	register int c;
+	register const char *str = filename;
 
-	h = pid;
-
-	while (*filename) {
-		unsigned long g;
-		h = (h << 4) + (*filename);
-		if (0 != (g = h & 0xf0000000)) {
-			h = h ^ (g >> 24);
-			h = h ^ g;
-		}
-                filename++;
+	while ((c = *str++)) {
+		/* (hash * 33) ^ c */
+		hash = ((hash << 5) + hash) ^ c;
 	}
-	return h % HASH_TABLE_SIZE;
+	return hash % HASH_TABLE_SIZE;
 }
 
 /*
