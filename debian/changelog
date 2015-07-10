@@ -1,3 +1,11 @@
+health-check (0.02.00-1) unstable; urgency=medium
+
+  * Debian: copyright: update year to 2015
+  * Debian: control: add arm64 arch (Closes: #791950)
+  * Add a more optimized filename hashing function
+
+ -- Colin King <colin.king@canonical.com>  Fri, 10 Jul 2015 12:07:12 +0100
+
 health-check (0.01.63-1) unstable; urgency=medium
 
   * Makefile: bump version
