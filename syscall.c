@@ -1000,7 +1000,7 @@ static void syscall_timeout_millisec(
 #if defined(SYS_write) && defined(SYS_close)
 static void *syscall_peek_data(const pid_t pid, const unsigned long addr, const size_t len)
 {
-	unsigned *data;
+	unsigned long *data;
 	size_t i, n = (len + sizeof(unsigned long) - 1) / sizeof(unsigned long);
 
 	if ((data = calloc(sizeof(unsigned long), n + 1)) == NULL) {
@@ -1846,7 +1846,7 @@ static char *syscall_peek_filename(const pid_t pid, const unsigned long addr)
 		n++;
 	} while (v);
 
-	if ((data = calloc(sizeof(unsigned char), n)) == NULL) {
+	if ((data = calloc(sizeof(char), n)) == NULL) {
 		health_check_out_of_memory("allocating syscall peek buffer");
 		return NULL;
 	}
@@ -2233,7 +2233,7 @@ void syscall_dump_pollers(json_object *j_tests, const double duration)
 			}
 			printf("\n");
 			printf("%50.50s", "");
-			for (bucket = BUCKET_START, i = 0; i < MAX_BUCKET; i++) {
+			for (i = 0; i < MAX_BUCKET; i++) {
 				if (i == 0)
 					printf("  up to");
 				else if (i == MAX_BUCKET - 1)
