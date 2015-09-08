@@ -179,8 +179,5 @@ int pid_list_get_children(list_t *pids)
 	/*  Free the children list, not the data */
 	list_free(&children, NULL);
 
-	for (l = pids->head; l; l = l->next)
-		p = (proc_info_t *)l->data;
-
 	return 0;
 }
