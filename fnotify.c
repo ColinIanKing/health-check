@@ -376,7 +376,7 @@ static void fnotify_dump_files(
 			goto out;
 		j_obj_obj_add(j_fnotify_test, "file-access-per-process", j_accesses);
 
-		for (count = 0, total = 0, l = sorted.head; l; l = l->next) {
+		for (total = 0, l = sorted.head; l; l = l->next) {
 			fnotify_fileinfo_t *info = (fnotify_fileinfo_t *)l->data;
 
 			if ((j_access = j_obj_new_obj()) == NULL)
@@ -520,7 +520,7 @@ static void fnotify_dump_io_ops(
 			goto out;
 		j_obj_obj_add(j_fnotify_test, "file-io-operations-per-process", j_io_ops);
 
-		for (count = 0, l = sorted.head; l; l = l->next) {
+		for (l = sorted.head; l; l = l->next) {
 			io_ops_t *io_ops = (io_ops_t *)l->data;
 
 			if ((j_io_op = j_obj_new_obj()) == NULL)
