@@ -1,3 +1,13 @@
+health-check (0.02.01-1) unstable; urgency=medium
+
+  * Makefile: bump version
+  * syscall: clear args buffer, cleans up static analysis warnings
+  * Fix misc warnings found by static analysis
+  * Remove redundant list scan in pid_list_get_children
+  * Remove redundant initialisation of count
+
+ -- Colin King <colin.king@canonical.com>  Tue, 8 Sep 2015 18:46:00 +0100
+
 health-check (0.02.00-1) unstable; urgency=medium
 
   * Debian: copyright: update year to 2015
