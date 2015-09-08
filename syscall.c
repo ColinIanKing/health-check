@@ -581,6 +581,8 @@ static int syscall_get_args(
 	const int arg,
 	unsigned long args[])
 {
+	memset(args, 0, sizeof(args[0]) * arg);
+
 #if defined (__i386__)
 	int i;
 
