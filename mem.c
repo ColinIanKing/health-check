@@ -174,7 +174,7 @@ void mem_dump_mmap(json_object *j_tests, const double duration)
 			proc_info_t *p = proc_cache_find_by_pid(info->pid);
 			int64_t delta = info->mmap_length - info->munmap_length;
 			double rate = ((double)delta) / duration;
-	
+
 			printf(" %5d %-20.20s %8" PRIu64 " %8" PRIu64 "    %8" PRIi64 "      %8.2f (%s)\n",
 				info->pid, p ? p->cmdline : "",
 				info->mmap_count, info->munmap_count,
@@ -600,7 +600,7 @@ int mem_dump_diff(
 			for (l = sorted.head; l; l = l->next) {
 				mem_info_t *delta = (mem_info_t *)l->data;
 				mem_type_t type;
-	
+
 				for (type = MEM_STACK; type < MEM_MAX; type++) {
 					printf(" %5d %-20.20s %-6.6s %9" PRIi64 " %9" PRIi64 " %9" PRIi64 "\n",
 						delta->proc->pid, delta->proc->cmdline,

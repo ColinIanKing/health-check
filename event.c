@@ -230,7 +230,7 @@ static const char *event_loading(const double wakeup_rate)
 
 /*
  *  event_delta()
- *	find delta in events between old, new. 
+ *	find delta in events between old, new.
  *	if no old then delta is the new.
  */
 static uint64_t event_delta(const event_info_t *event_new, const list_t *events_old)

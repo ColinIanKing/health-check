@@ -287,7 +287,7 @@ static const char *find_executable(const char *filename)
 		strncpy(path, filename, sizeof(path) - 1);
 		if (is_executable(path))
 			return path;
-		else 
+		else
 			fprintf(stderr, "%s is not a valid executable program\n", filename);
 	} else {
 		/* Try and find it in $PATH */
@@ -317,7 +317,6 @@ static const char *find_executable(const char *filename)
 					continue;	/* Silently ignore */
 				pathlen = strlen(p);
 			}
-		
 			if (pathlen + filenamelen + 2 > sizeof(path))
 				continue;
 
@@ -372,7 +371,7 @@ int main(int argc, char **argv)
 	if (old_action.sa_handler != SIG_DFL) {
 		new_action.sa_handler = SIG_DFL;
 		sigemptyset(&new_action.sa_mask);
-		new_action.sa_flags = 0;	
+		new_action.sa_flags = 0;
 		sigaction(SIGCHLD, &new_action, NULL);
 	}
 
@@ -532,15 +531,13 @@ int main(int argc, char **argv)
 
 	new_action.sa_handler = handle_sig;
 	sigemptyset(&new_action.sa_mask);
-	new_action.sa_flags = 0;	
+	new_action.sa_flags = 0;
 	sigaction(SIGINT, &new_action, &old_action);
 	sigaction(SIGUSR1, &new_action, &old_action);
-	
 #if SYSCALL_SUPPORTED
 	syscall_init();
 	syscall_trace_proc(&pids);
 #endif
-
 	mem_init();
 #if EVENT_SUPPORTED
 	event_init();
@@ -572,7 +569,7 @@ int main(int argc, char **argv)
 	       keep_running &&
 	       (opt_duration_secs == DURATION_RUN_FOREVER || timeval_to_double(&duration) > 0.0)) {
 
-		struct timeval *duration_ptr = 
+		struct timeval *duration_ptr =
 			opt_duration_secs == DURATION_RUN_FOREVER ? NULL : &duration;
 #if FNOTIFY_SUPPORTED
 		fd_set rfds;
