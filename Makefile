@@ -22,7 +22,7 @@ VERSION=0.02.01
 
 JSON_OUTPUT=y
 
-CFLAGS += -Wall -Wextra -DVERSION='"$(VERSION)"' 
+CFLAGS += -Wall -Wextra -DVERSION='"$(VERSION)"' -O2
 LDFLAGS += -lpthread
 ifeq ($(JSON_OUTPUT),y)
 	LDFLAGS += -ljson-c
