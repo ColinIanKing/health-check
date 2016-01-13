@@ -2654,7 +2654,7 @@ void *syscall_trace(void *arg)
 	syscall_context_t *ctxt;
 	int status;
 	link_t *l;
-	unsigned long ptrace_flags = PTRACE_O_TRACESYSGOOD | PTRACE_O_TRACEEXIT;
+	unsigned long ptrace_flags;
 	static int ret = 0;
 
 	(void)arg;
@@ -2662,6 +2662,7 @@ void *syscall_trace(void *arg)
 	pthread_cleanup_push(syscall_trace_cleanup, arg);
 	pthread_setcancelstate(PTHREAD_CANCEL_ENABLE, NULL);
 
+	ptrace_flags = PTRACE_O_TRACESYSGOOD | PTRACE_O_TRACEEXIT;
 	if (opt_flags & OPT_FOLLOW_NEW_PROCS) {
 		ptrace_flags |= (PTRACE_O_TRACECLONE | PTRACE_O_TRACEFORK | PTRACE_O_TRACEVFORK);
 #if SYSCALL_DEBUG
