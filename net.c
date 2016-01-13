@@ -150,26 +150,6 @@ static net_hash_t *net_hash_add(const char *path, const uint64_t inode, const pi
 	return n;
 }
 
-#if 0
-/*
- *  net_hash_find_inode()
- *	given an inode, find the associated hash'd data
- */
-static inline net_hash_t *net_hash_find_inode(const uint64_t inode)
-{
-	link_t *l;
-	unsigned long h = net_hash(inode);
-
-	/* Don't add it we have it already */
-	for (l = net_hash_table[h].head; l; l = l->next) {
-		net_hash_t *n = (net_hash_t *)l->data;
-		if (n->inode == inode)
-			return n;
-	}
-	return NULL;
-}
-#endif
-
 /*
  *  net_get_inode()
  *	find inode in given readlink data, return -1 fail, 0 OK
