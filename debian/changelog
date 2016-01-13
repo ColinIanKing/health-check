@@ -1,3 +1,16 @@
+health-check (0.02.02-1) unstable; urgency=medium
+
+  * Makefile: bump version
+  * fix gcc compile warning when building at -O2
+  * Makefile: use -O2 optimization by default
+  * Makefile: remove -g flag
+  * net: remove code that has been #if'd out
+  * Clean up some white space formatting in source
+  * syscall: fix indentation
+  * Update copyright year to 2016
+
+ -- Colin King <colin.king@canonical.com>  Wed, 13 Jan 2016 17:36:02 +0000
+
 health-check (0.02.01-1) unstable; urgency=medium
 
   * Makefile: bump version
