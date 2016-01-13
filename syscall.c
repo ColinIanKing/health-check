@@ -1750,18 +1750,18 @@ void syscall_dump_wakelocks(json_object *j_tests, const double duration, list_t 
 				if (j_tests) {
 					if ((j_wakelock_info = j_obj_new_obj()) == NULL)
 						goto out;
-						j_obj_new_int32_add(j_wakelock_info, "pid", p->pid);
-						j_obj_new_int32_add(j_wakelock_info, "ppid", p->ppid);
-						j_obj_new_int32_add(j_wakelock_info, "is-thread", p->is_thread);
-						j_obj_new_string_add(j_wakelock_info, "name", p->cmdline);
-						j_obj_new_string_add(j_wakelock_info, "lockname", lockname);
-                        			j_obj_new_int64_add(j_wakelock_info, "wakelock-locked", locked);
-                        			j_obj_new_double_add(j_wakelock_info, "wakelock-locked-rate", (double)locked / duration);
-                        			j_obj_new_int64_add(j_wakelock_info, "wakelock-unlocked", unlocked);
-                        			j_obj_new_double_add(j_wakelock_info, "wakelock-unlocked-rate", (double)unlocked / duration);
-                        			j_obj_new_double_add(j_wakelock_info, "wakelock-locked-duration",
-							count ? locked_duration / count : 0.0);
-                        			j_obj_array_add(j_wakelock_infos, j_wakelock_info);
+					j_obj_new_int32_add(j_wakelock_info, "pid", p->pid);
+					j_obj_new_int32_add(j_wakelock_info, "ppid", p->ppid);
+					j_obj_new_int32_add(j_wakelock_info, "is-thread", p->is_thread);
+					j_obj_new_string_add(j_wakelock_info, "name", p->cmdline);
+					j_obj_new_string_add(j_wakelock_info, "lockname", lockname);
+                        		j_obj_new_int64_add(j_wakelock_info, "wakelock-locked", locked);
+                        		j_obj_new_double_add(j_wakelock_info, "wakelock-locked-rate", (double)locked / duration);
+                        		j_obj_new_int64_add(j_wakelock_info, "wakelock-unlocked", unlocked);
+                        		j_obj_new_double_add(j_wakelock_info, "wakelock-unlocked-rate", (double)unlocked / duration);
+                        		j_obj_new_double_add(j_wakelock_info, "wakelock-locked-duration",
+						count ? locked_duration / count : 0.0);
+                        		j_obj_array_add(j_wakelock_infos, j_wakelock_info);
 				}
 #endif
 			}
