@@ -130,9 +130,9 @@ static void show_usage(void)
  */
 static int parse_pid_list(char *arg, list_t *pids)
 {
-	char *str, *token, *saveptr = NULL;
+	char *str, *token;
 
-	for (str = arg; (token = strtok_r(str, ",", &saveptr)) != NULL; str = NULL) {
+	for (str = arg; (token = strtok(str, ",")) != NULL; str = NULL) {
 		if (isdigit(token[0])) {
 			proc_info_t *p;
 			pid_t pid;
