@@ -1,3 +1,11 @@
+health-check (0.02.03-1) unstable; urgency=medium
+
+  * Makefile: bump version
+  * Debian/control: update Standards-Version to 3.9.8
+  * Use strtok instead of strtok_r
+
+ -- Colin King <colin.king@canonical.com>  Tue, 4 Oct 2016 10:17:43 +0100
+
 health-check (0.02.02-1) unstable; urgency=medium
 
   * Makefile: bump version
