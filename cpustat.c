@@ -68,8 +68,8 @@ static const char *cpustat_loading(const double cpu_percent)
  */
 static int cpustat_cmp(const void *data1, const void *data2)
 {
-	cpustat_info_t	*cpustat1 = (cpustat_info_t *)data1;
-	cpustat_info_t	*cpustat2 = (cpustat_info_t *)data2;
+	const cpustat_info_t *cpustat1 = (const cpustat_info_t *)data1;
+	const cpustat_info_t *cpustat2 = (const cpustat_info_t *)data2;
 
 	return cpustat2->ttime - cpustat1->ttime;
 }
@@ -213,8 +213,8 @@ out:
  */
 static int pagefault_cmp(const void *data1, const void *data2)
 {
-	cpustat_info_t	*cpustat1 = (cpustat_info_t *)data1;
-	cpustat_info_t	*cpustat2 = (cpustat_info_t *)data2;
+	const cpustat_info_t *cpustat1 = (const cpustat_info_t *)data1;
+	const cpustat_info_t *cpustat2 = (const cpustat_info_t *)data2;
 
 	return (cpustat2->major_fault + cpustat2->minor_fault) -
 	       (cpustat1->major_fault + cpustat1->minor_fault);
