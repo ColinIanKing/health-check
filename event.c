@@ -209,7 +209,7 @@ int event_get_all_pids(const list_t *pids, proc_state state)
  */
 static const char *event_loading(const double wakeup_rate)
 {
-	if (wakeup_rate == 0.0)
+	if (FLOAT_CMP(wakeup_rate, 0.0))
 		return "idle";
 	if (wakeup_rate > 200.0)
 		return "very excessive";
