@@ -70,8 +70,8 @@ static void event_free(void *data)
  */
 static int event_cmp(const void *data1, const void *data2)
 {
-	event_info_t *ev1 = (event_info_t *)data1;
-	event_info_t *ev2 = (event_info_t *)data2;
+	const event_info_t *ev1 = (const event_info_t *)data1;
+	const event_info_t *ev2 = (const event_info_t *)data2;
 
 	return ev2->count - ev1->count;
 }
