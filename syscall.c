@@ -736,8 +736,8 @@ static inline unsigned long hash_syscall_context(const pid_t pid)
  */
 static int syscall_count_cmp(const void *data1, const void *data2)
 {
-	syscall_info_t *s1 = (syscall_info_t *)data1;
-	syscall_info_t *s2 = (syscall_info_t *)data2;
+	const syscall_info_t *s1 = (const syscall_info_t *)data1;
+	const syscall_info_t *s2 = (const syscall_info_t *)data2;
 
 	if (s1->proc->pid == s2->proc->pid)
 		return s2->count - s1->count;
@@ -1627,7 +1627,7 @@ static void syscall_recvfrom_ret(
  */
 static int syscall_wakelock_cmp(const void *data1, const void *data2)
 {
-	return strcmp((char *)data1, (char *)data2);
+	return strcmp((const char *)data1, (const char *)data2);
 }
 
 /*
@@ -1907,8 +1907,8 @@ void syscall_add_filename(const int syscall, const pid_t pid, const char *filena
  */
 static int syscall_filename_cmp(const void *d1, const void *d2)
 {
-	filename_info_t *f1 = (filename_info_t *)d1;
-	filename_info_t *f2 = (filename_info_t *)d2;
+	const filename_info_t *f1 = (const filename_info_t *)d1;
+	const filename_info_t *f2 = (const filename_info_t *)d2;
 
 	return f2->count - f1->count;
 }
