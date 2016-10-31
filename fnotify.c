@@ -186,11 +186,11 @@ int fnotify_event_add(
 			    (!strcmp(filename, "/sys/power/wake_lock") ||
 			     !strcmp(filename, "/sys/power/wake_unlock"))) {
 				fnotify_wakelock_info_t	*wakelock_info;
-				link_t	*l;
+				link_t	*wl;
 				bool	found = false;
 
-				for (l = fnotify_wakelocks.head; l; l = l->next) {
-					wakelock_info = (fnotify_wakelock_info_t *)l->data;
+				for (wl = fnotify_wakelocks.head; wl; wl = wl->next) {
+					wakelock_info = (fnotify_wakelock_info_t *)wl->data;
 					if (wakelock_info->proc == p) {
 						found = true;
 						break;
@@ -224,11 +224,11 @@ int fnotify_event_add(
 				wakelock_info->total++;
 			} else {
 				fnotify_fileinfo_t *fileinfo;
-				link_t	*l;
+				link_t	*fl;
 				bool	found = false;
 
-				for (l = fnotify_files.head; l; l = l->next) {
-					fileinfo = (fnotify_fileinfo_t *)l->data;
+				for (fl = fnotify_files.head; fl; fl = fl->next) {
+					fileinfo = (fnotify_fileinfo_t *)fl->data;
 					if ((metadata->mask == fileinfo->mask) &&
 					    (!strcmp(fileinfo->filename, filename))) {
 						found = true;
