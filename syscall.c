@@ -892,7 +892,7 @@ static void syscall_count_timeout(
 			s->poll_max = timeout;
 	}
 
-	if (timeout == 0.0) {
+	if (FLOAT_CMP(timeout, 0.0)) {
 		s->poll_zero++;
 		s->poll_too_low++;
 		return;
