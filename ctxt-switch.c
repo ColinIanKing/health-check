@@ -40,8 +40,8 @@ static list_t ctxt_switch_info_start, ctxt_switch_info_finish;
  */
 static int ctx_switch_cmp(const void *data1, const void *data2)
 {
-	ctxt_switch_info_t *c1 = (ctxt_switch_info_t *)data1;
-	ctxt_switch_info_t *c2 = (ctxt_switch_info_t *)data2;
+	const ctxt_switch_info_t *c1 = (const ctxt_switch_info_t *)data1;
+	const ctxt_switch_info_t *c2 = (const ctxt_switch_info_t *)data2;
 
 	return c2->total - c1->total;
 }
