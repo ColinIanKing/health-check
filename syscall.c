@@ -2135,10 +2135,10 @@ void syscall_dump_pollers(json_object *j_tests, const double duration)
 	}
 
 #ifdef JSON_OUTPUT
-	uint64_t poll_infinite = 0, poll_zero = 0, count = 0;
 	json_object *j_poll_test;
 
 	if (j_tests) {
+		uint64_t poll_infinite = 0, poll_zero = 0, count = 0;
 		json_object *j_syscall, *j_syscall_infos, *j_syscall_info;
 
 		if ((j_syscall = j_obj_new_obj()) == NULL)
