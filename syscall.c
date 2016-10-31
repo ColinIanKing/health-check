@@ -2137,7 +2137,6 @@ void syscall_dump_pollers(json_object *j_tests, const double duration)
 #ifdef JSON_OUTPUT
 	uint64_t poll_infinite = 0, poll_zero = 0, count = 0;
 	json_object *j_poll_test;
-	char tmp[64];
 
 	if (j_tests) {
 		json_object *j_syscall, *j_syscall_infos, *j_syscall_info;
@@ -2149,6 +2148,8 @@ void syscall_dump_pollers(json_object *j_tests, const double duration)
 			goto out;
 		j_obj_obj_add(j_syscall, "polling-system-calls-per-process", j_syscall_infos);
 		for (count = 0, l = sorted.head; l; l = l->next) {
+			char tmp[64];
+
 			syscall_info_t *s = (syscall_info_t *)l->data;
 			syscall_name(s->syscall, tmp, sizeof(tmp));
 			double rate = (double)s->count / duration;
