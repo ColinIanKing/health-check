@@ -23,6 +23,7 @@
 #define _GNU_SOURCE
 
 #include <stdbool.h>
+#include <math.h>
 #include "json.h"
 
 #include "alloc.h"
