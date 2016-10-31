@@ -270,8 +270,8 @@ int fnotify_event_add(
  */
 static int fnotify_event_cmp_count(const void *data1, const void *data2)
 {
-	fnotify_fileinfo_t *info1 = (fnotify_fileinfo_t *)data1;
-	fnotify_fileinfo_t *info2 = (fnotify_fileinfo_t *)data2;
+	const fnotify_fileinfo_t *info1 = (const fnotify_fileinfo_t *)data1;
+	const fnotify_fileinfo_t *info2 = (const fnotify_fileinfo_t *)data2;
 
 	return info2->count - info1->count;
 }
@@ -282,8 +282,8 @@ static int fnotify_event_cmp_count(const void *data1, const void *data2)
  */
 static int fnotify_event_cmp_io_ops(const void *data1, const void *data2)
 {
-	io_ops_t *io_ops1 = (io_ops_t *)data1;
-	io_ops_t *io_ops2 = (io_ops_t *)data2;
+	const io_ops_t *io_ops1 = (const io_ops_t *)data1;
+	const io_ops_t *io_ops2 = (const io_ops_t *)data2;
 
 	return io_ops2->total - io_ops1->total;
 }
@@ -294,8 +294,8 @@ static int fnotify_event_cmp_io_ops(const void *data1, const void *data2)
  */
 static int fnotify_wakelock_cmp_count(const void *data1, const void *data2)
 {
-	fnotify_wakelock_info_t *w1 = (fnotify_wakelock_info_t *)data1;
-	fnotify_wakelock_info_t *w2 = (fnotify_wakelock_info_t *)data2;
+	const fnotify_wakelock_info_t *w1 = (const fnotify_wakelock_info_t *)data1;
+	const fnotify_wakelock_info_t *w2 = (const fnotify_wakelock_info_t *)data2;
 
 	return w2->total - w1->total;
 }
