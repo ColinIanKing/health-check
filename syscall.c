@@ -1399,8 +1399,8 @@ static void syscall_munmap_args(
  */
 static int syscall_sync_cmp(const void *d1, const void *d2)
 {
-	syscall_sync_info_t *s1 = (syscall_sync_info_t *)d1;
-	syscall_sync_info_t *s2 = (syscall_sync_info_t *)d2;
+	const syscall_sync_info_t *s1 = (const syscall_sync_info_t *)d1;
+	const syscall_sync_info_t *s2 = (const syscall_sync_info_t *)d2;
 
 	return s2->total_count - s1->total_count;
 }
