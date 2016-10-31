@@ -41,7 +41,7 @@ static list_t cpustat_info_start, cpustat_info_finish;
  */
 static const char *cpustat_loading(const double cpu_percent)
 {
-	if (cpu_percent == 0.0)
+	if (FLOAT_CMP(cpu_percent, 0.0))
 		return "idle";
 	if (cpu_percent > 99.0)
 		return "CPU fully loaded";
