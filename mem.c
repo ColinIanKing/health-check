@@ -134,10 +134,10 @@ int mem_mmap_account(const pid_t pid, const size_t length, const bool mmap)
  */
 static int mem_mmap_cmp(const void *data1, const void *data2)
 {
-	mem_mmap_info_t *m1 = (mem_mmap_info_t *)data1;
-	mem_mmap_info_t *m2 = (mem_mmap_info_t *)data2;
-	int64_t d1 = m1->mmap_length - m1->munmap_length;
-	int64_t d2 = m2->mmap_length - m2->munmap_length;
+	const mem_mmap_info_t *m1 = (const mem_mmap_info_t *)data1;
+	const mem_mmap_info_t *m2 = (const mem_mmap_info_t *)data2;
+	const int64_t d1 = m1->mmap_length - m1->munmap_length;
+	const int64_t d2 = m2->mmap_length - m2->munmap_length;
 
 	return d2 - d1;
 }
@@ -276,11 +276,11 @@ int mem_brk_account(const pid_t pid, const void *addr)
  */
 static int mem_brk_cmp(const void *data1, const void *data2)
 {
-	mem_brk_info_t *m1 = (mem_brk_info_t *)data1;
-	mem_brk_info_t *m2 = (mem_brk_info_t *)data2;
+	const mem_brk_info_t *m1 = (const mem_brk_info_t *)data1;
+	const mem_brk_info_t *m2 = (const mem_brk_info_t *)data2;
 
-	ptrdiff_t p1 = (char *)m1->brk_current - (char *)m1->brk_start;
-	ptrdiff_t p2 = (char *)m2->brk_current - (char *)m2->brk_start;
+	const ptrdiff_t p1 = (const char *)m1->brk_current - (const char *)m1->brk_start;
+	const ptrdiff_t p2 = (const char *)m2->brk_current - (const char *)m2->brk_start;
 
 	return p2 - p1;
 }
@@ -314,9 +314,9 @@ void mem_dump_brk(json_object *j_tests, const double duration)
 		printf("  PID                        brk Count   Change (K)  Rate (K/Sec)\n");
 		for (l = sorted.head; l; l = l->next) {
 			info = (mem_brk_info_t *)l->data;
-			proc_info_t *p = proc_cache_find_by_pid(info->pid);
-			ptrdiff_t delta = ((char *)info->brk_current - (char *)info->brk_start);
-			double rate = ((double)delta) / duration;
+			const proc_info_t *p = proc_cache_find_by_pid(info->pid);
+			const ptrdiff_t delta = ((const char *)info->brk_current - (const char *)info->brk_start);
+			const double rate = ((double)delta) / duration;
 
 			printf(" %5d %-20.20s   %8" PRIu64 " %12td      %8.2f (%s)\n",
 				info->pid,
@@ -340,8 +340,8 @@ void mem_dump_brk(json_object *j_tests, const double duration)
 		j_obj_obj_add(j_mem_test, "heap-usage-via-brk-per-process", j_mem_infos);
 		for (l = sorted.head; l; l = l->next) {
 			info = (mem_brk_info_t *)l->data;
-			proc_info_t *p = proc_cache_find_by_pid(info->pid);
-			ptrdiff_t delta = ((char *)info->brk_current - (char *)info->brk_start);
+			const proc_info_t *p = proc_cache_find_by_pid(info->pid);
+			const ptrdiff_t delta = ((const char *)info->brk_current - (const char *)info->brk_start);
 
 			if ((j_mem_info = j_obj_new_obj()) == NULL)
 				goto out;
@@ -378,8 +378,8 @@ out:
  */
 static int mem_cmp(const void *data1, const void *data2)
 {
-	mem_info_t *m1 = (mem_info_t *)data1;
-	mem_info_t *m2 = (mem_info_t *)data2;
+	const mem_info_t *m1 = (const mem_info_t *)data1;
+	const mem_info_t *m2 = (const mem_info_t *)data2;
 
 	return m2->grand_total - m1->grand_total;
 }
