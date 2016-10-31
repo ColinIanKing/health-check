@@ -27,7 +27,7 @@
 #include "health-check.h"
 
 /*
- *  Older versions json-c don't int64
+ *  Older versions json-c don't have int64
  */
 extern json_object *json_object_new_int64(const int64_t) __attribute__((weak));
 
