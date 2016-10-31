@@ -2090,7 +2090,7 @@ static char *syscall_timeout_to_human_time(
 	int i;
 	double t = timeout;
 
-	for (i = 0; t != 0.0 && t < 0.99999; i++)
+	for (i = 0; !FLOAT_CMP(t, 0.0) && t < 0.99999; i++)
 		t *= 1000.0;
 
 	if (end) {
