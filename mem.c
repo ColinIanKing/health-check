@@ -65,7 +65,7 @@ static const char *mem_loading(const double mem_rate)
 	static char buffer[64];
 	double rate = mem_rate;
 
-	if (rate == 0.0)
+	if (FLOAT_CMP(rate, 0.0))
 		return "no change";
 	if (rate < 0) {
 		verb = "shrinking";
