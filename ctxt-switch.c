@@ -119,7 +119,7 @@ int ctxt_switch_get_all_pids(const list_t *pids, proc_state state)
  */
 static const char *ctxt_switch_loading(const double rate)
 {
-	if (rate == 0.0)
+	if (FLOAT_CMP(rate, 0.0))
 		return "idle";
 	if (rate > 10000.0)
 		return "very high";
