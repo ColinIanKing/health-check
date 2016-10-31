@@ -1645,7 +1645,7 @@ static inline double syscall_timeval_to_double(struct timeval *tv)
  *  syscall_wakelock_names_by_pid()
  *	update wakelock_names list for a new wakelock for a given pid
  */
-void syscall_wakelock_names_by_pid(pid_t pid, list_t *wakelock_names)
+static void syscall_wakelock_names_by_pid(pid_t pid, list_t *wakelock_names)
 {
 	link_t *l, *ln;
 
@@ -1864,7 +1864,7 @@ static char *syscall_peek_filename(const pid_t pid, const unsigned long addr)
  *  syscall_add_filename()
  *	Add filename into filename cache
  */
-void syscall_add_filename(const int syscall, const pid_t pid, const char *filename)
+static void syscall_add_filename(const int syscall, const pid_t pid, const char *filename)
 {
 	unsigned long h;
 	filename_info_t *info;
@@ -1937,7 +1937,7 @@ static void syscall_filename_cache_free(void)
  *  syscall_dump_filename()
  *	dump filename usage by syscall
  */
-void syscall_dump_filename(const char *label, const int syscall, json_object *j_obj, double duration)
+static void syscall_dump_filename(const char *label, const int syscall, json_object *j_obj, double duration)
 {
 	int i;
 	list_t sorted;
@@ -2005,7 +2005,7 @@ out:
  *  syscall_inotify_add_watch_args()
  *	trace filenames used by inotify_add_watch()
  */
-void syscall_inotify_add_watch_args(
+static void syscall_inotify_add_watch_args(
 	const syscall_t *sc,
 	const syscall_info_t *s,
 	const pid_t pid)
@@ -2040,7 +2040,7 @@ void syscall_dump_inotify(json_object *j_obj, double duration)
  *  syscall_execve_args()
  *	trace filenames used by execve()
  */
-void syscall_execve_args(
+static void syscall_execve_args(
 	const syscall_t *sc,
 	const syscall_info_t *s,
 	const pid_t pid)
