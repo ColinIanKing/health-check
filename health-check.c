@@ -202,7 +202,7 @@ static int json_write(json_object *obj, const char *filename)
  *  exec_executable()
  *	exec a program
  */
-pid_t exec_executable(const char *opt_username, const char *path, char **argv)
+static pid_t exec_executable(const char *opt_username, const char *path, char **argv)
 {
 	uid_t uid;
 	gid_t gid;
