@@ -48,7 +48,7 @@ endif
 BINDIR=/usr/bin
 MANDIR=/usr/share/man/man8
 
-OBJS = alloc.o list.o pid.o proc.o net.o syscall.o timeval.o fnotify.o event.o cpustat.o mem.o ctxt-switch.o status.o health-check.o
+OBJS = alloc.o list.o pid.o proc.o net.o syscall.o timeval.o fnotify.o event.o cpustat.o mem.o ctxt-switch.o health-check.o
 ifeq ($(JSON_OUTPUT),y)
 	OBJS += json.o
 endif
@@ -88,8 +88,6 @@ syscall.o: syscall.c syscall.h proc.h json.h net.h mem.h \
 	cpustat.h fnotify.h ctxt-switch.h health-check.h
 
 timeval.o: timeval.c timeval.h
-
-status.o: status.c status.h
 
 dist:
 	rm -rf health-check-$(VERSION)
