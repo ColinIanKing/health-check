@@ -18,8 +18,6 @@
  * Author: Colin Ian King <colin.king@canonical.com>
  */
 
-int procs_traced = 0;
-
 #define _GNU_SOURCE
 
 #include <stdio.h>
@@ -80,6 +78,8 @@ typedef enum {
 	SYSCALL_RETURN,
 	SYSCALL_UNKNOWN
 } syscall_call_state;
+
+int procs_traced = 0;
 
 static pthread_t syscall_tracer;
 static long int syscall_count = 0;
