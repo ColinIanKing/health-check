@@ -36,6 +36,9 @@
 #define OPT_FOLLOW_NEW_PROCS		0x00000040
 #define OPT_DURATION			0x00000080
 
+#define FLOAT_TINY			(0.0000001)
+#define FLOAT_CMP(a, b)			(fabs((a) - (b)) < FLOAT_TINY)
+
 extern void health_check_exit(const int status) __attribute__ ((noreturn));
 extern void health_check_out_of_memory(const char *msg);
 extern volatile bool keep_running;

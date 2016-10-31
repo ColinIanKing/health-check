@@ -267,11 +267,11 @@ static void syscall_poll_generic_ret(json_object *j_obj, const syscall_t *sc, co
 		/* Timed out? */
 		if (ret->ret == 0) {
 			/* And the timeout time was zero, we're abusing the poll */
-			if (ret->timeout == 0.0) {
+			if (FLOAT_CMP(ret->timeout, 0.0)) {
 				zero_timeouts++;
 				/* And if the previous poll was also abusive.. */
 				if (prev_ret == 0) {
-					if (prev_timeout == 0.0) {
+					if (FLOAT_CMP(prev_timeout, 0.0)) {
 						/* somebody is polling hard and wasting cycles */
 						zero_timeout_repeats++;
 					} else {

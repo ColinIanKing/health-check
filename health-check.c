@@ -27,6 +27,7 @@
 #include <unistd.h>
 #include <pthread.h>
 #include <ctype.h>
+#include <math.h>
 #include <errno.h>
 #include <sys/fanotify.h>
 #include <sys/ptrace.h>
@@ -567,10 +568,11 @@ int main(int argc, char **argv)
 
 	while ((procs_traced > 0) &&
 	       keep_running &&
-	       (opt_duration_secs == DURATION_RUN_FOREVER || timeval_to_double(&duration) > 0.0)) {
+	       (FLOAT_CMP(opt_duration_secs, DURATION_RUN_FOREVER)||
+		timeval_to_double(&duration) > 0.0)) {
 
 		struct timeval *duration_ptr =
-			opt_duration_secs == DURATION_RUN_FOREVER ? NULL : &duration;
+			FLOAT_CMP(opt_duration_secs, DURATION_RUN_FOREVER) ? NULL : &duration;
 #if FNOTIFY_SUPPORTED
 		fd_set rfds;
 		FD_ZERO(&rfds);
