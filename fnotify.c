@@ -103,7 +103,7 @@ int fnotify_event_init(void)
  *  fnotify_event_free()
  *	free event info
  */
-void fnotify_event_free(void *data)
+static void fnotify_event_free(void *data)
 {
 	fnotify_fileinfo_t *fileinfo = (fnotify_fileinfo_t *)data;
 
