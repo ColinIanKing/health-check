@@ -1,3 +1,34 @@
+health-check (0.02.04-1) unstable; urgency=medium
+
+  * Makefile: bump version
+  * json: fix comment
+  * syscall: fix shadowing warnings
+  * Move procs_traced declaration to after the header includes
+  * syscall: fix shadowing of string tmp
+  * Makefile: remove status.[cho], it's not required as yet
+  * fnotify: fix some shadowing on link pointer l
+  * fnotify: make helper function static
+  * fnotify: add some constifications
+  * event: use floating point FLOAT_CMP macro for zero compare
+  * event: add some more constifications
+  * cpustat: use floating point FLOAT_CMP macro for zero compare
+  * cpustat: add some constifications
+  * health-check.h: add math.h
+  * health-check: make helper function static
+  * syscall: use FLOAT_CMP for float compare != 0
+  * syscall: make helper functions static
+  * ctxt-switch: use FLOAT_CMP to compare float against zero
+  * ctxt-switch: add some constifications
+  * mem: use FLOAT_CMP for float comparison to zero
+  * mem: add some constifications
+  * syscall: use floating point FLOAT_CMP macro for zero compare
+  * syscall: more constifications
+  * syscall constify pointers
+  * compare floating point values with a little bit of slop
+  * Makefile: add PEDANTIC flags
+
+ -- Colin King <colin.king@canonical.com>  Tue, 1 Nov 2016 19:39:11 -0600
+
 health-check (0.02.03-1) unstable; urgency=medium
 
   * Makefile: bump version
