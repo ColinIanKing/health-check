@@ -1463,8 +1463,8 @@ void syscall_dump_sync(json_object *j_tests, double duration)
 				info->fdatasync_count, info->fsync_count,
 				info->sync_count, info->syncfs_count,
 				info->total_count, (double)info->total_count / duration);
-				if (info->sync_file.length)
-					sync_filenames = true;
+			if (info->sync_file.length)
+				sync_filenames = true;
 		}
 		printf("\n");
 	}
@@ -1777,11 +1777,11 @@ void syscall_dump_wakelocks(json_object *j_tests, const double duration, list_t 
 	if (j_tests) {
 		if ((j_wakelock_info = j_obj_new_obj()) == NULL)
 				goto out;
-			j_obj_obj_add(j_wakelock_test, "wakelock-operations-heavy-total", j_wakelock_info);
-			j_obj_new_int64_add(j_wakelock_info, "wakelock-locked-total", total_locked);
-			j_obj_new_double_add(j_wakelock_info, "wakelock-locked-total-rate", (double)total_locked / duration);
-					j_obj_new_int64_add(j_wakelock_info, "wakelock-unlocked-total", total_unlocked);
-			j_obj_new_double_add(j_wakelock_info, "wakelock-unlocked-total-rate", (double)total_unlocked / duration);
+		j_obj_obj_add(j_wakelock_test, "wakelock-operations-heavy-total", j_wakelock_info);
+		j_obj_new_int64_add(j_wakelock_info, "wakelock-locked-total", total_locked);
+		j_obj_new_double_add(j_wakelock_info, "wakelock-locked-total-rate", (double)total_locked / duration);
+		j_obj_new_int64_add(j_wakelock_info, "wakelock-unlocked-total", total_unlocked);
+		j_obj_new_double_add(j_wakelock_info, "wakelock-unlocked-total-rate", (double)total_unlocked / duration);
 	}
 out:
 #endif
