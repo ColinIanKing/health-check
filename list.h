@@ -20,8 +20,6 @@
 #ifndef __LIST_H__
 #define __LIST_H__
 
-#include "alloc.h"
-
 #define _GNU_SOURCE
 
 /* single link and pointer to data item for a generic linked list */

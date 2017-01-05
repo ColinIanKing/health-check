@@ -34,8 +34,6 @@
 #include "list.h"
 #include "proc.h"
 
-#include "alloc.h"
-
 /*
  *  get_pid_comm
  *

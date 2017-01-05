@@ -43,12 +43,10 @@ ifeq ($(FNOTIFY),y)
 	CFLAGS += -DFNOTIFY
 endif
 
-#CFLAGS += -DDEBUG_MALLOC
-
 BINDIR=/usr/bin
 MANDIR=/usr/share/man/man8
 
-OBJS = alloc.o list.o pid.o proc.o net.o syscall.o timeval.o fnotify.o event.o cpustat.o mem.o ctxt-switch.o health-check.o
+OBJS = list.o pid.o proc.o net.o syscall.o timeval.o fnotify.o event.o cpustat.o mem.o ctxt-switch.o health-check.o
 ifeq ($(JSON_OUTPUT),y)
 	OBJS += json.o
 endif
@@ -58,8 +56,6 @@ health-check: $(OBJS) Makefile
 
 health-check.8.gz: health-check.8
 	gzip -c $< > $@
-
-alloc.o: alloc.c alloc.h
 
 cpustat.o: cpustat.c list.h json.h cpustat.h timeval.h health-check.h
 
@@ -80,7 +76,7 @@ mem.o: mem.c mem.h list.h health-check.h
 
 net.o: net.c net.h list.h proc.h json.h health-check.h
 
-pid.o: pid.c pid.h list.h proc.h alloc.h
+pid.o: pid.c pid.h list.h proc.h
 
 proc.o: proc.c list.h pid.h proc.h net.h health-check.h
 
