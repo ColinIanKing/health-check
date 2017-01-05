@@ -260,12 +260,12 @@ static int net_cache_inodes_pid(const pid_t pid)
 		if (net_get_inode_by_path(tmp, &inode, link) != -1) {
 			sscanf(d->d_name, "%" SCNu32, &fd);
 			if (net_hash_add(link, inode, pid, fd) == NULL) {
-				closedir(fds);
+				(void)closedir(fds);
 				return -1;
 			}
 		}
 	}
-	closedir(fds);
+	(void)closedir(fds);
 
 	return 0;
 }
@@ -636,7 +636,7 @@ static int net_unix_parse(void)
 		strncpy(new_addr.u.path, path, PATH_MAX);
 		net_addr_add(&new_addr);
 	}
-	fclose(fp);
+	(void)fclose(fp);
 
 	return 0;
 }
@@ -708,7 +708,7 @@ static int net_tcp_udp_parse(const net_type_t type)
 		}
 		net_addr_add(&new_addr);
 	}
-	fclose(fp);
+	(void)fclose(fp);
 
 	return 0;
 }
@@ -746,7 +746,7 @@ static int net_netlink_parse(void)
 		snprintf(new_addr.u.path, PATH_MAX, "netlink:[%" PRIu64 "]", inode);
 		net_addr_add(&new_addr);
 	}
-	fclose(fp);
+	(void)fclose(fp);
 
 	return 0;
 }

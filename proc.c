@@ -176,10 +176,10 @@ int proc_cache_get(void)
 			/* 3173 (a.out) R 3093 3173 3093 34818 3173 4202496 165 0 0 0 3194 0 */
 			if (fscanf(fp, "%8d (%63[^)]) %*c %8i", &pid, comm, &ppid) == 3)
 				(void)proc_cache_add(pid, ppid, false);
-			fclose(fp);
+			(void)fclose(fp);
 		}
 	}
-	closedir(procdir);
+	(void)closedir(procdir);
 
 	return 0;
 }
@@ -230,14 +230,14 @@ int proc_cache_get_pthreads(void)
 			if (pid == ppid)
 				continue;
 			if (proc_cache_add(pid, ppid, true) == NULL) {
-				closedir(taskdir);
-				closedir(procdir);
+				(void)closedir(taskdir);
+				(void)closedir(procdir);
 				return -1;
 			}
 		}
-		closedir(taskdir);
+		(void)closedir(taskdir);
 	}
-	closedir(procdir);
+	(void)closedir(procdir);
 
 	return 0;
 }

@@ -45,7 +45,7 @@ static int event_timer_stat_set(const char *str)
 	if ((fp = fopen(TIMER_STATS, "w")) == NULL)
 		return -1;
 	fprintf(fp, "%s\n", str);
-	fclose(fp);
+	(void)fclose(fp);
 
 	return 0;
 }
@@ -190,7 +190,7 @@ int event_get_all_pids(const list_t *pids, proc_state state)
 			proc_info_t *p = (proc_info_t *)l->data;
 			if (event_pid == p->pid) {
 				if (event_add(events, count, event_pid, func, timer) < 0) {
-					fclose(fp);
+					(void)fclose(fp);
 					return -1;
 				}
 				break;
@@ -198,7 +198,7 @@ int event_get_all_pids(const list_t *pids, proc_state state)
 		}
 	}
 
-	fclose(fp);
+	(void)fclose(fp);
 
 	return 0;
 }

@@ -178,7 +178,7 @@ int fnotify_event_add(
 
 			if (filename == NULL) {
 				health_check_out_of_memory("allocating fnotify filename");
-				close(metadata->fd);
+				(void)close(metadata->fd);
 				return -1;
 			}
 			if ((opt_flags & OPT_WAKELOCKS_LIGHT) &&
@@ -201,7 +201,7 @@ int fnotify_event_add(
 					if ((wakelock_info = calloc(1, sizeof(*wakelock_info))) == NULL) {
 						health_check_out_of_memory("allocating wakelock information");
 						free(filename);
-						close(metadata->fd);
+						(void)close(metadata->fd);
 						return -1;
 					}
 					wakelock_info->proc = p;
@@ -210,7 +210,7 @@ int fnotify_event_add(
 					wakelock_info->total = 0;
 					if (list_append(&fnotify_wakelocks, wakelock_info) == NULL) {
 						free(filename);
-						close(metadata->fd);
+						(void)close(metadata->fd);
 						return -1;
 					}
 				}
@@ -240,7 +240,7 @@ int fnotify_event_add(
 					if ((fileinfo = calloc(1, sizeof(*fileinfo))) == NULL) {
 						health_check_out_of_memory("allocating fnotify file information");
 						free(filename);
-						close(metadata->fd);
+						(void)close(metadata->fd);
 						return -1;
 					}
 					fileinfo->filename = filename;
@@ -249,7 +249,7 @@ int fnotify_event_add(
 					fileinfo->count = 0;
 					if (list_append(&fnotify_files, fileinfo) == NULL) {
 						free(filename);
-						close(metadata->fd);
+						(void)close(metadata->fd);
 						return -1;
 					}
 				} else {
@@ -259,7 +259,7 @@ int fnotify_event_add(
 			}
 		}
 	}
-	close(metadata->fd);
+	(void)close(metadata->fd);
 
 	return 0;
 }

@@ -191,7 +191,7 @@ static int json_write(json_object *obj, const char *filename)
 	}
 
 	fprintf(fp, "%s", str);
-	fclose(fp);
+	(void)fclose(fp);
 	json_object_put(obj);
 
 	return 0;

@@ -65,7 +65,7 @@ int ctxt_switch_get_by_proc(proc_info_t *proc, proc_state state)
 
 	if ((info = calloc(1, sizeof(*info))) == NULL) {
 		health_check_out_of_memory("allocating context switch information");
-		fclose(fp);
+		(void)fclose(fp);
 		return -1;
 	}
 	info->voluntary = 0;
@@ -85,7 +85,7 @@ int ctxt_switch_get_by_proc(proc_info_t *proc, proc_state state)
 			continue;
 		}
 	}
-	fclose(fp);
+	(void)fclose(fp);
 	info->total = info->voluntary + info->involuntary;
 	info->valid = true;
 

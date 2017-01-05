@@ -354,7 +354,7 @@ int cpustat_get_by_proc(proc_info_t *proc, proc_state state)
 			info = calloc(1, sizeof(*info));
 			if (info == NULL) {
 				health_check_out_of_memory("allocating cpustat information");
-				fclose(fp);
+				(void)fclose(fp);
 				return -1;
 			}
 			info->proc  = proc;
@@ -367,11 +367,11 @@ int cpustat_get_by_proc(proc_info_t *proc, proc_state state)
 			info->duration = 0.0;
 			if (list_append(cpustat, info) == NULL) {
 				free(info);
-				fclose(fp);
+				(void)fclose(fp);
 				return -1;
 			}
 		}
-		fclose(fp);
+		(void)fclose(fp);
 	}
 	return 0;
 }

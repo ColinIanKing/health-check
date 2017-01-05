@@ -478,7 +478,7 @@ int mem_get_by_proc(proc_info_t *p, const proc_state state)
 
 	if ((m = calloc(1, sizeof(*m))) == NULL) {
 		health_check_out_of_memory("allocating memory tracking information");
-		fclose(fp);
+		(void)fclose(fp);
 		return -1;
 	}
 	m->proc = p;
@@ -488,10 +488,10 @@ int mem_get_by_proc(proc_info_t *p, const proc_state state)
 
 	if (list_append(mem, m) == NULL) {
 		free(m);
-		fclose(fp);
+		(void)fclose(fp);
 		return -1;
 	}
-	fclose(fp);
+	(void)fclose(fp);
 
 	return 0;
 }

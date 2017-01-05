@@ -50,10 +50,10 @@ char *get_pid_comm(const pid_t pid)
 		return NULL;
 
 	if ((ret = read(fd, buffer, sizeof(buffer))) <= 0) {
-		close(fd);
+		(void)close(fd);
 		return NULL;
 	}
-	close(fd);
+	(void)close(fd);
 	buffer[ret-1] = '\0';
 
 	return strdup(buffer);
@@ -76,10 +76,10 @@ char *get_pid_cmdline(const pid_t pid)
 		return NULL;
 
 	if ((ret = read(fd, buffer, sizeof(buffer))) <= 0) {
-		close(fd);
+		(void)close(fd);
 		return NULL;
 	}
-	close(fd);
+	(void)close(fd);
 
 	if (ret >= (ssize_t)sizeof(buffer))
 		ret = sizeof(buffer) - 1;
