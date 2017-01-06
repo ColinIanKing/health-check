@@ -1,3 +1,14 @@
+health-check (0.02.05-1) unstable; urgency=medium
+
+  * Makefile: bump version
+  * Makefile: line break on OBJS line
+  * voidify returns from close, fclose, closedir, etc
+  * Update copyright year
+  * Remove alloc shim for debugging heap.
+  * syscall: fix inconsistent indenting
+
+ -- Colin King <colin.king@canonical.com>  Fri, 6 Jan 2017 10:46:12 +0000
+
 health-check (0.02.04-1) unstable; urgency=medium
 
   * Makefile: bump version
