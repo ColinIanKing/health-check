@@ -684,8 +684,9 @@ static void syscall_name(const int syscall, char *name, const size_t len)
 static inline unsigned long hash_syscall(const pid_t pid, const int syscall)
 {
 	unsigned long h;
+	unsigned long lpid = (unsigned long)pid;
 
-	h = (pid ^ (pid << 3) ^ syscall) % HASH_TABLE_SIZE;
+	h = (lpid ^ (lpid << 3) ^ syscall) % HASH_TABLE_SIZE;
 	return h;
 }
 
@@ -696,8 +697,9 @@ static inline unsigned long hash_syscall(const pid_t pid, const int syscall)
 static inline unsigned long hash_fd(const pid_t pid, const int fd)
 {
 	unsigned long h;
+	unsigned long lpid = (unsigned long)pid;
 
-	h = (pid ^ (pid << 3) ^ fd) % HASH_TABLE_SIZE;
+	h = (lpid ^ (lpid << 3) ^ fd) % HASH_TABLE_SIZE;
 	return h;
 }
 
