@@ -345,24 +345,22 @@ static void fnotify_dump_files(
 		if (list_add_ordered(&sorted, info, fnotify_event_cmp_count) == NULL)
 			goto out;
 	}
-	if (fnotify_files.head) {
-		if (fnotify_files.head && !(opt_flags & OPT_BRIEF)) {
-			printf("  PID  Process               Count  Op  Filename\n");
-			for (count = 0, total = 0, l = sorted.head; l; l = l->next) {
-				fnotify_fileinfo_t *info = (fnotify_fileinfo_t *)l->data;
+	if (fnotify_files.head && !(opt_flags & OPT_BRIEF)) {
+		printf("  PID  Process               Count  Op  Filename\n");
+		for (count = 0, total = 0, l = sorted.head; l; l = l->next) {
+			fnotify_fileinfo_t *info = (fnotify_fileinfo_t *)l->data;
 
-				printf(" %5d %-20.20s %6" PRIu64 " %4s %s\n",
-					info->proc->pid, info->proc->cmdline,
-					info->count,
-					fnotify_mask_to_str(info->mask),
-					info->filename);
-				total += info->count;
-				count++;
-			}
-			if (count > 1)
-				printf(" %-25.25s%8" PRIu64 "\n", "Total", total);
-			printf(" Op: O=Open, R=Read, W=Write, C=Close\n\n");
+			printf(" %5d %-20.20s %6" PRIu64 " %4s %s\n",
+				info->proc->pid, info->proc->cmdline,
+				info->count,
+				fnotify_mask_to_str(info->mask),
+				info->filename);
+			total += info->count;
+			count++;
 		}
+		if (count > 1)
+			printf(" %-25.25s%8" PRIu64 "\n", "Total", total);
+		printf(" Op: O=Open, R=Read, W=Write, C=Close\n\n");
 	}
 
 #ifdef JSON_OUTPUT
