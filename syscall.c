@@ -777,6 +777,7 @@ void syscall_dump_hashtable(json_object *j_tests, const double duration)
 	link_t *l;
 	int i;
 	int count = 0;
+	const int pid_size = pid_max_digits();
 	uint64_t total, usecs_total = 0;
 #ifndef JSON_OUTPUT
 	(void)j_tests;
@@ -798,14 +799,16 @@ void syscall_dump_hashtable(json_object *j_tests, const double duration)
 	}
 
 	printf("System calls traced:\n");
-	printf("  PID  Process              Syscall               Count    Rate/Sec    Total μSecs  %% Call Time\n");
+	printf(" %*s Process              Syscall               Count    Rate/Sec    Total μSecs  %% Call Time\n",
+		pid_size, "PID");
 	for (total = 0, l = sorted.head; l; l = l->next) {
 		char name[64];
 		syscall_info_t *s = (syscall_info_t *)l->data;
 
 		syscall_name(s->syscall, name, sizeof(name));
-		printf(" %5i %-20.20s %-20.20s %6" PRIu64 " %12.4f %13" PRIu64 "    %8.4f\n",
-			s->proc->pid, s->proc->cmdline, name, s->count,
+		printf(" %*d %-20.20s %-20.20s %6" PRIu64 " %12.4f %13" PRIu64 "    %8.4f\n",
+			pid_size, s->proc->pid,
+			s->proc->cmdline, name, s->count,
 			(double)s->count / duration, s->usecs_total,
 			(double)s->usecs_total * 100.0 / (double)usecs_total);
 		count++;
@@ -1441,6 +1444,7 @@ void syscall_dump_sync(json_object *j_tests, double duration)
 	link_t *l;
 	syscall_sync_info_t *info;
 	bool sync_filenames = false;
+	const int pid_size = pid_max_digits();
 
 #if !defined(JSON_OUTPUT)
 	(void)j_tests;
@@ -1457,11 +1461,12 @@ void syscall_dump_sync(json_object *j_tests, double duration)
 	if (syscall_syncs.head == NULL) {
 		printf(" None.\n\n");
 	} else {
-		printf("  PID   fdatasync    fsync     sync   syncfs    total   total (Rate)\n");
+		printf(" %*s  fdatasync    fsync     sync   syncfs    total   total (Rate)\n",
+			pid_size, "PID");
 		for (l = sorted.head; l; l = l->next) {
 			info = (syscall_sync_info_t *)l->data;
-			printf(" %5i   %8" PRIu64 " %8" PRIu64 " %8" PRIu64 " %8" PRIu64 " %8" PRIu64 " %8.2f\n",
-				info->pid,
+			printf(" %*d   %8" PRIu64 " %8" PRIu64 " %8" PRIu64 " %8" PRIu64 " %8" PRIu64 " %8.2f\n",
+				pid_size, info->pid,
 				info->fdatasync_count, info->fsync_count,
 				info->sync_count, info->syncfs_count,
 				info->total_count, (double)info->total_count / duration);
@@ -1470,7 +1475,6 @@ void syscall_dump_sync(json_object *j_tests, double duration)
 		}
 		printf("\n");
 	}
-
 
 #ifdef JSON_OUTPUT
 	if (j_tests) {
@@ -1517,8 +1521,10 @@ void syscall_dump_sync(json_object *j_tests, double duration)
 	}
 #endif
 	if (sync_filenames) {
+		const int pid_size = pid_max_digits();
+
 		printf("Files Sync'd:\n");
-		printf("  PID   syscall    # sync's filename\n");
+		printf(" %*s  syscall    # sync's filename\n", pid_size, "PID");
 		for (l = sorted.head; l; l = l->next) {
 			link_t *ll;
 			info = (syscall_sync_info_t *)l->data;
@@ -1528,8 +1534,8 @@ void syscall_dump_sync(json_object *j_tests, double duration)
 
 				syscall_sync_file_t *f = (syscall_sync_file_t *)ll->data;
 				syscall_name(f->syscall, tmp, sizeof(tmp));
-				printf(" %5i  %-10.10s %8" PRIu64 " %s\n",
-					info->pid, tmp, f->count, f->filename);
+				printf(" %*d  %-10.10s %8" PRIu64 " %s\n",
+					pid_size, info->pid, tmp, f->count, f->filename);
 			}
 		}
 		printf("\n");
@@ -1677,6 +1683,7 @@ void syscall_dump_wakelocks(json_object *j_tests, const double duration, list_t 
 	link_t *lp;
 	uint64_t total_locked = 0, total_unlocked = 0;
 	uint32_t total_count = 0;
+	const int pid_size = pid_max_digits();
 #ifdef JSON_OUTPUT
 	json_object *j_wakelock_test = NULL, *j_wakelock_infos = NULL, *j_wakelock_info;
 #endif
@@ -1703,7 +1710,8 @@ void syscall_dump_wakelocks(json_object *j_tests, const double duration, list_t 
 	} else {
 		double total_locked_duration = 0.0;
 
-		printf("  PID  Process              Wakelock             Locks  Unlocks  Locks    Unlocks  Lock Duration\n");
+		printf(" %*s Process              Wakelock             Locks  Unlocks  Locks    Unlocks  Lock Duration\n",
+			pid_size, "PID");
 		printf("%65s%s", "", "Per Sec  Per Sec  (Average Sec)\n");
 		for (lp = pids->head; lp; lp = lp->next) {
 			link_t *ln;
@@ -1744,8 +1752,8 @@ void syscall_dump_wakelocks(json_object *j_tests, const double duration, list_t 
 				total_count += count;
 				total_locked_duration += locked_duration;
 
-				printf(" %5i %-20.20s %-16.16s  %8" PRIu64 " %8" PRIu64 " %8.2f %8.2f %12.5f\n",
-					p->pid, p->cmdline, lockname, locked, unlocked,
+				printf(" %*d %-20.20s %-16.16s  %8" PRIu64 " %8" PRIu64 " %8.2f %8.2f %12.5f\n",
+					pid_size, p->pid, p->cmdline, lockname, locked, unlocked,
 					(double)locked / duration, (double)unlocked / duration,
 					count ? locked_duration / count : 0.0);
 #ifdef JSON_OUTPUT
@@ -1792,7 +1800,8 @@ out:
 		link_t *ls;
 
 		printf("Verbose Dump of Wakelock Actions:\n");
-		printf("  PID  Wakelock         Date     Time            Action   Duration (Secs)\n");
+		printf(" %*s Wakelock         Date     Time            Action   Duration (Secs)\n",
+			pid_size, "PID");
 		for (ls = syscall_wakelocks.head; ls; ls = ls->next) {
 			char buf[64];
 			syscall_wakelock_info_t *info = (syscall_wakelock_info_t *)ls->data;
@@ -1819,13 +1828,15 @@ out:
 			if (info->paired) {
 				double locked_time = syscall_timeval_to_double(&info->paired->tv);
 				double unlocked_time = syscall_timeval_to_double(&info->tv);
-				printf(" %5i %-16.16s %s.%06d %-8.8s %f\n",
-					info->pid, info->lockname, buf, (int)info->tv.tv_usec,
+				printf(" %*d %-16.16s %s.%06d %-8.8s %f\n",
+					pid_size, info->pid,
+					info->lockname, buf, (int)info->tv.tv_usec,
 					info->locked ? "Locked" : "Unlocked",
 					unlocked_time - locked_time);
 			} else {
-				printf(" %5i %-16.16s %s.%06d %-8.8s\n",
-					info->pid, info->lockname, buf, (int)info->tv.tv_usec,
+				printf(" %*d %-16.16s %s.%06d %-8.8s\n",
+					pid_size, info->pid,
+					info->lockname, buf, (int)info->tv.tv_usec,
 					info->locked ? "Locked" : "Unlocked");
 			}
 		}
@@ -1961,10 +1972,14 @@ static void syscall_dump_filename(const char *label, const int syscall, json_obj
 	if (sorted.length == 0) {
 		printf(" None.\n\n");
 	} else {
-		printf("  PID  Process              Rate/Sec File\n");
+		const int pid_size = pid_max_digits();
+
+		printf(" %*s Process              Rate/Sec File\n",
+			pid_size, "PID");
 		for (l = sorted.head; l; l = l->next) {
 			filename_info_t *info = (filename_info_t *)l->data;
-			printf(" %5i %-20.20s %8.3f %s\n", info->pid,
+			printf(" %*d %-20.20s %8.3f %s\n",
+				pid_size, info->pid,
 				info->proc->cmdline,
 				(double)info->count / duration, info->filename);
 		}
@@ -2116,6 +2131,7 @@ void syscall_dump_pollers(json_object *j_tests, const double duration)
 	list_t sorted;
 	link_t *l;
 	json_object *j_pollers = NULL;
+	const int pid_size = pid_max_digits();
 
 #if !defined(JSON_OUTPUT)
 	(void)j_tests;
@@ -2193,15 +2209,18 @@ void syscall_dump_pollers(json_object *j_tests, const double duration)
 			uint64_t poll_infinite = 0, poll_zero = 0, count = 0;
 
 			printf("Top polling system calls:\n");
-			printf("  PID  Process              Syscall             Rate/Sec   Infinite   Zero     Minimum    Maximum    Average\n");
-			printf("                                                           Timeouts Timeouts   Timeout    Timeout    Timeout\n");
+			printf(" %*s Process              Syscall             Rate/Sec   Infinite   Zero     Minimum    Maximum    Average\n",
+				pid_size, "PID");
+			printf(" %*s                                                     Timeouts Timeouts   Timeout    Timeout    Timeout\n",
+				pid_size, "");
 			for (l = sorted.head; l; l = l->next) {
 				syscall_info_t *s = (syscall_info_t *)l->data;
 				syscall_name(s->syscall, tmp, sizeof(tmp));
 				double rate = (double)s->count / duration;
 
-				printf(" %5i %-20.20s %-17.17s %12.4f %8" PRIu64 " %8" PRIu64,
-					s->proc->pid, s->proc->cmdline, tmp, rate,
+				printf(" %*d %-20.20s %-17.17s %12.4f %8" PRIu64 " %8" PRIu64,
+					pid_size, s->proc->pid,
+					s->proc->cmdline, tmp, rate,
 					s->poll_infinite, s->poll_zero);
 				if (s->poll_count) {
 					char min_timeout[64], max_timeout[64], avg_timeout[64];
@@ -2254,7 +2273,8 @@ void syscall_dump_pollers(json_object *j_tests, const double duration)
 				printf(" %6s", i == (MAX_BUCKET-1) ? "" : tmp);
 			}
 			printf(" Infinite\n");
-			printf("  PID  Process              Syscall            sec");
+			printf(" %*s Process              Syscall            sec",
+				pid_size, "PID");
 			for (bucket = BUCKET_START, i = 0; i < MAX_BUCKET; i++, bucket *= 10.0) {
 				units = syscall_timeout_to_human_time(bucket, true, tmp, sizeof(tmp));
 				printf(" %6s", units);
@@ -2264,7 +2284,9 @@ void syscall_dump_pollers(json_object *j_tests, const double duration)
 				syscall_info_t *s = (syscall_info_t *)l->data;
 
 				syscall_name(s->syscall, tmp, sizeof(tmp));
-				printf(" %5u %-20.20s %-15.15s %6" PRIu64, s->proc->pid, s->proc->cmdline, tmp, s->poll_zero);
+				printf(" %*d %-20.20s %-15.15s %6" PRIu64,
+					pid_size, s->proc->pid,
+					s->proc->cmdline, tmp, s->poll_zero);
 				for (i = 0; i < MAX_BUCKET; i++) {
 					if (s->bucket[i])
 						printf(" %6" PRIu64, s->bucket[i]);

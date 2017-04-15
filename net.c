@@ -550,8 +550,10 @@ void net_connection_dump(json_object *j_tests, double duration)
 		printf(" None.\n\n");
 	} else {
 		char sendbuf[64], recvbuf[64];
+		const int pid_size = pid_max_digits();
 
-		printf("  PID  Process              Proto         Send   Receive  Address\n");
+		printf(" %*s Process              Proto         Send   Receive  Address\n",
+			pid_size, "PID");
 		for (l = sorted.head; l; l = l->next) {
 			net_dump_info_t *dump_info = (net_dump_info_t *)l->data;
 			char *addr = net_get_addr(dump_info->addr_info);
@@ -559,8 +561,8 @@ void net_connection_dump(json_object *j_tests, double duration)
 			net_size_to_str(sendbuf, sizeof(sendbuf), dump_info->nh->send.data_total);
 			net_size_to_str(recvbuf, sizeof(recvbuf), dump_info->nh->recv.data_total);
 
-			printf(" %5i %-20.20s %-7.7s  %s %s  %s\n",
-				dump_info->nh->proc->pid,
+			printf(" %*d %-20.20s %-7.7s  %s %s  %s\n",
+				pid_size, dump_info->nh->proc->pid,
 				dump_info->nh->proc->cmdline,
 				net_types[dump_info->addr_info->type],
 				sendbuf, recvbuf, addr);

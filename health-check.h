@@ -40,6 +40,7 @@
 
 extern void health_check_exit(const int status) __attribute__ ((noreturn));
 extern void health_check_out_of_memory(const char *msg);
+extern int pid_max_digits(void);
 extern volatile bool keep_running;
 extern long int opt_max_syscalls;
 extern int opt_flags;

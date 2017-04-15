@@ -82,6 +82,7 @@ int cpustat_dump_diff(json_object *j_tests, const double duration)
 {
 	double nr_ticks = (double)sysconf(_SC_CLK_TCK) * duration;
 	double utime_total = 0.0, stime_total = 0.0, ttime_total = 0.0;
+	const int pid_size = pid_max_digits();
 	int rc = 0;
 	int count = 0;
 	link_t *lo, *ln;
@@ -136,11 +137,12 @@ int cpustat_dump_diff(json_object *j_tests, const double duration)
 				100.0 * ttime_total,
 				cpustat_loading(100.0 * (double)ttime_total));
 		} else {
-			printf("  PID  Process                USR%%   SYS%% TOTAL%%   Duration\n");
+			printf(" %*s Process                USR%%   SYS%% TOTAL%%   Duration\n",
+				pid_size, "PID");
 			for (ln = sorted.head; ln; ln = ln->next) {
 				cin = (cpustat_info_t*)ln->data;
-				printf(" %5d %-20.20s %6.2f %6.2f %6.2f   %8.2f  (%s)\n",
-					cin->proc->pid,
+				printf(" %*d %-20.20s %6.2f %6.2f %6.2f   %8.2f  (%s)\n",
+					pid_size, cin->proc->pid,
 					cin->proc->cmdline,
 					100.0 * (double)cin->utime / nr_ticks,
 					100.0 * (double)cin->stime / nr_ticks,
@@ -265,11 +267,14 @@ int pagefault_dump_diff(json_object *j_tests, const double duration)
 	if (sorted.head == NULL) {
 		printf(" Nothing measured.\n");
 	} else {
-		printf("  PID  Process                 Minor/sec    Major/sec    Total/sec\n");
+		const int pid_size = pid_max_digits();
+
+		printf(" %*s Process                 Minor/sec    Major/sec    Total/sec\n",
+			pid_size, "PID");
 		for (ln = sorted.head; ln; ln = ln->next) {
 			cin = (cpustat_info_t*)ln->data;
-			printf(" %5d %-20.20s %12.2f %12.2f %12.2f\n",
-				cin->proc->pid,
+			printf(" %*d %-20.20s %12.2f %12.2f %12.2f\n",
+				pid_size, cin->proc->pid,
 				cin->proc->cmdline,
 				(double)cin->minor_fault / duration,
 				(double)cin->major_fault / duration,

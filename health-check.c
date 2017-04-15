@@ -33,6 +33,7 @@
 #include <sys/ptrace.h>
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <fcntl.h>
 #include <limits.h>
 #include <grp.h>
 #include <pwd.h>
@@ -59,6 +60,41 @@ static bool caught_sigint = false;
 volatile bool keep_running = true;
 int opt_flags;
 long int opt_max_syscalls = 1000000;
+
+/*
+ *  pid_max_digits()
+ *	determine (or guess) maximum digits of pids
+ */
+int pid_max_digits(void)
+{
+	static int max_digits;
+	ssize_t n;
+	int fd;
+	const int default_digits = 6;
+	const int min_digits = 5;
+	char buf[32];
+
+	if (max_digits)
+		goto ret;
+
+	max_digits = default_digits;
+	fd = open("/proc/sys/kernel/pid_max", O_RDONLY);
+	if (fd < 0)
+		goto ret;
+	n = read(fd, buf, sizeof(buf) - 1);
+	(void)close(fd);
+	if (n < 0)
+		goto ret;
+
+	buf[n] = '\0';
+	max_digits = 0;
+	while (buf[max_digits] >= '0' && buf[max_digits] <= '9')
+		max_digits++;
+	if (max_digits < min_digits)
+		max_digits = min_digits;
+ret:
+	return max_digits;
+}
 
 /*
  *  handle_sig()

@@ -275,15 +275,18 @@ void event_dump_diff(
 		} else {
 			int count = 0;
 			double total = 0.0;
+			const int pid_size = pid_max_digits();
 
-			printf("  PID  Process               Wake/Sec Kernel Functions\n");
+			printf(" %*s Process               Wake/Sec Kernel Functions\n",
+				pid_size, "PID");
 			for (l = event_info_finish.head; l; l = l->next) {
 				event_info_t *event_new = (event_info_t *)l->data;
 				uint64_t delta = event_delta(event_new, &event_info_start);
 				double event_rate = (double)delta / duration;
 
-				printf(" %5d %-20.20s %9.2f (%s, %s) (%s)\n",
-					event_new->proc->pid, event_new->proc->cmdline,
+				printf(" %*d %-20.20s %9.2f (%s, %s) (%s)\n",
+					pid_size, event_new->proc->pid,
+					event_new->proc->cmdline,
 					event_rate,
 					event_new->func, event_new->callback,
 					event_loading(event_rate));

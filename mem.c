@@ -168,15 +168,19 @@ void mem_dump_mmap(json_object *j_tests, const double duration)
 	if (mem_mmap_info.head == NULL) {
 		printf(" None.\n\n");
 	} else {
-		printf("  PID                          mmaps  munmaps  Change (K)  Rate (K/Sec)\n");
+		const int pid_size = pid_max_digits();
+
+		printf(" %*s                         mmaps  munmaps  Change (K)  Rate (K/Sec)\n",
+			pid_size, "PID");
 		for (l = sorted.head; l; l = l->next) {
 			info = (mem_mmap_info_t *)l->data;
 			proc_info_t *p = proc_cache_find_by_pid(info->pid);
 			int64_t delta = info->mmap_length - info->munmap_length;
 			double rate = ((double)delta) / duration;
 
-			printf(" %5d %-20.20s %8" PRIu64 " %8" PRIu64 "    %8" PRIi64 "      %8.2f (%s)\n",
-				info->pid, p ? p->cmdline : "",
+			printf(" %*d %-20.20s %8" PRIu64 " %8" PRIu64 "    %8" PRIi64 "      %8.2f (%s)\n",
+				pid_size, info->pid,
+				p ? p->cmdline : "",
 				info->mmap_count, info->munmap_count,
 				delta / 1024, rate / 1024.0, mem_loading(rate));
 		}
@@ -311,15 +315,18 @@ void mem_dump_brk(json_object *j_tests, const double duration)
 	if (mem_brk_info.head == NULL) {
 		printf(" None.\n\n");
 	} else {
-		printf("  PID                        brk Count   Change (K)  Rate (K/Sec)\n");
+		const int pid_size = pid_max_digits();
+
+		printf(" %*s                       brk Count   Change (K)  Rate (K/Sec)\n",
+			pid_size, "PID");
 		for (l = sorted.head; l; l = l->next) {
 			info = (mem_brk_info_t *)l->data;
 			const proc_info_t *p = proc_cache_find_by_pid(info->pid);
 			const ptrdiff_t delta = ((const char *)info->brk_current - (const char *)info->brk_start);
 			const double rate = ((double)delta) / duration;
 
-			printf(" %5d %-20.20s   %8" PRIu64 " %12td      %8.2f (%s)\n",
-				info->pid,
+			printf(" %*d %-20.20s   %8" PRIu64 " %12td      %8.2f (%s)\n",
+				pid_size, info->pid,
 				p ? p->cmdline : "", info->brk_count,
 				delta / 1024,
 				rate / 1024.0, mem_loading(rate));
@@ -596,14 +603,18 @@ int mem_dump_diff(
 		if (mem_info_new.head == NULL) {
 			printf(" No memory detected.\n\n");
 		} else {
-			printf("  PID  Process              Type        Size       RSS       PSS\n");
+			const int pid_size = pid_max_digits();
+
+			printf(" %*s Process              Type        Size       RSS       PSS\n",
+				pid_size, "PID");
 			for (l = sorted.head; l; l = l->next) {
 				mem_info_t *delta = (mem_info_t *)l->data;
 				mem_type_t type;
 
 				for (type = MEM_STACK; type < MEM_MAX; type++) {
-					printf(" %5d %-20.20s %-6.6s %9" PRIi64 " %9" PRIi64 " %9" PRIi64 "\n",
-						delta->proc->pid, delta->proc->cmdline,
+					printf(" %*d %-20.20s %-6.6s %9" PRIi64 " %9" PRIi64 " %9" PRIi64 "\n",
+						pid_size, delta->proc->pid,
+						delta->proc->cmdline,
 						mem_types[type],
 						delta->size[type] / 1024,
 						delta->rss[type] / 1024,
@@ -618,6 +629,8 @@ int mem_dump_diff(
 	if (mem_info_new.head == NULL) {
 		printf(" No memory detected.\n\n");
 	} else {
+		const int pid_size = pid_max_digits();
+
 		for (l = sorted_delta.head; l; l = l->next) {
 			mem_info_t *delta = (mem_info_t *)l->data;
 			mem_type_t type;
@@ -625,11 +638,13 @@ int mem_dump_diff(
 			for (type = MEM_STACK; type < MEM_MAX; type++) {
 				if (delta->total[type]) {
 					if (!deltas) {
-						printf("  PID  Process              Type        Size       RSS       PSS\n");
+						printf(" %*s Process              Type        Size       RSS       PSS\n",
+							pid_size, "PID");
 						deltas = true;
 					}
-					printf(" %5d %-20.20s %-6.6s %9.2f %9.2f %9.2f (%s)\n",
-						delta->proc->pid, delta->proc->cmdline,
+					printf(" %*d %-20.20s %-6.6s %9.2f %9.2f %9.2f (%s)\n",
+						pid_size, delta->proc->pid,
+						delta->proc->cmdline,
 						mem_types[type],
 						(double)(delta->size[type] / 1024.0) / duration,
 						(double)(delta->rss[type] / 1024.0) / duration,

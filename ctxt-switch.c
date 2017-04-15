@@ -216,14 +216,18 @@ void ctxt_switch_dump_diff(json_object *j_tests, const double duration)
 		} else {
 			int count = 0;
 			double total_total = 0.0, total_voluntary = 0.0, total_involuntary = 0.0;
+			const int pid_size = pid_max_digits();
 
-			printf("  PID  Process                Voluntary   Involuntary     Total\n");
-			printf("                             Ctxt Sw/Sec  Ctxt Sw/Sec  Ctxt Sw/Sec\n");
+			printf(" %*s Process                Voluntary   Involuntary     Total\n",
+				pid_size, "PID");
+			printf(" %*s                       Ctxt Sw/Sec  Ctxt Sw/Sec  Ctxt Sw/Sec\n",
+				pid_size, "   ");
 			for (l = sorted.head; l; l = l->next) {
 				ctxt_switch_info_t *info = (ctxt_switch_info_t *)l->data;
 
-				printf(" %5d %-20.20s %12.2f %12.2f %12.2f (%s)\n",
-					info->proc->pid, info->proc->cmdline,
+				printf(" %*d %-20.20s %12.2f %12.2f %12.2f (%s)\n",
+					pid_size, info->proc->pid,
+					info->proc->cmdline,
 					(double)info->voluntary / duration,
 					(double)info->involuntary / duration,
 					(double)info->total / duration,

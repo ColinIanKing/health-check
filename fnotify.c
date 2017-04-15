@@ -334,6 +334,7 @@ static void fnotify_dump_files(
 	link_t 	*l;
 	int count;
 	uint64_t total;
+	const int pid_size = pid_max_digits();
 
 #ifndef JSON_OUTPUT
 	(void)j_tests;
@@ -346,12 +347,14 @@ static void fnotify_dump_files(
 			goto out;
 	}
 	if (fnotify_files.head && !(opt_flags & OPT_BRIEF)) {
-		printf("  PID  Process               Count  Op  Filename\n");
+		printf(" %*s Process               Count  Op  Filename\n",
+			pid_size, "PID");
 		for (count = 0, total = 0, l = sorted.head; l; l = l->next) {
 			fnotify_fileinfo_t *info = (fnotify_fileinfo_t *)l->data;
 
-			printf(" %5d %-20.20s %6" PRIu64 " %4s %s\n",
-				info->proc->pid, info->proc->cmdline,
+			printf(" %*d %-20.20s %6" PRIu64 " %4s %s\n",
+				pid_size, info->proc->pid,
+				info->proc->cmdline,
 				info->count,
 				fnotify_mask_to_str(info->mask),
 				info->filename);
@@ -477,13 +480,17 @@ static void fnotify_dump_io_ops(
 				(double)write_total / duration);
 			printf("\n");
 		} else {
+			const int pid_size = pid_max_digits();
+
 			printf("File I/O Operations per second:\n");
-			printf("  PID  Process                 Open   Close    Read   Write\n");
+			printf(" %*s Process                 Open   Close    Read   Write\n",
+				pid_size, "PID");
 			for (count = 0, l = sorted.head; l; l = l->next) {
 				io_ops_t *io_ops = (io_ops_t *)l->data;
 
-				printf(" %5d %-20.20s %7.2f %7.2f %7.2f %7.2f\n",
-					io_ops->proc->pid, io_ops->proc->cmdline,
+				printf(" %*d %-20.20s %7.2f %7.2f %7.2f %7.2f\n",
+					pid_size, io_ops->proc->pid,
+					io_ops->proc->cmdline,
 					(double)io_ops->open_total / duration,
 					(double)io_ops->close_total / duration,
 					(double)io_ops->read_total / duration,
@@ -588,12 +595,16 @@ void fnotify_dump_wakelocks(
 		printf(" None.\n\n");
 	} else {
 		if (fnotify_wakelocks.head && !(opt_flags & OPT_BRIEF)) {
-			printf("  PID  Process                 Locks  Unlocks\n");
+			const int pid_size = pid_max_digits();
+
+			printf(" %*s Process                 Locks  Unlocks\n",
+				pid_size, "PID");
 
 			for (l = sorted.head; l; l = l->next) {
 				fnotify_wakelock_info_t *info = (fnotify_wakelock_info_t *)l->data;
-				printf(" %5d %-20.20s %8" PRIu64 " %8" PRIu64 "\n",
-					info->proc->pid, info->proc->cmdline,
+				printf(" %*d %-20.20s %8" PRIu64 " %8" PRIu64 "\n",
+					pid_size, info->proc->pid,
+					info->proc->cmdline,
 					info->locked, info->unlocked);
 			}
 		}
