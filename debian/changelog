@@ -1,3 +1,13 @@
+health-check (0.02.06-1) unstable; urgency=medium
+
+  * Makefile: bump version
+  * Manual: update copyright year and manual date
+  * Add variable pid size handling.
+  * syscall: cast pid to unsigned long to ensure hash does not overflow
+  * Remove duplicate check on fnotify_files.head
+
+ -- Colin King <colin.king@canonical.com>  Sat, 15 Apr 2017 08:32:38 +0100
+
 health-check (0.02.05-1) unstable; urgency=medium
 
   * Makefile: bump version
