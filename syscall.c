@@ -2469,6 +2469,9 @@ static void syscall_handle_syscall(syscall_context_t *ctxt)
 			return;
 		}
 		/* assume it is a return, but it may not be, fall through to SYSCALL_RETURN.. */
+#if NEED_GNUC(7, 0, 0)
+		__attribute__((fallthrough));
+#endif
 
 	case SYSCALL_RETURN:
 		if (ctxt->syscall_info != NULL) {
