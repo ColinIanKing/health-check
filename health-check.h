@@ -38,6 +38,21 @@
 #define FLOAT_TINY			(0.0000001)
 #define FLOAT_CMP(a, b)			(fabs((a) - (b)) < FLOAT_TINY)
 
+#define _VER_(major, minor, patchlevel)	\
+	((major * 10000) + (minor * 100) + patchlevel)
+
+#if defined(__GNUC__) && defined(__GNUC_MINOR__)
+#if defined(__GNUC_PATCHLEVEL__)
+#define NEED_GNUC(major, minor, patchlevel)                     \
+	_VER_(major, minor, patchlevel) <= _VER_(__GNUC__, __GNUC_MINOR__, __GNUC_PATCHLEVEL__)
+#else
+#define NEED_GNUC(major, minor, patchlevel)                     \
+	_VER_(major, minor, patchlevel) <= _VER_(__GNUC__, __GNUC_MINOR__, 0)
+#endif
+#else
+#define NEED_GNUC(major, minor, patchlevel)     (0)
+#endif
+
 extern void health_check_exit(const int status) __attribute__ ((noreturn));
 extern void health_check_out_of_memory(const char *msg);
 extern int pid_max_digits(void);
