@@ -2,8 +2,8 @@ Source: health-check
 Section: admin
 Priority: optional
 Maintainer: Colin King <colin.king@canonical.com>
-Standards-Version: 3.9.8
-Build-Depends: debhelper (>= 9), libjson-c-dev (>= 0.11)
+Standards-Version: 4.1.1
+Build-Depends: debhelper (>= 9), libjson0-dev | libjson-c-dev (>= 0.9)
 Homepage: http://kernel.ubuntu.com/~cking/health-check
 
 Package: health-check
