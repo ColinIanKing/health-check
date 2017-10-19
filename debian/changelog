@@ -1,3 +1,12 @@
+health-check (0.02.07-1) unstable; urgency=medium
+
+  * Update version
+  * Update to Standards-Version: 4.1.1
+  * Make libjson dependency more flexible (libjson0-dev or
+    libjson-c-dev)
+
+ -- Colin King <colin.king@canonical.com>  Thu, 19 Oct 2017 13:58:02 +0100
+
 health-check (0.02.06-1) unstable; urgency=medium
 
   * Makefile: bump version
