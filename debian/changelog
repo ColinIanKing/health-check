@@ -1,3 +1,10 @@
+health-check (0.02.08-1) unstable; urgency=medium
+
+  * Remove libson0-dev dependency, causes FTBFS
+  * Makefile: bump version
+
+ -- Colin King <colin.king@canonical.com>  Thu, 19 Oct 2017 19:25:11 +0100
+
 health-check (0.02.07-1) unstable; urgency=medium
 
   * Update version
