@@ -1521,8 +1521,6 @@ void syscall_dump_sync(json_object *j_tests, double duration)
 	}
 #endif
 	if (sync_filenames) {
-		const int pid_size = pid_max_digits();
-
 		printf("Files Sync'd:\n");
 		printf(" %*s  syscall    # sync's filename\n", pid_size, "PID");
 		for (l = sorted.head; l; l = l->next) {
