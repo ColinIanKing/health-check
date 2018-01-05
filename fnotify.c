@@ -33,6 +33,7 @@
 #include <sys/fanotify.h>
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <sys/sysmacros.h>
 
 #include "list.h"
 #include "json.h"
