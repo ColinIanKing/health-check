@@ -1,3 +1,14 @@
+health-check (0.02.09-1) unstable; urgency=medium
+
+  * Makefile: bump version
+  * debian/control: update Standards-Version to 4.1.2
+  * health-check: unconstify metadata to clean up build warning
+  * syscall: remove extraneous pid_size declaration
+  * fnotify: fix build warning, include <sys/sysmacros.h>
+  * Update copyright year
+
+ -- Colin King <colin.king@canonical.com>  Fri, 5 Jan 2018 10:35:36 +0000
+
 health-check (0.02.08-1) unstable; urgency=medium
 
   * Remove libson0-dev dependency, causes FTBFS
@@ -783,6 +794,6 @@ health-check (0.01.02) saucy; urgency=low
 
 health-check (0.01.01) saucy; urgency=low
 
-  * Initial version 
+  * Initial version
 
  -- Colin King <colin.king@canonical.com>  Fri, 19 Jul 2013 16:20:07 +0100
