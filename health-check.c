@@ -626,7 +626,7 @@ int main(int argc, char **argv)
 				ssize_t len;
 
 				if ((len = read(fan_fd, (void *)buffer, 4096)) > 0) {
-					const struct fanotify_event_metadata *metadata;
+					struct fanotify_event_metadata *metadata;
 					metadata = (struct fanotify_event_metadata *)buffer;
 
 					while (FAN_EVENT_OK(metadata, len)) {
