@@ -1,3 +1,14 @@
+health-check (0.03.00-1) unstable; urgency=medium
+
+  * Makefile: bump version to 3.0
+  * debian/copyright: use secure URI
+  * debian/compat: update to 11
+  * debian/control: set debhelper version to >=11
+  * debian/control: remove empty last line
+  * remove event metrics since newer kernels don't support this API
+
+ -- Colin King <colin.king@canonical.com>  Sat, 16 Jun 2018 19:55:12 +0100
+
 health-check (0.02.09-1) unstable; urgency=medium
 
   * Makefile: bump version
