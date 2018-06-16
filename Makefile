@@ -47,7 +47,7 @@ BINDIR=/usr/bin
 MANDIR=/usr/share/man/man8
 
 OBJS =	list.o pid.o proc.o net.o syscall.o timeval.o \
-	fnotify.o event.o cpustat.o mem.o ctxt-switch.o health-check.o
+	fnotify.o cpustat.o mem.o ctxt-switch.o health-check.o
 ifeq ($(JSON_OUTPUT),y)
 	OBJS += json.o
 endif
