@@ -15,4 +15,3 @@ Description: process monitoring tool
  of the monitoring it will display the CPU time used, wakeup
  events generated and I/O operations of the given processes.
  It can be used to diagnose unhealthy bad processes.
-
