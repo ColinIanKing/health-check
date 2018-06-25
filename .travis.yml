@@ -8,8 +8,8 @@ matrix:
 before_install:
     - sudo apt-get update -q
     - sudo apt-get install build-essential
-    - sudo apt-get install libjson-c-dev || yes
-    - sudo apt-get install libjson0-dev || yes
+    - sudo apt-get install libjson-c-dev || true
+    - sudo apt-get install libjson0-dev || true
 
 language: c
 
