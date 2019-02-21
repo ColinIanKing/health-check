@@ -2221,7 +2221,7 @@ void syscall_dump_pollers(json_object *j_tests, const double duration)
 					s->proc->cmdline, tmp, rate,
 					s->poll_infinite, s->poll_zero);
 				if (s->poll_count) {
-					char min_timeout[64], max_timeout[64], avg_timeout[64];
+					char min_timeout[70], max_timeout[70], avg_timeout[70];
 
 					units = syscall_timeout_to_human_time(s->poll_min < 0.0 ? 0.0 : s->poll_min, false, tmp, sizeof(tmp));
 					snprintf(min_timeout, sizeof(min_timeout), "%s %-4s", tmp, units);

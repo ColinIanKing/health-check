@@ -37,10 +37,6 @@
 #include "health-check.h"
 #include "net.h"
 
-#ifndef LINE_MAX
-#define LINE_MAX	(4096)
-#endif
-
 #define NET_HASH_SIZE	(1993)
 
 typedef struct {
@@ -247,7 +243,7 @@ static int net_cache_inodes_pid(const pid_t pid)
 
 	while ((d = readdir(fds)) != NULL) {
 		uint64_t inode;
-		char tmp[LINE_MAX];
+		char tmp[PATH_MAX + sizeof(d->d_name) + 2];
 		char link[PATH_MAX];
 		uint32_t fd;
 
@@ -359,8 +355,8 @@ static net_addr_info_t *net_addr_add(net_addr_info_t *addr)
  */
 static char *net_get_addr(net_addr_info_t *addr_info)
 {
-	static char tmp[256];
 	char buf[4096];
+	static char tmp[sizeof(buf) + 16];
 	in_port_t port;
 
 	switch (addr_info->type) {
@@ -524,7 +520,7 @@ void net_connection_dump(json_object *j_tests, double duration)
 				memset(&new_addr, 0, sizeof(new_addr));
 				new_addr.inode = nh->inode;
 				new_addr.type = NET_UNKNOWN;
-				strncpy(new_addr.u.path, nh->path, PATH_MAX);
+				strncpy(new_addr.u.path, nh->path, sizeof(new_addr.u.path));
 				if ((addr_info = net_addr_add(&new_addr)) == NULL)
 					goto out;
 			}
