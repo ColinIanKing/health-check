@@ -45,7 +45,6 @@
 #include "syscall.h"
 #include "timeval.h"
 #include "fnotify.h"
-#include "event.h"
 #include "cpustat.h"
 #include "mem.h"
 #include "net.h"
@@ -477,8 +476,8 @@ int main(int argc, char **argv)
 	}
 
 	if ((getuid() !=0 ) || (geteuid() != 0)) {
-		fprintf(stderr, "%s requires root privileges to write to %s\n",
-			APP_NAME, TIMER_STATS);
+		fprintf(stderr, "%s requires root trace processes\n",
+			APP_NAME);
 		health_check_exit(EXIT_FAILURE);
 	}
 

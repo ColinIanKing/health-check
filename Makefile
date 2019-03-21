@@ -62,12 +62,10 @@ cpustat.o: cpustat.c list.h json.h cpustat.h timeval.h health-check.h
 
 ctxt-switch.o: ctxt-switch.c list.h json.h ctxt-switch.h health-check.h
 
-event.o: event.c list.h json.h event.h health-check.h
-
 fnotify.o: fnotify.c fnotify.h list.h json.h proc.h health-check.h
 
 health-check.o: health-check.c list.h json.h pid.h proc.h syscall.h timeval.h \
-	fnotify.h event.h cpustat.h mem.h net.h ctxt-switch.h
+	fnotify.h cpustat.h mem.h net.h ctxt-switch.h
 
 json.o: json.c json.h health-check.h
 
