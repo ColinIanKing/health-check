@@ -1,3 +1,17 @@
+health-check (0.03.01-1) unstable; urgency=medium
+
+  * Makefile: bump version
+  * Use safer strlcpy instead of strncpy
+  * Remove events.h and references to timer stats
+  * Fix buffer truncation warnings from gcc-9
+  * Update copyright year
+  * Specify trusty in travis file
+  * Replace yes with true in travis file, doh
+  * Add older package name for json c
+  * Add travis yaml file
+
+ -- Colin King <colin.king@canonical.com>  Fri, 14 Jun 2019 14:10:11 +0100
+
 health-check (0.03.00-1) unstable; urgency=medium
 
   * Makefile: bump version to 3.0
