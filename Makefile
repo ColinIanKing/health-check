@@ -87,7 +87,8 @@ timeval.o: timeval.c timeval.h
 dist:
 	rm -rf health-check-$(VERSION)
 	mkdir health-check-$(VERSION)
-	cp -rp Makefile *.c *.h scripts health-check.8 COPYING health-check-$(VERSION)
+	cp -rp Makefile *.c *.h .travis.yml scripts health-check.8 \
+		COPYING health-check-$(VERSION)
 	tar -zcf health-check-$(VERSION).tar.gz health-check-$(VERSION)
 	rm -rf health-check-$(VERSION)
 
