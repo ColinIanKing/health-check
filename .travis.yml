@@ -10,6 +10,7 @@ before_install:
     - sudo apt-get install build-essential
     - sudo apt-get install libjson-c-dev || true
     - sudo apt-get install libjson0-dev || true
+    - sudo apt-get install libbsd-dev || true
 
 language: c
 
