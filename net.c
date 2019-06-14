@@ -30,6 +30,7 @@
 #include <arpa/inet.h>
 #include <netdb.h>
 #include <dirent.h>
+#include <bsd/string.h>
 
 #include "list.h"
 #include "proc.h"
@@ -133,7 +134,7 @@ static net_hash_t *net_hash_add(const char *path, const uint64_t inode, const pi
 		return NULL;
 	}
 
-	strncpy(n->path, path, PATH_MAX);
+	strlcpy(n->path, path, PATH_MAX);
 	n->inode = inode;
 	n->proc = proc_cache_find_by_pid(pid);
 	n->fd = fd;
@@ -297,7 +298,7 @@ static void net_inet4_resolve(char *name, const size_t len, struct sockaddr_in *
 	if (getnameinfo((struct sockaddr *)sin, sizeof(*sin), name, len,
 		NULL, 0, NI_NUMERICHOST) == 0)
 		return;
-	strncpy(name, "<unknown>", len);
+	strlcpy(name, "<unknown>", len);
 	return;
 }
 
@@ -315,7 +316,7 @@ static void net_inet6_resolve(char *name, const size_t len, struct sockaddr_in6 
 	if (getnameinfo((struct sockaddr *)sin6, sizeof(*sin6), name, len,
 		NULL, 0, NI_NUMERICHOST) == 0)
 		return;
-	strncpy(name, "<unknown>", len);
+	strlcpy(name, "<unknown>", len);
 	return;
 }
 
@@ -520,7 +521,7 @@ void net_connection_dump(json_object *j_tests, double duration)
 				memset(&new_addr, 0, sizeof(new_addr));
 				new_addr.inode = nh->inode;
 				new_addr.type = NET_UNKNOWN;
-				strncpy(new_addr.u.path, nh->path, sizeof(new_addr.u.path));
+				strlcpy(new_addr.u.path, nh->path, sizeof(new_addr.u.path));
 				if ((addr_info = net_addr_add(&new_addr)) == NULL)
 					goto out;
 			}
@@ -631,7 +632,7 @@ static int net_unix_parse(void)
 		memset(&new_addr, 0, sizeof(new_addr));
 		new_addr.inode = inode;
 		new_addr.type = NET_UNIX;
-		strncpy(new_addr.u.path, path, PATH_MAX);
+		strlcpy(new_addr.u.path, path, PATH_MAX);
 		net_addr_add(&new_addr);
 	}
 	(void)fclose(fp);

@@ -37,6 +37,7 @@
 #include <limits.h>
 #include <grp.h>
 #include <pwd.h>
+#include <bsd/string.h>
 
 #include "list.h"
 #include "json.h"
@@ -319,7 +320,7 @@ static const char *find_executable(const char *filename)
 			fprintf(stderr, "executable name too long.\n");
 			health_check_exit(EXIT_FAILURE);
 		}
-		strncpy(path, filename, sizeof(path) - 1);
+		strlcpy(path, filename, sizeof(path) - 1);
 		if (is_executable(path))
 			return path;
 		else
@@ -345,7 +346,7 @@ static const char *find_executable(const char *filename)
 					continue;	/* Too long */
 				else {
 					pathlen = len;
-					strncpy(path, p, pathlen);
+					strlcpy(path, p, pathlen);
 				}
 			} else {
 				if (getcwd(p, PATH_MAX) == NULL)

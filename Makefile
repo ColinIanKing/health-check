@@ -34,7 +34,7 @@ CFLAGS += -Wabi -Wcast-qual -Wfloat-equal -Wmissing-declarations \
 	-Wno-missing-braces -Wno-sign-compare -Wno-multichar
 endif
 
-LDFLAGS += -lpthread
+LDFLAGS += -lpthread -lbsd
 ifeq ($(JSON_OUTPUT),y)
 	LDFLAGS += -ljson-c
 	CFLAGS += -DJSON_OUTPUT
