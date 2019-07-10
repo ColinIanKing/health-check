@@ -1,3 +1,10 @@
+health-check (0.03.02-1) unstable; urgency=medium
+
+  * Update release in .travis.yml file
+  * Add libbsd to travis.yml
+
+ -- Colin King <colin.king@canonical.com>  Wed, 10 Jul 2019 07:44:12 +0100
+
 health-check (0.03.01-1) unstable; urgency=medium
 
   * Makefile: bump version
