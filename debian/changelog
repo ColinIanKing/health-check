@@ -1,3 +1,10 @@
+health-check (0.03.03-1) unstable; urgency=medium
+
+  * Makefile: bump version
+  * Debian: update to compat level 12
+
+ -- Colin King <colin.king@canonical.com>  Mon, 12 Aug 2019 19:04:07 +0100
+
 health-check (0.03.02-1) unstable; urgency=medium
 
   * Update release in .travis.yml file
