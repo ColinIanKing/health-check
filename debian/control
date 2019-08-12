@@ -3,7 +3,7 @@ Section: admin
 Priority: optional
 Maintainer: Colin King <colin.king@canonical.com>
 Standards-Version: 4.1.2
-Build-Depends: debhelper (>= 11), libjson-c-dev (>= 0.9), libbsd-dev
+Build-Depends: debhelper (>= 12), libjson-c-dev (>= 0.9), libbsd-dev
 Homepage: http://kernel.ubuntu.com/~cking/health-check
 
 Package: health-check
