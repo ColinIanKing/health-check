@@ -170,11 +170,11 @@ static int net_get_inode(const char *str, uint64_t *inode)
  *  net_get_inode_by_path()
  *	given a /proc/$pid/fd/fdnum path, look up a network inode
  */
-static int net_get_inode_by_path(const char *path, uint64_t *inode, char *link)
+static int net_get_inode_by_path(const char *path, uint64_t *inode, char *link, const size_t link_len)
 {
 	ssize_t len;
 
-	if ((len = readlink(path, link, PATH_MAX)) < 0) {
+	if ((len = readlink(path, link, link_len - 1)) < 0) {
 		*link = '\0';
 		return -1;
 	}
@@ -188,12 +188,12 @@ static int net_get_inode_by_path(const char *path, uint64_t *inode, char *link)
  */
 static net_hash_t *net_cache_inode_by_pid_and_fd(const pid_t pid, const int fd)
 {
-	char path[PATH_MAX], link[PATH_MAX];
+	char path[PATH_MAX], link[PATH_MAX + 1];
 	uint64_t inode;
 	net_hash_t *nh = NULL;
 
 	snprintf(path, sizeof(path), "/proc/%i/fd/%i", pid, fd);
-	if (net_get_inode_by_path(path, &inode, link) != -1)
+	if (net_get_inode_by_path(path, &inode, link, sizeof(link)) != -1)
 		nh = net_hash_add(link, inode, pid, fd);
 
 	return nh;
@@ -245,7 +245,7 @@ static int net_cache_inodes_pid(const pid_t pid)
 	while ((d = readdir(fds)) != NULL) {
 		uint64_t inode;
 		char tmp[PATH_MAX + sizeof(d->d_name) + 2];
-		char link[PATH_MAX];
+		char link[PATH_MAX + 1];
 		uint32_t fd;
 
 		if (d->d_name[0] == '.')
@@ -254,7 +254,7 @@ static int net_cache_inodes_pid(const pid_t pid)
 			continue;
 		snprintf(tmp, sizeof(tmp), "%s/%s", path, d->d_name);
 
-		if (net_get_inode_by_path(tmp, &inode, link) != -1) {
+		if (net_get_inode_by_path(tmp, &inode, link, sizeof(link)) != -1) {
 			sscanf(d->d_name, "%" SCNu32, &fd);
 			if (net_hash_add(link, inode, pid, fd) == NULL) {
 				(void)closedir(fds);
