@@ -1,3 +1,13 @@
+health-check (0.03.04-1) unstable; urgency=medium
+
+  * Makefile: bump version
+  * syscall: handle a null return from localtime
+  * set *inode to zero to clear up a static analysis false warning
+  * ignore return from proc_pids_add_proc
+  * net: pass size of link string in net_get_inode_by_path
+
+ -- Colin King <colin.king@canonical.com>  Mon, 16 Dec 2019 13:00:01 +0000
+
 health-check (0.03.03-1) unstable; urgency=medium
 
   * Makefile: bump version
