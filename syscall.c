@@ -1804,8 +1804,12 @@ out:
 			char buf[64];
 			syscall_wakelock_info_t *info = (syscall_wakelock_info_t *)ls->data;
 			time_t whence_time = (time_t)info->tv.tv_sec;
-			struct tm *whence_tm = localtime(&whence_time);
+			struct tm whence_null_tm, *whence_tm = localtime(&whence_time);
 
+			if (!whence_tm) {
+				(void)memset(&whence_null_tm, 0, sizeof(whence_null_tm));
+				whence_tm = &whence_null_tm;
+			}
 			strftime(buf, sizeof(buf), "%x %X", whence_tm);
 
 			if (info->locked) {
