@@ -296,7 +296,7 @@ int proc_cache_find_by_procname(
 		proc_info_t *p = (proc_info_t *)l->data;
 
 		if (p->cmdline && strcmp(p->cmdline, procname) == 0) {
-			proc_pids_add_proc(pids, p);
+			(void)proc_pids_add_proc(pids, p);
 			found = true;
 		}
 	}
