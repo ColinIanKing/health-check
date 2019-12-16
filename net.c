@@ -173,6 +173,7 @@ static int net_get_inode(const char *str, uint64_t *inode)
 static int net_get_inode_by_path(const char *path, uint64_t *inode, char *link, const size_t link_len)
 {
 	ssize_t len;
+	*inode = 0;
 
 	if ((len = readlink(path, link, link_len - 1)) < 0) {
 		*link = '\0';
