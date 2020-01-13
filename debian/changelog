@@ -1,4 +1,12 @@
-health-check (0.03.04-1) unstable; urgency=medium
+health-check (0.03.05-1) unstable; urgency=medium
+
+  * Makefile: bump version
+  * pid: sanity check for null return from basename call
+  * Update copyright to 2020
+
+ -- Colin King <colin.king@canonical.com>  Mon, 13 Jan 2020 15:05:11 +0000
+
+ealth-check (0.03.04-1) unstable; urgency=medium
 
   * Makefile: bump version
   * syscall: handle a null return from localtime
