@@ -90,7 +90,11 @@ char *get_pid_cmdline(const pid_t pid)
 			*ptr = '\0';
 	}
 
-	return strdup(basename(buffer));
+	ptr = basename(buffer);
+	if (ptr)
+		return strdup(ptr);
+
+	return strdup(buffer);
 }
 
 /*
