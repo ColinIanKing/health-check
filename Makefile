@@ -45,6 +45,7 @@ endif
 
 BINDIR=/usr/bin
 MANDIR=/usr/share/man/man8
+BASHDIR=/usr/share/bash-completion/completions
 
 OBJS =	list.o pid.o proc.o net.o syscall.o timeval.o \
 	fnotify.o cpustat.o mem.o ctxt-switch.o health-check.o
@@ -88,7 +89,7 @@ dist:
 	rm -rf health-check-$(VERSION)
 	mkdir health-check-$(VERSION)
 	cp -rp Makefile *.c *.h .travis.yml scripts health-check.8 \
-		COPYING health-check-$(VERSION)
+		bash-completion COPYING health-check-$(VERSION)
 	tar -zcf health-check-$(VERSION).tar.gz health-check-$(VERSION)
 	rm -rf health-check-$(VERSION)
 
@@ -102,3 +103,5 @@ install: health-check health-check.8.gz
 	cp health-check ${DESTDIR}${BINDIR}
 	mkdir -p ${DESTDIR}${MANDIR}
 	cp health-check.8.gz ${DESTDIR}${MANDIR}
+	mkdir -p ${DESTDIR}${BASHDIR}
+	cp bash-completion/health-check ${DESTDIR}${BASHDIR}
