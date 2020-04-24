@@ -1,3 +1,10 @@
+health-check (0.03.07-1) unstable; urgency=medium
+
+  * Makefile: bump version
+  * net.c: move declaration of send_total recv_total fix build failure
+
+ -- Colin King <colin.king@canonical.com>  Fri, 24 Apr 2020 15:06:12 +0100
+
 health-check (0.03.06-1) unstable; urgency=medium
 
   * Makefile: bump version
