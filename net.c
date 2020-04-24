@@ -467,9 +467,9 @@ void net_connection_dump(json_object *j_tests, double duration)
 	list_t dump_info_list;
 	list_t sorted;
 	int i;
+	uint64_t send_total = 0, recv_total = 0;
 #ifdef JSON_OUTPUT
 	json_object *j_net_test = NULL, *j_net_infos = NULL, *j_net_info;
-	uint64_t send_total = 0, recv_total = 0;
 #else
 	(void)j_tests;
 	(void)duration;
