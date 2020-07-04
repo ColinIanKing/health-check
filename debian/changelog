@@ -1,3 +1,11 @@
+health-check (0.03.08-1) unstable; urgency=medium
+
+  * Makefile: bump version
+  * Debian/control: update compat to 13, remove compat file,
+    add Rules-Requires-Root rule
+
+ -- Colin King <colin.king@canonical.com>  Sat, 4 Jul 2020 11:26:32 +0100
+
 health-check (0.03.07-1) unstable; urgency=medium
 
   * Makefile: bump version
