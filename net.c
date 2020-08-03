@@ -674,10 +674,8 @@ static int net_tcp_udp_parse(const net_type_t type)
 		return -1;
 	}
 
-	if ((fp = fopen(procfile, "r")) == NULL) {
-		fprintf(stderr, "Cannot open %s.\n", procfile);
+	if ((fp = fopen(procfile, "r")) == NULL)
 		return -1;
-	}
 
 	for (i = 0; fgets(buf, sizeof(buf), fp) != NULL; i++) {
 		net_addr_info_t new_addr;
