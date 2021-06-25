@@ -47,7 +47,7 @@ struct timeval timeval_add(const struct timeval *a, const struct timeval *b)
 	if (ret.tv_usec > 1000000) {
 		int nsec = (ret.tv_usec / 1000000);
 		ret.tv_sec += nsec;
-		ret.tv_usec -= (1000000 * nsec);
+		ret.tv_usec -= (1000000ULL * nsec);
 	}
 
 	return ret;
@@ -69,12 +69,12 @@ struct timeval timeval_sub(
 	if (a->tv_usec < _b.tv_usec) {
 		int nsec = ((_b.tv_usec - a->tv_usec) / 1000000) + 1;
 		_b.tv_sec += nsec;
-		_b.tv_usec -= (1000000 * nsec);
+		_b.tv_usec -= (1000000ULL * nsec);
 	}
 	if (a->tv_usec - _b.tv_usec > 1000000) {
 		int nsec = (a->tv_usec - _b.tv_usec) / 1000000;
 		_b.tv_sec -= nsec;
-		_b.tv_usec += (1000000 * nsec);
+		_b.tv_usec += (1000000ULL * nsec);
 	}
 
 	ret.tv_sec = a->tv_sec - _b.tv_sec;
