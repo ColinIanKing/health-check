@@ -923,6 +923,8 @@ static void syscall_get_arg_data(
 	size_t i, n = (len + sizeof(unsigned long) - 1) / sizeof(unsigned long);
 	unsigned long tmpdata[n];
 
+	(void)memset(tmpdata, 0, sizeof(tmpdata));
+
 	for (i = 0; i < n; i++)
 		tmpdata[i] = ptrace(PTRACE_PEEKDATA, pid,
 				addr + (sizeof(unsigned long) * i), NULL);
