@@ -89,7 +89,7 @@ dist:
 	rm -rf health-check-$(VERSION)
 	mkdir health-check-$(VERSION)
 	cp -rp Makefile *.c *.h .travis.yml scripts health-check.8 \
-		bash-completion COPYING health-check-$(VERSION)
+		bash-completion COPYING README.md health-check-$(VERSION)
 	tar -zcf health-check-$(VERSION).tar.gz health-check-$(VERSION)
 	rm -rf health-check-$(VERSION)
 
