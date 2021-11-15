@@ -1,3 +1,20 @@
+health-check (0.03.10-1) unstable; urgency=medium
+
+  * Makefile: bump version
+  * sources: update copyright
+  * Makefile: update copyright
+  * Makefile: add README.md to make dist rule
+  * manual: update date, author email and copyright
+  * debian/watch: update watch path for tarball, move to version 4
+  * debian/copyright: Update copyright and git URL
+  * debian/control: update author email address and project URL
+  * Add README.md
+  * syscall: clean up static analysis warning
+  * timeval: ensure multiplication is 64 bit to avoid 32 bit overflow
+  * update copyright to 2021
+
+ -- Colin Ian King <colin.i.king@gmail.com>  Mon, 15 Nov 2021 22:09:23 +0000
+
 health-check (0.03.09-1) unstable; urgency=medium
 
   * Makefile: bump version
