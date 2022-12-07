@@ -548,6 +548,7 @@ static inline int syscall_get_return(const pid_t pid, int *rc)
 		.iov_base = &regs
 	};
 
+	(void)memset(&regs, 0, sizeof(regs));
 	errno = 0;
 	io.iov_len = sizeof(struct aarch64_regs);
 	ptrace(PTRACE_GETREGSET, pid, NT_PRSTATUS, &io);
@@ -594,9 +595,9 @@ static int syscall_get_args(
 #elif defined (__x86_64__)
 	int i;
 	long cs;
-	int *regs;
-	static int regs32[] = { RBX, RCX, RDX, RSI, RDI, RBP };
-	static int regs64[] = { RDI, RSI, RDX, R10, R8,  R9 };
+	const int *regs;
+	static const int regs32[] = { RBX, RCX, RDX, RSI, RDI, RBP };
+	static const int regs64[] = { RDI, RSI, RDX, R10, R8,  R9 };
 
 	cs = ptrace(PTRACE_PEEKUSER, pid, 8*CS, NULL);
 	switch (cs) {
@@ -618,6 +619,7 @@ static int syscall_get_args(
 	int i;
 	struct pt_regs regs;
 
+	(void)memset(&regs, 0, sizeof(regs));
 	if (ptrace(PTRACE_GETREGS, pid, NULL, (void *)&regs) < 0)
 		return -1;
 
@@ -632,6 +634,7 @@ static int syscall_get_args(
 	};
 	int i;
 
+	(void)memset(&regs, 0, sizeof(regs));
 	errno = 0;
 	io.iov_len = sizeof(struct aarch64_regs);
 	ptrace(PTRACE_GETREGSET, pid, NT_PRSTATUS, &io);
