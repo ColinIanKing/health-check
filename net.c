@@ -18,6 +18,8 @@
  *
  * Author: Colin Ian King <colin.i.king@gmail.com>
  */
+#define _GNU_SOURCE
+
 #include <stdlib.h>
 #include <stdio.h>
 #include <stdint.h>
