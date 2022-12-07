@@ -21,6 +21,7 @@
 
 #define _GNU_SOURCE
 
+#include <bsd/string.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
@@ -671,7 +672,7 @@ static int syscall_get_args(
 static void syscall_name(const int syscall, char *name, const size_t len)
 {
 	if (syscall_valid(syscall) && (syscalls[syscall].name)) {
-		strncpy(name, syscalls[syscall].name, len);
+		strlcpy(name, syscalls[syscall].name, len);
 	} else {
 		/*  Don't know it */
 		snprintf(name, len, "SYS_NR_%d", syscall);
