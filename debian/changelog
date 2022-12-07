@@ -1,3 +1,17 @@
+health-check (0.03.11-1) unstable; urgency=medium
+
+  * Makefile: bump version
+  * syscall.c: remove empty line
+  * json.c, net.c: define _GNU_SOURCE
+  * debian/control: update standards version to 4.6.1
+  * syscall: memset regs structures and add const to arrays
+  * syscall: various constifications of units pointers
+  * json.c: constify 1st argument in j_obj_is_null function
+  * syscall: use strlcpy instead of unsafe strncpy
+  * Update copyright
+
+ -- Colin Ian King <colin.i.king@gmail.com>  Wed, 7 Dec 2022 14:43:44 +0000
+
 health-check (0.03.10-1) unstable; urgency=medium
 
   * Makefile: bump version
