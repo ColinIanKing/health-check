@@ -18,7 +18,6 @@
  *
  * Author: Colin Ian King <colin.i.king@gmail.com>
  */
-
 #define _GNU_SOURCE
 
 #include <bsd/string.h>
