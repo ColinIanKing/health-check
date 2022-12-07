@@ -2103,13 +2103,19 @@ void syscall_dump_execve(double duration)
  *  syscall_timeout_to_human_time()
  *	convert timeout time into something human readable
  */
-static char *syscall_timeout_to_human_time(
+static const char *syscall_timeout_to_human_time(
 	const double timeout,
 	const bool end,
 	char *buffer,
 	const size_t len)
 {
-	char *units[] = { "sec", "msec", "usec", "nsec", "psec" };
+	static const char *units[] = {
+		"sec",
+		"msec",
+		"usec",
+		"nsec",
+		"psec"
+	};
 	int i;
 	double t = timeout;
 
@@ -2210,7 +2216,7 @@ void syscall_dump_pollers(json_object *j_tests, const double duration)
 	if (sorted.head) {
 		if (!(opt_flags & OPT_BRIEF)) {
 			double prev, bucket;
-			char tmp[64], *units;
+			char tmp[64];
 			double total_rate = 0.0;
 			uint64_t poll_infinite = 0, poll_zero = 0, count = 0;
 
@@ -2230,6 +2236,7 @@ void syscall_dump_pollers(json_object *j_tests, const double duration)
 					s->poll_infinite, s->poll_zero);
 				if (s->poll_count) {
 					char min_timeout[70], max_timeout[70], avg_timeout[70];
+					const char *units;
 
 					units = syscall_timeout_to_human_time(s->poll_min < 0.0 ? 0.0 : s->poll_min, false, tmp, sizeof(tmp));
 					snprintf(min_timeout, sizeof(min_timeout), "%s %-4s", tmp, units);
@@ -2282,7 +2289,7 @@ void syscall_dump_pollers(json_object *j_tests, const double duration)
 			printf(" %*s Process              Syscall            sec",
 				pid_size, "PID");
 			for (bucket = BUCKET_START, i = 0; i < MAX_BUCKET; i++, bucket *= 10.0) {
-				units = syscall_timeout_to_human_time(bucket, true, tmp, sizeof(tmp));
+				const char *units = syscall_timeout_to_human_time(bucket, true, tmp, sizeof(tmp));
 				printf(" %6s", units);
 			}
 			printf("   Wait\n");
