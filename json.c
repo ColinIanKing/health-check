@@ -32,7 +32,7 @@
  */
 extern json_object *json_object_new_int64(const int64_t) __attribute__((weak));
 
-static inline void j_obj_is_null(json_object *obj, const char *msg)
+static inline void j_obj_is_null(const json_object *obj, const char *msg)
 {
 	if (!obj)
 		health_check_out_of_memory(msg);
