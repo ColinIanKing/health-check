@@ -1,3 +1,14 @@
+health-check (0.03.12-1) unstable; urgency=medium
+
+  * Makefile: bump version
+  * Makefile: use xz compression on tarball for make dist rule
+  * Update copyright year
+  * debian/control: update standards version to 4.6.2
+  * Check for array bounds limit while parsing pid length string
+  * debian/rules: add hardening flags
+
+ -- Colin Ian King <colin.i.king@gmail.com>  Fri, 12 Jan 2024 10:59:37 +0000
+
 health-check (0.03.11-1) unstable; urgency=medium
 
   * Makefile: bump version
