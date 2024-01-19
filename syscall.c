@@ -2067,7 +2067,7 @@ void syscall_dump_inotify(json_object *j_obj, double duration)
 }
 #endif
 
-#ifdef SYS_execve
+#if defined(SYS_execve) || defined(SYS_execveat)
 /*
  *  syscall_execve_args()
  *	trace filenames used by execve()
@@ -2079,10 +2079,22 @@ static void syscall_execve_args(
 {
 	unsigned long args[sc->arg + 1];
 	char *filename;
+	int idx;
+
+	switch (sc->syscall) {
+	case SYS_execve:
+		idx = 0;
+		break;
+	case SYS_execveat:
+		idx = 1;
+		break;
+	default:
+		return;
+	}
 
 	(void)s;
 	syscall_get_args(pid, sc->arg, args);
-	filename = syscall_peek_filename(pid, args[0]);
+	filename = syscall_peek_filename(pid, args[idx]);
 	if (filename) {
 		syscall_add_filename(sc->syscall, pid, filename);
 		free(filename);
@@ -2930,6 +2942,9 @@ syscall_t syscalls[] = {
 #ifdef SYS_bind
 	SYSCALL(bind),
 #endif
+#ifdef SYS_bpf
+	SYSCALL(bpf),
+#endif
 #ifdef SYS_break
 	SYSCALL(break),
 #endif
@@ -2975,11 +2990,20 @@ syscall_t syscalls[] = {
 #ifdef SYS_clone
 	SYSCALL(clone),
 #endif
+#ifdef SYS_clone2
+	SYSCALL(clone2),
+#endif
+#ifdef SYS_clone3
+	SYSCALL(clone3),
+#endif
 #ifdef SYS_close
 	SYSCALL_CHK(close, 0, syscall_close_args, NULL),
 #endif
 #ifdef SYS_connect
 	SYSCALL_CHK(connect, 0, syscall_connect_args, syscall_connect_ret),
+#endif
+#ifdef SYS_copy_file_range
+	SYSCALL(copy_file_range),
 #endif
 #ifdef SYS_creat
 	SYSCALL(creat),
@@ -3028,6 +3052,9 @@ syscall_t syscalls[] = {
 #endif
 #ifdef SYS_execve
 	SYSCALL_CHK(execve, 0, syscall_execve_args, NULL),
+#endif
+#ifdef SYS_execveat
+	SYSCALL_CHK(execveat, 0, syscall_execve_args, NULL),
 #endif
 #ifdef SYS_exit
 	SYSCALL_CHK(exit, 0, syscall_exit_args, NULL),
@@ -3100,6 +3127,15 @@ syscall_t syscalls[] = {
 #endif
 #ifdef SYS_fsetxattr
 	SYSCALL(fsetxattr),
+#endif
+#ifdef SYS_fsmount
+	SYSCALL(fsmount),
+#endif
+#ifdef SYS_fsopen
+	SYSCALL(fsopen),
+#endif
+#ifdef SYS_fspick
+	SYSCALL(fspick),
 #endif
 #ifdef SYS_fstat
 	SYSCALL(fstat),
@@ -3200,6 +3236,9 @@ syscall_t syscalls[] = {
 #ifdef SYS_getpriority
 	SYSCALL(getpriority),
 #endif
+#ifdef SYS_getrandom
+	SYSCALL(getrandom),
+#endif
 #ifdef SYS_getresgid
 	SYSCALL(getresgid),
 #endif
@@ -3281,6 +3320,9 @@ syscall_t syscalls[] = {
 #ifdef SYS_io_getevents
 	SYSCALL(io_getevents),
 #endif
+#ifdef SYS_io_pgetevents
+	SYSCALL(io_pgetevents),
+#endif
 #ifdef SYS_ioperm
 	SYSCALL(ioperm),
 #endif
@@ -3299,11 +3341,23 @@ syscall_t syscalls[] = {
 #ifdef SYS_io_submit
 	SYSCALL(io_submit),
 #endif
+#ifdef SYS_io_uring_enter
+	SYSCALL(io_uring_enter),
+#endif
+#ifdef SYS_io_uring_register
+	SYSCALL(io_uring_register),
+#endif
+#ifdef SYS_io_uring_setup_
+	SYSCALL(io_uring_setup),
+#endif
 #ifdef SYS_ipc
 	SYSCALL(ipc),
 #endif
 #ifdef SYS_kcmp
 	SYSCALL(kcmp),
+#endif
+#ifdef SYS_kexec_file_load
+	SYSCALL(kexec_file_load),
 #endif
 #ifdef SYS_kexec_load
 	SYSCALL(kexec_load),
@@ -3365,8 +3419,20 @@ syscall_t syscalls[] = {
 #ifdef SYS_madvise
 	SYSCALL(madvise),
 #endif
+#ifdef SYS_map_shadow_stack
+	SYSCALL(map_shadow_stack),
+#endif
 #ifdef SYS_mbind
 	SYSCALL(mbind),
+#endif
+#ifdef SYS_memory_ordering
+	SYSCALL(memory_ordering),
+#endif
+#ifdef SYS_membarrier
+	SYSCALL(membarrier),
+#endif
+#ifdef SYS_memfd_create
+	SYSCALL(memfd_create),
 #endif
 #ifdef SYS_migrate_pages
 	SYSCALL(migrate_pages),
@@ -3389,6 +3455,9 @@ syscall_t syscalls[] = {
 #ifdef SYS_mlock
 	SYSCALL(mlock),
 #endif
+#ifdef SYS_mlock2
+	SYSCALL(mlock2),
+#endif
 #ifdef SYS_mlockall
 	SYSCALL(mlockall),
 #endif
@@ -3403,6 +3472,9 @@ syscall_t syscalls[] = {
 #endif
 #ifdef SYS_mount
 	SYSCALL(mount),
+#endif
+#ifdef SYS_move_mount
+	SYSCALL(move_mount),
 #endif
 #ifdef SYS_move_pages
 	SYSCALL(move_pages),
@@ -3500,6 +3572,9 @@ syscall_t syscalls[] = {
 #ifdef SYS_open_by_handle_at
 	SYSCALL(open_by_handle_at),
 #endif
+#ifdef SYS_open_tree
+	SYSCALL(open_tree),
+#endif
 #ifdef SYS_pause
 	SYSCALL(pause),
 #endif
@@ -3509,6 +3584,12 @@ syscall_t syscalls[] = {
 #ifdef SYS_personality
 	SYSCALL(personality),
 #endif
+#ifdef SYS_pidfd_open
+	SYSCALL(pidfd_open),
+#endif
+#ifdef SYS_pidfd_send_signal
+	SYSCALL(pidfd_send_signal),
+#endif
 #ifdef SYS_pipe
 	SYSCALL(pipe),
 #endif
@@ -3517,6 +3598,21 @@ syscall_t syscalls[] = {
 #endif
 #ifdef SYS_pivot_root
 	SYSCALL(pivot_root),
+#endif
+#ifdef SYS_pkey_alloc
+	SYSCALL(pkey_alloc),
+#endif
+#ifdef SYS_pkey_free
+	SYSCALL(pkey_free),
+#endif
+#ifdef SYS_pkey_get
+	SYSCALL(pkey_get),
+#endif
+#ifdef SYS_pkey_mprotect
+	SYSCALL(pkey_mprotect),
+#endif
+#ifdef SYS_pkey_set
+	SYSCALL(pkey_set),
 #endif
 #ifdef SYS_poll
 	SYSCALL_CHK_TIMEOUT(poll, 2, syscall_timeout_millisec, syscall_poll_generic_ret),
@@ -3532,6 +3628,9 @@ syscall_t syscalls[] = {
 #endif
 #ifdef SYS_preadv
 	SYSCALL(preadv),
+#endif
+#ifdef SYS_preadv2
+	SYSCALL(preadv2),
 #endif
 #ifdef SYS_prlimit64
 	SYSCALL(prlimit64),
@@ -3563,11 +3662,17 @@ syscall_t syscalls[] = {
 #ifdef SYS_pwritev
 	SYSCALL(pwritev),
 #endif
+#ifdef SYS_pwritev2
+	SYSCALL(pwritev2),
+#endif
 #ifdef SYS_query_module
 	SYSCALL(query_module),
 #endif
 #ifdef SYS_quotactl
 	SYSCALL(quotactl),
+#endif
+#ifdef SYS_quotactl_fd
+	SYSCALL(quotactl_fd),
 #endif
 #ifdef SYS_read
 	SYSCALL(read),
@@ -3611,6 +3716,9 @@ syscall_t syscalls[] = {
 #ifdef SYS_renameat
 	SYSCALL(renameat),
 #endif
+#ifdef SYS_renameat2
+	SYSCALL(renameat2),
+#endif
 #ifdef SYS_request_key
 	SYSCALL(request_key),
 #endif
@@ -3619,6 +3727,9 @@ syscall_t syscalls[] = {
 #endif
 #ifdef SYS_rmdir
 	SYSCALL(rmdir),
+#endif
+#ifdef SYS_rseq
+	SYSCALL(rseq),
 #endif
 #ifdef SYS_rt_sigaction
 	SYSCALL(rt_sigaction),
@@ -3647,6 +3758,9 @@ syscall_t syscalls[] = {
 #ifdef SYS_sched_getaffinity
 	SYSCALL(sched_getaffinity),
 #endif
+#ifdef SYS_sched_getattr
+	SYSCALL(sched_getattr),
+#endif
 #ifdef SYS_sched_getparam
 	SYSCALL(sched_getparam),
 #endif
@@ -3665,6 +3779,9 @@ syscall_t syscalls[] = {
 #ifdef SYS_sched_setaffinity
 	SYSCALL(sched_setaffinity),
 #endif
+#ifdef SYS_sched_setattr
+	SYSCALL(sched_setattr),
+#endif
 #ifdef SYS_sched_setparam
 	SYSCALL(sched_setparam),
 #endif
@@ -3673,6 +3790,9 @@ syscall_t syscalls[] = {
 #endif
 #ifdef SYS_sched_yield
 	SYSCALL(sched_yield),
+#endif
+#ifdef SYS_seccomp
+	SYSCALL(seccomp),
 #endif
 #ifdef SYS_security
 	SYSCALL(security),
@@ -3878,6 +3998,9 @@ syscall_t syscalls[] = {
 #ifdef SYS_statfs64
 	SYSCALL(statfs64),
 #endif
+#ifdef SYS_statx
+	SYSCALL(statx),
+#endif
 #ifdef SYS_stime
 	SYSCALL(stime),
 #endif
@@ -3994,6 +4117,9 @@ syscall_t syscalls[] = {
 #endif
 #ifdef SYS_uselib
 	SYSCALL(uselib),
+#endif
+#ifdef SYS_userfaultfd
+	SYSCALL(userfaultfd),
 #endif
 #ifdef SYS_ustat
 	SYSCALL(ustat),
