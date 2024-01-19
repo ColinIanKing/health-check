@@ -1269,18 +1269,25 @@ static void syscall_account_sync_file(syscall_sync_info_t *info, const int sysca
 {
 	syscall_sync_file_t *f;
 	fd_cache_t *fc;
+	char *filename;
 	link_t *l;
 
 	if ((fc = syscall_fd_cache_lookup(pid, fd)) == NULL)
 		return;
 
-	for (l = info->sync_file.head; l; l = l->next) {
-		f = (syscall_sync_file_t *)l->data;
-		if ((f->syscall == syscall) && !strcmp(f->filename, fc->filename)) {
-			f->count++;
-			return;
+	pthread_mutex_lock(&fc->mutex);
+	filename = fc->filename;
+	if (filename) {
+		for (l = info->sync_file.head; l; l = l->next) {
+			f = (syscall_sync_file_t *)l->data;
+			if ((f->syscall == syscall) && !strcmp(f->filename, filename)) {
+				f->count++;
+				pthread_mutex_unlock(&fc->mutex);
+				return;
+			}
 		}
 	}
+	pthread_mutex_unlock(&fc->mutex);
 
 	if ((f = calloc(1, sizeof(*f))) == NULL) {
 		health_check_out_of_memory("allocating file sync filename info");
