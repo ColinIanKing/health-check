@@ -156,7 +156,7 @@ static double syscall_timeout[] = {
 static bool syscall_valid(const int syscall)
 {
 	return (syscall >= 0) &&
-	       (syscall <= (int)syscalls_len);
+	       (syscall < (int)syscalls_len);
 }
 
 #ifdef SYS_connect
@@ -2446,8 +2446,9 @@ static syscall_info_t *syscall_count_usage(
 
 	if (sc->call_enter)
 		sc->call_enter(sc, s, pid);
-	else if (sc->call_enter_timeout)
+	else if (sc->call_enter_timeout) {
 		sc->call_enter_timeout(sc, s, pid, *(sc->threshold), timeout);
+	}
 
 	return s;
 }
