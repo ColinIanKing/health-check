@@ -1,3 +1,14 @@
+health-check (0.04.00-1) unstable; urgency=medium
+
+  * Makefile: bump version
+  * Makefile: remove .xz tarball on make clean rule
+  * syscall: add more locking around fc->filename on dup call
+  * syscall: add missing system calls
+  * syscall: fix out-of-bounds access into syscall array
+  * stress-syscall: add missing lock around fc->filename access
+
+ -- Colin Ian King <colin.i.king@gmail.com>  Fri, 19 Jan 2024 15:57:44 +0000
+
 health-check (0.03.12-1) unstable; urgency=medium
 
   * Makefile: bump version
