@@ -23,7 +23,7 @@ VERSION=0.03.12
 
 JSON_OUTPUT=y
 
-CFLAGS += -Wall -Wextra -DVERSION='"$(VERSION)"' -O2
+CFLAGS += -Wall -Wextra -DVERSION='"$(VERSION)"' -O2 -g
 
 #
 # Pedantic flags
@@ -96,7 +96,7 @@ dist:
 
 clean:
 	rm -f health-check health-check.o health-check.8.gz
-	rm -f health-check-$(VERSION).tar.gz
+	rm -f health-check-$(VERSION).tar.xz
 	rm -f $(OBJS)
 
 install: health-check health-check.8.gz
