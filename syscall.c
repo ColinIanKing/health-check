@@ -1287,14 +1287,15 @@ static void syscall_account_sync_file(syscall_sync_info_t *info, const int sysca
 			}
 		}
 	}
-	pthread_mutex_unlock(&fc->mutex);
 
 	if ((f = calloc(1, sizeof(*f))) == NULL) {
 		health_check_out_of_memory("allocating file sync filename info");
+		pthread_mutex_unlock(&fc->mutex);
 		return;
 	}
 
 	f->filename = strdup(fc->filename);
+	pthread_mutex_unlock(&fc->mutex);
 	f->syscall = syscall;
 	f->count = 1;
 
