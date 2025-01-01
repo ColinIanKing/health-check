@@ -1016,7 +1016,7 @@ static void *syscall_peek_data(const pid_t pid, const unsigned long addr, const 
 	unsigned long *data;
 	size_t i, n = (len + sizeof(unsigned long) - 1) / sizeof(unsigned long);
 
-	if ((data = calloc(sizeof(unsigned long), n + 1)) == NULL) {
+	if ((data = calloc(n + 1, sizeof(unsigned long))) == NULL) {
 		health_check_out_of_memory("allocating syscall peek buffer");
 		return NULL;
 	}
@@ -1877,7 +1877,7 @@ static char *syscall_peek_filename(const pid_t pid, const unsigned long addr)
 		n++;
 	} while (v);
 
-	if ((data = calloc(sizeof(char), n)) == NULL) {
+	if ((data = calloc(n, sizeof(char))) == NULL) {
 		health_check_out_of_memory("allocating syscall peek buffer");
 		return NULL;
 	}
