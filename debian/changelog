@@ -1,3 +1,11 @@
+health-check (0.04.01-1) unstable; urgency=medium
+
+  * debian/control: update to standards version 4.7.0
+  * syscall: fix incorrect order of params to calloc calls
+  * Update copyright year
+
+ -- Colin Ian King <colin.i.king@gmail.com>  Fri, 3 Jan 2025 20:43:17 +0000
+
 health-check (0.04.00-1) unstable; urgency=medium
 
   * Makefile: bump version
